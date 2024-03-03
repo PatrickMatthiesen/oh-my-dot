@@ -1,12 +1,12 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	// "os"
 
-	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 func init() {
@@ -21,14 +21,16 @@ var initcmd = &cobra.Command{
 Makes a git repository and sets remote origin to the specified URL.
 Default URL is $HOME/dotfiles but can be changed with the --url flag.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		r, _ := git.PlainOpen(rootGitRepoPath)
+		rootGitRepoPath := viper.GetString("repo-path")
+		fmt.Println("rootGitRepoPath:", rootGitRepoPath)
+	},
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		if !viper.IsSet("dot-home") {
 
-		fmt.Println("r", r)
+			fmt.Println("No config file found")
+			return errors.New("no config file found")
+		} // find a way to make sure that the config file is created here
 
-		b, _ := r.Branches()
-		b.ForEach(func(b *plumbing.Reference) error {
-			fmt.Println("Branch", b.Name())
-			return nil
-		})
+		return nil
 	},
 }
