@@ -13,24 +13,6 @@ func EnsureDir(dirName string) error {
 	return os.MkdirAll(dirName, os.ModePerm)
 }
 
-func EnsureCreated(file string) error {
-	if !IsDir(file) {
-		file = filepath.Dir(file)
-	}
-
-	dirErr := EnsureDir(file)
-	if dirErr != nil {
-		return dirErr
-	}
-
-	_, err := os.Create(file)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func IsDir(path string) bool {
 	fi, err := os.Stat(path)
 	if err != nil {
@@ -41,12 +23,24 @@ func IsDir(path string) bool {
 
 func ConfigFileExists(configFile string) bool {
 	_, err := os.Stat(configFile)
-	return os.IsNotExist(err)
+	return !os.IsNotExist(err)
 }
 
-func EnsureConfigFile(configFile string) {
-	if !ConfigFileExists(viper.GetString("dot-home")) {
-		viper.SafeWriteConfigAs(viper.GetString("dot-home"))
+func EnsureConfigFile() {
+	file := viper.GetString("dot-home")
+	if !ConfigFileExists(file) {
+		dir := filepath.Dir(file)
+		err := EnsureDir(dir)
+		CheckIfError(err)
+		err = viper.SafeWriteConfigAs(file)
+		CheckIfError(err)
 	}
 }
 
+func EnsureConfigFolder(file string) {
+	folder := filepath.Dir(file)
+	if !IsDir(folder) {
+		err := EnsureDir(folder)
+		CheckIfError(err)
+	}
+}

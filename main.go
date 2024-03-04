@@ -15,6 +15,8 @@ func main() {
 
 	configFile := filepath.Join(home, ".oh-my-dot", "config.json")
 
+	go util.EnsureConfigFolder(configFile)
+
 	viper.SetDefault("dot-home", configFile)
 	viper.SetDefault("repo-path", filepath.Join(home, "dotfiles"))
 	viper.SetConfigFile(configFile)

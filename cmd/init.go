@@ -2,10 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"log"
-
-	// "os"
-
+	
 	"github.com/PatrickMatthiesen/oh-my-dot/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -38,6 +35,6 @@ Default URL is $HOME/dotfiles but can be changed with the --url flag.`,
 		fmt.Println("remoteUrl:", remoteUrl)
 	},
 	PreRun: func(cmd *cobra.Command, args []string) {
-
+		// util.EnsureConfigFolder()
 	},
 }
