@@ -18,18 +18,30 @@ func CheckIfErrorWithMessage(err error, message string) {
 	if err == nil {
 		return
 	}
+	ColorPrint(fmt.Sprintf("error: %s", err), Red)
+	ColorPrint(message, Yellow)
 
-	fmt.Printf("\x1b[31;1m%s\x1b[0m\n", fmt.Sprintf("error: %s", err), message)
 	os.Exit(1)
 }
 
 func ColorPrint(message string, color string) {
-	//TODO: use a color enum, and use that instead of the hardcoded string
+	fmt.Printf("%s%s\x1b[0m", color, message)
+}
+
+func ColorPrintln(message string, color string) {
 	fmt.Printf("%s%s\x1b[0m\n", color, message)
 }
 
+func ColorPrintfn(color string, format string, a ...interface{}) {
+	fmt.Printf(color+format+"\x1b[0m\n", a...)
+}
+
 func SColorPrint(message string, color string) string {
-	return fmt.Sprintf(color, message, "\n")
+	return fmt.Sprintf(color, message)
+}
+
+func SColorPrintln(message string, color string) string {
+	return fmt.Sprintf("%s%s\x1b[0m\n", color, message)
 }
 
 
