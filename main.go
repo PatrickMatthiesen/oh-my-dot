@@ -13,12 +13,11 @@ func main() {
 	home, err := os.UserHomeDir()
 	util.CheckIfErrorWithMessage(err, "Error getting home directory")
 
-	configName := "config.env"
-	configFolder := filepath.Join(home, ".oh-my-dot")
+	configFile := filepath.Join(home, ".oh-my-dot", "config.json")
 
-	viper.SetDefault("dot-home", filepath.Join(configFolder, configName))
-	viper.AddConfigPath(configFolder)
-	viper.SetConfigName(configName)
+	viper.SetDefault("dot-home", configFile)
+	viper.SetDefault("repo-path", filepath.Join(home, "dotfiles"))
+	viper.SetConfigFile(configFile)
 
 	viper.AutomaticEnv()
 	cmd.Execute()

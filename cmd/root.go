@@ -7,6 +7,7 @@ import (
 
 	"log"
 
+	"github.com/PatrickMatthiesen/oh-my-dot/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -14,7 +15,7 @@ import (
 // TODO: make this configurable through the init command
 
 var rootCmd = &cobra.Command{
-	Use:   "oh-my-dot",
+	Use:   "oh-my-dot [command] [flags]",
 	Short: "oh-my-dot is a tool to manage your dotfiles",
 	Long:  `oh-my-dot is a fast and small config management tool for your dotfiles, written in Go.`,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -24,10 +25,15 @@ var rootCmd = &cobra.Command{
 			} else {
 				// Config file was found but another error was produced
 			}
-			CreateConfigFile(true)
+			CreateConfigFile()
+		}
+		cmd.Help()
+		if viper.IsSet("remote-url") && viper.IsSet("repo-path") {
+			fmt.Println()
+			util.ColorPrint("Run oh-my-dot init to initialize your dotfiles repository", util.Green)
+			util.ColorPrint("Use the --help flag for more information on the init command", util.Yellow)
 		}
 	},
-	DisableFlagParsing: true,
 }
 
 func Execute() {
@@ -37,7 +43,7 @@ func Execute() {
 	}
 }
 
-func CreateConfigFile(informUser bool) {
+func CreateConfigFile() {
 	log.Println("No config file found")
 	log.Println("Making a new one")
 
@@ -55,9 +61,4 @@ func CreateConfigFile(informUser bool) {
 	}
 
 	log.Println("Config file created at " + configFile)
-
-	if informUser {
-		fmt.Println("Run oh-my-dot init to initialize the git repo and the dotfiles")
-		fmt.Println("use the --help flag for more information on the init command")
-	}
 }
