@@ -8,46 +8,61 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4.1.1
 
       - name: Set up Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v5.0.0
         with:
-          go-version: 1.21
+          go-version: "1.21"
 
       - name: Build windows
-        run: env GOOS=windows GOARCH=amd64 go build
+        run: env GOOS=windows GOARCH=amd64 go build -o ./build/oh-my-dot.exe
 
       - name: Build linux
-        run: env GOOS=linux GOARCH=amd64 go build
+        run: env GOOS=linux GOARCH=amd64 go build -o ./build/oh-my-dot
 
       - name: Build macOS intel
-        run: env GOOS=darwin GOARCH=amd64 go build
+        run: env GOOS=darwin GOARCH=amd64 go build -o ./build/oh-my-dot
 
       - name: Build macOS arm
-        run: env GOOS=darwin GOARCH=arm64 go build
+        run: env GOOS=darwin GOARCH=arm64 go build -o ./build/oh-my-dot
+
+      - name: Get latest tag
+        id: get_latest_tag
+        uses: actions/github-script@v5
+        with:
+          script: |
+            const { data: tags } = await github.repos.listTags({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 1
+            });
+            const latestTag = tags[0].name;
+            console.log(`Latest tag: ${latestTag}`);
+            core.setOutput('latest_tag', latestTag);
+
+      - name: Increment tag number
+        id: increment_tag
+        run: |
+          latestTag=${{ steps.get_latest_tag.outputs.latest_tag }}
+          IFS='.' read -ra tagParts <<< "$latestTag"
+          major=${tagParts[0]}
+          minor=${tagParts[1]}
+          patch=${tagParts[2]}
+          patch=$((patch + 1))
+          newTag="$major.$minor.$patch"
+          echo "::set-output name=new_tag::$newTag"
 
       - name: Create Release
         id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v0.1.15
         with:
-          tag_name: v0.1.0
-          release_name: Release v0.1.0
-          body: |
-            This is the first release of my Go application.
-
-      - name: Upload Release Asset
-        id: upload_release_asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: /oh-my-dot
-          asset_name: oh-my-dot
-          asset_content_type: application/octet-stream
+          token: ${{ secrets.GITHUB_TOKEN }}
+          files: |
+            ./build/*
+          tag_name: ${{ steps.increment_tag.outputs.new_tag }}
