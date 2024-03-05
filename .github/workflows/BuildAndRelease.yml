@@ -30,7 +30,7 @@ jobs:
         run: env GOOS=darwin GOARCH=amd64 go build -o ./build/oh-my-dot_mac_x64
 
       - name: Build MacOS arm
-        run: env GOOS=darwin GOARCH=arm go build -o ./build/oh-my-dot_mac_arm64
+        run: env GOOS=darwin GOARCH=arm64 go build -o ./build/oh-my-dot_mac_arm64
 
       - name: Get next version
         uses: reecetech/version-increment@2023.10.2
