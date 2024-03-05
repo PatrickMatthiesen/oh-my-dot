@@ -37,7 +37,7 @@ func ColorPrintfn(color string, format string, a ...interface{}) {
 }
 
 func SColorPrint(message string, color string) string {
-	return fmt.Sprintf(color, message)
+	return fmt.Sprintf("%s%s\x1b[0m", color, message)
 }
 
 func SColorPrintln(message string, color string) string {
@@ -54,5 +54,7 @@ const (
 	Cyan   string = "\x1b[36;1m"
 	White  string = "\x1b[37;1m"
 
+	WeirdColor string = "\x1b[38;2;255;102;153m"
+	
 	Reset string = "\x1b[0m"
 )
