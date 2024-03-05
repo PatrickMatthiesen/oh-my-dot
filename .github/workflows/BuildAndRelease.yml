@@ -32,31 +32,12 @@ jobs:
       - name: Build macOS arm
         run: env GOOS=darwin GOARCH=arm64 go build -o ./build/oh-my-dot
 
-      - name: Get latest tag
-        id: get_latest_tag
-        uses: actions/github-script@v5
+      - name: Get next version
+        uses: reecetech/version-increment@2023.10.2
+        id: version
         with:
-          script: |
-            const { data: tags } = await github.repos.listTags({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              per_page: 1
-            });
-            const latestTag = tags[0].name;
-            console.log(`Latest tag: ${latestTag}`);
-            core.setOutput('latest_tag', latestTag);
-
-      - name: Increment tag number
-        id: increment_tag
-        run: |
-          latestTag=${{ steps.get_latest_tag.outputs.latest_tag }}
-          IFS='.' read -ra tagParts <<< "$latestTag"
-          major=${tagParts[0]}
-          minor=${tagParts[1]}
-          patch=${tagParts[2]}
-          patch=$((patch + 1))
-          newTag="$major.$minor.$patch"
-          echo "::set-output name=new_tag::$newTag"
+          scheme: semver
+          increment: patch
 
       - name: Create Release
         id: create_release
@@ -65,4 +46,4 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           files: |
             ./build/*
-          tag_name: ${{ steps.increment_tag.outputs.new_tag }}
+          tag_name: ${{ steps.version.outputs.version }}
