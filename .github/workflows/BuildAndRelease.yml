@@ -23,14 +23,14 @@ jobs:
       - name: Build windows
         run: env GOOS=windows GOARCH=amd64 go build -o ./build/oh-my-dot.exe
 
-      - name: Build linux
-        run: env GOOS=linux GOARCH=amd64 go build -o ./build/oh-my-dot
+      - name: Build Linux
+        run: env GOOS=linux GOARCH=amd64 go build -o ./build/oh-my-dot_x64_linux
 
-      - name: Build macOS intel
-        run: env GOOS=darwin GOARCH=amd64 go build -o ./build/oh-my-dot
+      - name: Build MacOS intel
+        run: env GOOS=darwin GOARCH=amd64 go build -o ./build/oh-my-dot_mac_x64
 
-      - name: Build macOS arm
-        run: env GOOS=darwin GOARCH=arm64 go build -o ./build/oh-my-dot
+      - name: Build MacOS arm
+        run: env GOOS=darwin GOARCH=arm go build -o ./build/oh-my-dot_mac_arm64
 
       - name: Get next version
         uses: reecetech/version-increment@2023.10.2
