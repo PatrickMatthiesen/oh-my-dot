@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"text/template"
+	_ "embed"
+
 
 	"log"
 
@@ -12,6 +14,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
+
+//go:embed templates/template.go.tpl
+var helpTemplate string
 
 // TODO: make this configurable through the init command
 
@@ -41,13 +46,9 @@ var rootCmd = &cobra.Command{
 func Execute() {
 	// fmt.Println("padding:", rootCmd.UsagePadding())
 	// fmt.Println("rootCmd:", rootCmd.UsageTemplate())
-	file, err := os.ReadFile("template.go.tpl")
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	cobra.AddTemplateFuncs(*templateColorMap)
-	rootCmd.SetHelpTemplate(string(file))
+	rootCmd.SetHelpTemplate(string(helpTemplate))
 	rootCmd.AddGroup(&cobra.Group{
 		ID:    "Basics",
 		Title: "Basic Commands",
@@ -60,7 +61,7 @@ func Execute() {
 
 	
 
-	initcmd.SetHelpTemplate(string(file))
+	initcmd.SetHelpTemplate(string(helpTemplate))
 
 	// fmt.Println(rootCmd.UsageString())
 	// fmt.Println(rootCmd.HelpTemplate())
@@ -103,42 +104,4 @@ var templateColorMap = &template.FuncMap{
 	"reset":  func() string { return util.Reset },
 }
 
-const helpTemplate = `Usage:
-{{if .Runnable -}} {{.UseLine}} {{- end}}
-{{if and .HasAvailableSubCommands (not (eq .Name "oh-my-dot"))}}
-{{.CommandPath}} [command]
-{{end -}}
 
-{{ if .HasExample }}
-{{blue}}Examples:{{reset}}
-{{.Example}}
-{{end -}}
-
-{{- if .HasAvailableSubCommands}}{{ $cmds := .Commands}}
-
-{{- if eq (len .Groups) 0}}
-{{- /* If there are no groupe on the subcommand */-}}
-Available Commands:{{range $cmds}}
-	{{if (or .IsAvailableCommand (eq .Name "help")) -}}
-		{{rpad .Name .NamePadding }} {{.Short}}
-	{{end}}
-{{end}}
-
-{{else}}{{range $group := .Groups}}
-
-{{.Title}}{{range $cmds}}{{if (and (eq .GroupID $group.ID) (or .IsAvailableCommand (eq .Name "help")))}}
-{{rpad .NameAndAliases .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{if not .AllChildCommandsHaveGroup}}
-
-Additional Commands:{{range $cmds}}{{if (and (eq .GroupID "") (or .IsAvailableCommand (eq .Name "help")))}}
-{{rpad .NameAndAliases .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}
-
-Flags:
-{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
-
-Global Flags:
-{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasHelpSubCommands}}
-
-Additional help topics:{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
-{{rpad .CommandPath .CommandPathPadding}} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableSubCommands}}
-
-Use "{{.CommandPath}} [command] --help" for more information about a command.{{end}}`

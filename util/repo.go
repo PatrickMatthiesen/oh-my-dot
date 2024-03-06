@@ -2,30 +2,44 @@ package util
 
 import (
 	"fmt"
+	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/spf13/viper"
 )
 
-func MoveAndAddFile(file string) {
+func MoveAndAddFile(file string) error {
 	//TODO: take a file path as argument and move it to the git repo
 	//add the file to the git repo
-	os.Rename(file, viper.GetString("repo-path"))
-	
-	AddFileToRepo(file)
+	fileName := filepath.Base(file)
+
+	newFile := filepath.Join(viper.GetString("repo-path"), fileName)
+	log.Println("Moving", file, "to", newFile)
+
+	err := os.Rename(file, newFile)
+	if err != nil {
+		return err
+	}
+
+	return AddFileToRepo(file)
 }
 
 // TODO: get the repo object
 func getWorktree(rootGitRepoPath string) *git.Worktree {
-	r, _ := git.PlainOpen(rootGitRepoPath)
+	r, err := git.PlainOpen(rootGitRepoPath)
+	if err != nil {
+		fmt.Println("Error opening git repo")
+		return nil
+	}
 
-	fmt.Println("r", r)
+	worktree, err := r.Worktree()
+	if err != nil {
+		fmt.Println("Error getting worktree")
+	}
 
-	worktree, _ := r.Worktree()
-
-	fmt.Println("Worktree", worktree)
 	return worktree
 }
 
@@ -40,10 +54,12 @@ func InitGitRepo(rootGitRepoPath string, remoteUrl string) {
 	})
 }
 
-func AddFileToRepo(file string) {
+func AddFileToRepo(file string) error {
 	worktree := getWorktree(viper.GetString("repo-path"))
 
 	worktree.Add(file)
 	//TODO: remove dir from file path
-	worktree.Commit(fmt.Sprint("Add", file), &git.CommitOptions{})
+	_, err := worktree.Commit(fmt.Sprint("Add ", file), &git.CommitOptions{})
+
+	return err
 }

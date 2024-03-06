@@ -29,7 +29,12 @@ var addCommand = &cobra.Command{
 			vi = args[0]
 		}
 		
-		util.MoveAndAddFile(vi)
+		err := util.MoveAndAddFile(vi)
+		if err != nil {
+			util.ColorPrintfn(util.Red, "Error adding %s to repository: %s", vi, err)
+			return
+		}
+
 		util.ColorPrintfn(util.Green, "Added %s to repository", vi)
 	},
 }
