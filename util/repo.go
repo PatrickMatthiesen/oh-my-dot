@@ -15,16 +15,23 @@ func MoveAndAddFile(file string) error {
 	//TODO: take a file path as argument and move it to the git repo
 	//add the file to the git repo
 	fileName := filepath.Base(file)
+	fileRepoPath := fmt.Sprint("files/", fileName)
 
-	newFile := filepath.Join(viper.GetString("repo-path"), fileName)
-	log.Println("Moving", file, "to", newFile)
+	newFile := filepath.Join(viper.GetString("repo-path"), fileRepoPath)
+	log.Println("Linking", file, "to", newFile)
 
-	err := os.Rename(file, newFile)
+	EnsureDir(filepath.Dir(newFile))
+	err := os.Link(file, newFile)
 	if err != nil {
 		return err
 	}
 
-	return AddFileToRepo(file)
+	err = AddFileToRepo(fileRepoPath)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // TODO: get the repo object
@@ -62,4 +69,8 @@ func AddFileToRepo(file string) error {
 	_, err := worktree.Commit(fmt.Sprint("Add ", file), &git.CommitOptions{})
 
 	return err
+}
+
+func symlinkFiles(file string, dest string) error {
+	return os.Symlink(file, dest)
 }
