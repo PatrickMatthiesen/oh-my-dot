@@ -2,9 +2,12 @@ package util
 
 import (
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
@@ -73,4 +76,66 @@ func AddFileToRepo(file string) error {
 
 func symlinkFiles(file string, dest string) error {
 	return os.Symlink(file, dest)
+}
+
+func IsGitRepo(url string) bool {
+	if !strings.HasPrefix(url, "http") {
+		url = "https://" + url
+	}
+
+	if !strings.HasSuffix(url, ".git") {
+		url += ".git"
+	}
+
+	resp, err := http.Head(url)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return false
+	}
+	defer resp.Body.Close()
+
+	// Check if the response status is OK (200)
+	return resp.StatusCode == http.StatusOK
+}
+
+func isFolderEmpty(name string) (bool, error) {
+    f, err := os.Open(name)
+    if err != nil {
+        return false, err
+    }
+    defer f.Close()
+
+    _, err = f.Readdirnames(1) // Or f.Readdir(1)
+    if err == io.EOF {
+        return true, nil
+    }
+    return false, err // Either not empty or error, suits both cases
+}
+
+func ReadyForClone(folderPath string) (bool, error) {
+	// Check if the folder exists
+	info, err := os.Stat(folderPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, fmt.Errorf("folder %s does not exist", folderPath)
+		}
+		return false, err
+	}
+
+	// Verify that it's a directory
+	if !info.IsDir() {
+		return false, fmt.Errorf("%s is not a directory", folderPath)
+	}
+
+	// Check if the folder is empty
+	isEmpty, err := isFolderEmpty(folderPath)
+	if err != nil {
+		return false, err
+	}
+
+	if !isEmpty {
+		return false, fmt.Errorf("folder %s is not empty", folderPath)
+	}
+
+	return true, nil
 }
