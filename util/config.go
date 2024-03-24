@@ -7,6 +7,8 @@ import (
 	"github.com/spf13/viper"
 )
 
+var DefaultRepoPath = filepath.Join(os.Getenv("HOME"), "dotfiles")
+
 // EnsureDir creates a directory if it does not exist.
 // The dirName parameter should only contain the directory path and should not include the filename.
 func EnsureDir(dirName string) error {

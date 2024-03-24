@@ -1,12 +1,11 @@
 package cmd
 
 import (
+	_ "embed"
 	"fmt"
 	"os"
 	"path/filepath"
 	"text/template"
-	_ "embed"
-
 
 	"log"
 
@@ -15,53 +14,65 @@ import (
 	"github.com/spf13/viper"
 )
 
-//go:embed templates/template.go.tpl
-var helpTemplate string
+//go:embed templates/helpTemplate.go.tpl
+var HelpTemplate string
 
-// TODO: make this configurable through the init command
+//go:embed templates/usageTemplate.go.tpl
+var UsageTemplate string
 
 var rootCmd = &cobra.Command{
 	Use:   "oh-my-dot",
 	Short: "oh-my-dot is a tool to manage your dotfiles",
-	Long:  `oh-my-dot is a fast and small config management tool for your dotfiles, written in Go.`,
+	Long: `oh-my-dot is a small and fast config management tool for your dotfiles, written in Go 😉
+oh-my-dot uses git to manage your dotfiles, so you can easily push and pull your dotfiles to and from a remote repository.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := viper.ReadInConfig(); err != nil {
-			if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-				// Config file not found; ignore error if desired
-			} else {
-				// Config file was found but another error was produced
-			}
-			// CreateConfigFile()
-		}
 		cmd.Help()
 		if !viper.IsSet("remote-url") || !viper.IsSet("repo-path") {
-			fmt.Println()
-			util.ColorPrintln("Run oh-my-dot init to initialize your dotfiles repository", util.Green)
+			fmt.Print("\n\n")
+			util.ColorPrintfn("Run oh-my-dot init to initialize your dotfiles repository", util.Green)
 			util.ColorPrintln("Use the --help flag for more information on the init command", util.Yellow)
 		}
 	},
-	Example: "oh-my-dot damn that is cool",
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		if cmd.Use == "oh-my-dot" {
+			return
+		}
+
+		if !viper.IsSet("initialized") {
+			util.ColorPrintln("Dotfiles repository has not been initialized", util.Yellow)
+			util.ColorPrintln("Run oh-my-dot init to initialize your dotfiles repository", util.Yellow)
+			os.Exit(1)
+		}
+	},
+	Example: "oh-my-dot help init",
 }
 
 func Execute() {
+	if err := viper.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			// Config file not found; ignore error if desired
+		} else {
+			// Config file was found but another error was produced
+		}
+		// CreateConfigFile()
+	}
+
 	// fmt.Println("padding:", rootCmd.UsagePadding())
-	// fmt.Println("rootCmd:", rootCmd.UsageTemplate())
+	// fmt.Println("help:", rootCmd.HelpTemplate())
+	// fmt.Println("usage:", rootCmd.UsageTemplate())
 
 	cobra.AddTemplateFuncs(*templateColorMap)
-	rootCmd.SetHelpTemplate(string(helpTemplate))
+	rootCmd.SetHelpTemplate(HelpTemplate)
+	rootCmd.SetUsageTemplate(UsageTemplate)
+
 	rootCmd.AddGroup(&cobra.Group{
-		ID:    "Basics",
+		ID:    "basics",
 		Title: "Basic Commands",
 	})
 	rootCmd.AddGroup(&cobra.Group{
 		ID:    "dotfiles",
 		Title: "Dotfile:",
 	})
-	// rootCmd.SetUsageTemplate(helpTemplate)
-
-	
-
-	initcmd.SetHelpTemplate(string(helpTemplate))
 
 	// fmt.Println(rootCmd.UsageString())
 	// fmt.Println(rootCmd.HelpTemplate())
@@ -71,6 +82,7 @@ func Execute() {
 		os.Exit(1)
 	}
 }
+
 func CreateConfigFile() {
 	log.Println("No config file found")
 	log.Println("Making a new one")
@@ -103,5 +115,3 @@ var templateColorMap = &template.FuncMap{
 	"weird":  func() string { return util.WeirdColor },
 	"reset":  func() string { return util.Reset },
 }
-
-

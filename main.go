@@ -21,6 +21,8 @@ func main() {
 	viper.SetDefault("repo-path", filepath.Join(home, "dotfiles"))
 	viper.SetConfigFile(configFile)
 
+	viper.ReadInConfig()
+
 	viper.AutomaticEnv()
 	cmd.Execute()
 }

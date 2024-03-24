@@ -14,9 +14,15 @@ import (
 	"github.com/spf13/viper"
 )
 
-func MoveAndAddFile(file string) error {
-	//TODO: take a file path as argument and move it to the git repo
-	//add the file to the git repo
+// Check if folder has git repo
+func IsGitRepo(path string) bool {
+	_, err := git.PlainOpen(path)
+	return err == nil
+}
+
+// LinkAndAddFile takes a file path as an argument, makes a har-link to the git repo,
+// adds the file to the git repo, and commits the changes.
+func LinkAndAddFile(file string) error {
 	fileName := filepath.Base(file)
 	fileRepoPath := fmt.Sprint("files/", fileName)
 
@@ -37,48 +43,90 @@ func MoveAndAddFile(file string) error {
 	return nil
 }
 
-// TODO: get the repo object
-func getWorktree(rootGitRepoPath string) *git.Worktree {
+// GetWorktree returns the worktree of the git repository located at the specified path.
+func GetWorktree(rootGitRepoPath string) (*git.Worktree, error) {
 	r, err := git.PlainOpen(rootGitRepoPath)
 	if err != nil {
-		fmt.Println("Error opening git repo")
-		return nil
+		return nil, err
 	}
 
 	worktree, err := r.Worktree()
 	if err != nil {
-		fmt.Println("Error getting worktree")
+		return nil, err
 	}
 
-	return worktree
+	return worktree, nil
 }
 
-func InitGitRepo(rootGitRepoPath string, remoteUrl string) {
-	r, err := git.PlainInit(rootGitRepoPath, false)
-	if err != nil {
-		fmt.Println("Error initializing git repo")
+// InitGitRepo initializes a new git repository at the specified path,
+// with an optional remote URL and bare repository flag.
+func InitGitRepo(rootGitRepoPath string, remoteUrl string, opts ...bool) (*git.Repository, error) {
+	bare := false
+	if len(opts) > 0 {
+		bare = opts[0]
 	}
-	r.CreateRemote(&config.RemoteConfig{
+
+	r, err := git.PlainInit(rootGitRepoPath, bare)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = r.CreateRemote(&config.RemoteConfig{
 		Name: "origin",
 		URLs: []string{remoteUrl},
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	return r, nil
 }
 
-func AddFileToRepo(file string) error {
-	worktree := getWorktree(viper.GetString("repo-path"))
+// InitFromExistingRepo initializes a git repository from an existing repository located at the specified path.
+func InitFromExistingRepo(rootGitRepoPath string) error {
+	r, err := git.PlainOpen(rootGitRepoPath)
+	if err != nil {
+		return err
+	}
 
-	worktree.Add(file)
-	//TODO: remove dir from file path
-	_, err := worktree.Commit(fmt.Sprint("Add ", file), &git.CommitOptions{})
+	// set remote in config
+	remote, err := r.Remote("origin")
+	if err != nil {
+		return err
+	}
+
+	remoteConfig := remote.Config()
+	viper.Set("remote-url", remoteConfig.URLs[0])
+
+	return nil
+}
+
+// AddFileToRepo adds the specified file to the git repository.
+func AddFileToRepo(file string) error {
+	worktree, err := GetWorktree(viper.GetString("repo-path"))
+	if err != nil{
+		return err
+	}
+
+	_, err = worktree.Add(file)
+	if err != nil{
+		return err
+	}
+
+	_, err = worktree.Commit(fmt.Sprint("Add ", file), &git.CommitOptions{})
 
 	return err
 }
 
-func symlinkFiles(file string, dest string) error {
-	return os.Symlink(file, dest)
-}
+func UrlIsGitRepo(url string) bool {
+	stat, _ := os.Stat(url)
+	if stat != nil && stat.IsDir() {
+		_, err := git.PlainOpen(url)
+		if err == nil {
+			return true
+		}
+	}
 
-func IsGitRepo(url string) bool {
 	if !strings.HasPrefix(url, "http") {
 		url = "https://" + url
 	}
@@ -138,4 +186,46 @@ func ReadyForClone(folderPath string) (bool, error) {
 	}
 
 	return true, nil
+}
+
+// PushRepo pushes the changes in the git repository located at the specified path to the remote repository.
+func PushRepo() error {
+	r, err := git.PlainOpen(viper.GetString("repo-path"))
+	CheckIfError(err)
+
+	remote, err := r.Remote("origin")
+	if err != nil {
+		return err
+	}
+
+	err = remote.Push(&git.PushOptions{})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func ListFiles() ([]string, error) {
+	r, err := git.PlainOpen(viper.GetString("repo-path"))
+	if err != nil {
+		return nil, err
+	}
+
+	worktree, err := r.Worktree()
+	if err != nil {
+		return nil, err
+	}
+
+	status, err := worktree.Status()
+	if err != nil {
+		return nil, err
+	}
+
+	var files []string
+	for file := range status {
+		files = append(files, file)
+	}
+
+	return files, nil
 }
