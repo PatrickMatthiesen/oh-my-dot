@@ -10,11 +10,11 @@ import (
 )
 
 func init() {
-	initcmd.Flags().StringP("url", "r", "", "URL of the remote repository, (local paths are also supported)")
+	initcmd.Flags().StringP("remote", "r", "", "URL of the remote repository, (local paths are also supported)")
 	// initcmd.Flags().SetInterspersed(true)
-	viper.BindPFlag("remote-url", initcmd.Flags().Lookup("url"))
+	viper.BindPFlag("remote-url", initcmd.Flags().Lookup("remote"))
 
-	initcmd.Flags().StringP("folder", "f", "default", "Path to the root of the dotfiles repository")
+	initcmd.Flags().StringP("folder", "f", util.DefaultRepoPath, "Path to the root of the dotfiles repository")
 	initcmd.MarkFlagDirname("folder")
 	viper.BindPFlag("repo-path", initcmd.Flags().Lookup("folder"))
 
@@ -30,10 +30,6 @@ var initcmd = &cobra.Command{
 Makes a git repository and sets remote origin to the specified URL.
 Default folder is $HOME/dotfiles but can be changed with the --folder flag.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if viper.GetString("repo-path") == "default" {
-			viper.Set("repo-path", util.DefaultRepoPath)
-		}
-
 		if util.IsGitRepo(viper.GetString("repo-path")) {
 			util.InitFromExistingRepo(viper.GetString("repo-path"))
 			fmt.Println("Initialized dotfiles repo 🎉🎉🎉")
@@ -70,5 +66,6 @@ Default folder is $HOME/dotfiles but can be changed with the --folder flag.`,
 		}
 	},
 	GroupID: "basics",
-	Example: "oh-my-dot init -u github.com/username/dotfiles -f $HOME/myCoolDotfiles, oh-my-dot init -u ",
+	Example: `oh-my-dot init github.com/username/dotfiles
+oh-my-dot init -r github.com/username/dotfiles -f $HOME/myCoolDotfiles`,
 }

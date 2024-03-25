@@ -7,7 +7,8 @@ import (
 	"github.com/spf13/viper"
 )
 
-var DefaultRepoPath = filepath.Join(os.Getenv("HOME"), "dotfiles")
+var homeDir, _ = os.UserHomeDir()
+var DefaultRepoPath = filepath.Join(homeDir, "dotfiles")
 
 // EnsureDir creates a directory if it does not exist.
 // The dirName parameter should only contain the directory path and should not include the filename.
