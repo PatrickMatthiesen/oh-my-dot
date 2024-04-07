@@ -2,14 +2,17 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 
 	"github.com/PatrickMatthiesen/oh-my-dot/cmd"
 	"github.com/PatrickMatthiesen/oh-my-dot/util"
 	"github.com/spf13/viper"
-	"path/filepath"
 )
 
 func main() {
+	// fmt.Println(filepath.Abs("~\\dotfiles"))
+	// fmt.Println(util.IsDir("~\\dotfiles"))
+	// fmt.Println(util.IsDir("C:/Users/patr7/Desktop/Ting/My projects/oh-my-dot"))
 	home, err := os.UserHomeDir()
 	util.CheckIfErrorWithMessage(err, "Error getting home directory")
 
@@ -27,4 +30,7 @@ func main() {
 
 	viper.AutomaticEnv()
 	cmd.Execute()
+
+	//TODO: make execute return an error. Redirect the error to a log file or print it to the console if env var or flag is set.
+	//Update the commands to use RunE and tests to check for the error
 }

@@ -17,6 +17,8 @@ func init() {
 	addCommand.Flags().StringP("move-to", "m", "", "Move the file to the repository and link it to the given path")
 	addCommand.MarkFlagsMutuallyExclusive("copy-to", "move-to")
 
+	addCommand.Flags().BoolP("no-commit", "n", false, "Do not commit the changes")
+
 	rootCmd.AddCommand(addCommand)
 }
 
@@ -27,7 +29,7 @@ var addCommand = &cobra.Command{
 	Long:             `Adds config files to the repository.`,
 	TraverseChildren: true,
 	GroupID:          "dotfiles",
-	Args: 		      cobra.MaximumNArgs(1),
+	Args:             cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		file, err := cmd.Flags().GetString("file")
 		if (err != nil || file == "") && len(args) == 0 {
@@ -49,7 +51,7 @@ var addCommand = &cobra.Command{
 		if copy != "" {
 			copy, err = filepath.Abs(copy)
 			if err != nil {
-				util.ColorPrintfn(util.Red, "Error%s when adding %s to repository: %s", util.Reset, file, err)
+				util.ColorPrintfn(util.Red, "Error%s when adding %s: %s", util.Reset, file, err)
 				return
 			}
 
@@ -60,7 +62,7 @@ var addCommand = &cobra.Command{
 			}
 
 			if err != nil {
-				util.ColorPrintfn(util.Red, "Error%s when adding %s to repository: %s", util.Reset, file, err)
+				util.ColorPrintfn(util.Red, "Error%s when adding %s: %s", util.Reset, file, err)
 				return
 			}
 			file = copy
@@ -71,7 +73,7 @@ var addCommand = &cobra.Command{
 			log.Println("Moving file to", move)
 			move, err = filepath.Abs(move)
 			if err != nil {
-				util.ColorPrintfn(util.Red, "Error%s when adding %s to repository: %s", util.Reset, file, err)
+				util.ColorPrintfn(util.Red, "Error%s when adding %s: %s", util.Reset, file, err)
 				return
 			}
 
@@ -80,22 +82,36 @@ var addCommand = &cobra.Command{
 			}
 
 			err = os.Rename(file, move)
-			
+
 			if err != nil {
-				util.ColorPrintfn(util.Red, "Error%s when adding %s to repository: %s", util.Reset, file, err)
+				util.ColorPrintfn(util.Red, "Error%s when adding %s: %s", util.Reset, file, err)
 				return
 			}
 
 			file = move
 		}
 
-
 		err = util.LinkAndAddFile(file)
 		if err != nil {
-			util.ColorPrintfn(util.Red, "Error%s when adding %s to repository: %s", util.Reset, file, err)
+			util.ColorPrintfn(util.Red, "Error%s when adding %s: %s", util.Reset, file, err)
 			return
 		}
 
-		util.ColorPrintfn(util.Green, "Added %s to repository", file)
+		absFilePath, _ := filepath.Abs(file)
+		err = util.AddLinking(filepath.Base(file), absFilePath)
+		if err != nil {
+			return
+		}
+
+		noCommit, _ := cmd.Flags().GetBool("no-commit")
+		if !noCommit {
+			err = util.Commit("Added " + file)
+			if err != nil {
+				util.ColorPrintfn(util.Red, "Error%s when adding and commiting %s: %s", util.Reset, file, err)
+				return
+			}
+		}
+
+		util.ColorPrintfn(util.Green, "Added%s %s", util.Reset, file)
 	},
 }

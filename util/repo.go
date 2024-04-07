@@ -30,100 +30,6 @@ func GetWorktree(rootGitRepoPath string) (*git.Worktree, error) {
 	return r.Worktree()
 }
 
-// LinkAndAddFile takes a file path as an argument, makes a har-link to the git repo,
-// adds the file to the git repo, and commits the changes.
-func LinkAndAddFile(file string) error {
-	fileName := filepath.Base(file)
-	fileRepoPath := fmt.Sprint("files/", fileName)
-
-	newFile := filepath.Join(viper.GetString("repo-path"), fileRepoPath)
-	log.Println("Linking", file, "to", newFile)
-
-	EnsureDir(filepath.Dir(newFile))
-	err := os.Link(file, newFile)
-	if err != nil {
-		return err
-	}
-
-	return addFileToRepo(fileRepoPath)
-}
-
-// CopyAndAddFile takes a file path as an argument, copies the file to the git repo,
-// adds the file to the git repo, and commits the changes.
-func CopyAndAddFile(file, destination string) error {
-	fileName := filepath.Base(file)
-	fileRepoPath := fmt.Sprint("files/", fileName)
-
-	if IsDir(destination) {
-		destination = filepath.Join(destination, fileName)
-	} else if !IsDir(filepath.Dir(destination)) { // TODO: consider if we sould have a force or create-dir flag to force the copy
-		return fmt.Errorf("file cannot be coppied to %s. Is not a valid path or dirrectory does not exist", destination)
-	}
-
-	err := CopyFile(file, destination)
-
-	newFile := filepath.Join(viper.GetString("repo-path"), fileRepoPath)
-	log.Println("Copying", file, "to", newFile)
-
-	EnsureDir(filepath.Dir(newFile))
-	err = CopyFile(file, newFile)
-	if err != nil {
-		return err
-	}
-
-	return addFileToRepo(fileRepoPath)
-}
-
-// addFileToRepo adds the specified file to the git repository.
-func addFileToRepo(file string) error {
-	worktree, err := GetWorktree(viper.GetString("repo-path"))
-	if err != nil {
-		return err
-	}
-
-	_, err = worktree.Add(file)
-	if err != nil {
-		return err
-	}
-
-	_, err = worktree.Commit(fmt.Sprint("Add ", file), &git.CommitOptions{})
-
-	return err
-}
-
-func RemoveFile(file string) error {
-	repoPath := viper.GetString("repo-path")
-	worktree, err := GetWorktree(repoPath)
-	if err != nil {
-		return err
-	}
-
-	filesPath := filepath.Join(viper.GetString("repo-path"), "files")
-
-	if !strings.HasPrefix(file, filesPath) {
-		file = filepath.Join(filesPath, file)
-	}
-
-	if !IsFile(file){
-		return fmt.Errorf("file %s does not exist or is a directory", file)
-	}
-
-	relativeFilePath, err := filepath.Rel(repoPath, file)
-	if err != nil {
-		return fmt.Errorf("file %s is not in the repository\nInternal error: %v", file, err)
-	}
-
-	_, err = worktree.Remove(relativeFilePath)
-	if err != nil {
-		return err
-	}
-
-	_, err = worktree.Commit(fmt.Sprint("Remove ", file), &git.CommitOptions{})
-
-	return err
-}
-
-
 // InitGitRepo initializes a new git repository at the specified path,
 // with an optional remote URL and bare repository flag.
 func InitGitRepo(rootGitRepoPath string, remoteUrl string, opts ...bool) (*git.Repository, error) {
@@ -163,6 +69,112 @@ func InitFromExistingRepo(rootGitRepoPath string) error {
 
 	remoteConfig := remote.Config()
 	viper.Set("remote-url", remoteConfig.URLs[0])
+
+	return nil
+}
+
+
+// LinkAndAddFile takes a file path as an argument, makes a har-link to the git repo and adds the file to the git repo.
+func LinkAndAddFile(file string) error {
+	fileName := filepath.Base(file)
+	fileRepoPath := fmt.Sprint("files/", fileName)
+
+	newFile := filepath.Join(viper.GetString("repo-path"), fileRepoPath)
+	fmt.Println("Linking", SColorPrint(file, Blue), "to", SColorPrint(newFile, Cyan))
+
+	EnsureDir(filepath.Dir(newFile))
+	err := os.Link(file, newFile)
+	if err != nil {
+		return err
+	}
+
+	return StageChange(fileRepoPath)
+}
+
+// CopyAndAddFile takes a file path as an argument, copies the file to the git repo and adds the file to the git repo.
+func CopyAndAddFile(file, destination string) error {
+	fileName := filepath.Base(file)
+	fileRepoPath := fmt.Sprint("files/", fileName)
+
+	if IsDir(destination) {
+		destination = filepath.Join(destination, fileName)
+	} else if !IsDir(filepath.Dir(destination)) { // TODO: consider if we sould have a force or create-dir flag to force the copy
+		return fmt.Errorf("file cannot be coppied to %s. Is not a valid path or dirrectory does not exist", destination)
+	}
+
+	err := CopyFile(file, destination)
+	if err != nil {
+		return err
+	}
+
+	newFile := filepath.Join(viper.GetString("repo-path"), fileRepoPath)
+	log.Println("Copying", file, "to", newFile)
+
+	EnsureDir(filepath.Dir(newFile))
+	err = CopyFile(file, newFile)
+	if err != nil {
+		return err
+	}
+
+	return StageChange(fileRepoPath)
+}
+
+func RemoveFile(file string) error {
+	repoPath := viper.GetString("repo-path")
+	worktree, err := GetWorktree(repoPath)
+	if err != nil {
+		return err
+	}
+
+	filesPath := filepath.Join(viper.GetString("repo-path"), "files")
+
+	if !strings.HasPrefix(file, filesPath) {
+		file = filepath.Join(filesPath, file)
+	}
+
+	if !IsFile(file){
+		return fmt.Errorf("file %s does not exist or is a directory", file)
+	}
+
+	relativeFilePath, err := filepath.Rel(repoPath, file)
+	if err != nil {
+		return fmt.Errorf("file %s is not in the repository\nInternal error: %v", file, err)
+	}
+
+	_, err = worktree.Remove(relativeFilePath)
+	if err != nil {
+		return err
+	}
+
+	return err
+}
+
+// StageChange adds the specified file to the git repository.
+func StageChange(file string) error {
+	worktree, err := GetWorktree(viper.GetString("repo-path"))
+	if err != nil {
+		return err
+	}
+
+	_, err = worktree.Add(file)
+	if err != nil {
+		return err
+	}
+
+	return err
+}
+
+// Commits the changes in the git repository located at the specified path.
+func Commit(message string) error {
+	worktree, err := GetWorktree(viper.GetString("repo-path"))
+	if err != nil {
+		return err
+	}
+
+	_, err = worktree.Commit(message, &git.CommitOptions{})
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -274,6 +286,3 @@ func ReadyForClone(folderPath string) (bool, error) { // unused
 
 	return true, nil
 }
-
-
-

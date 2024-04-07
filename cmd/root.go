@@ -38,7 +38,8 @@ oh-my-dot uses git to manage your dotfiles, so you can easily push and pull your
 			return
 		}
 
-		if !viper.IsSet("initialized") {
+		cmdName := cmd.Name()
+		if !viper.IsSet("initialized") && !(cmdName == "init" || cmdName == "help") {
 			util.ColorPrintln("Dotfiles repository has not been initialized", util.Yellow)
 			util.ColorPrintln("Run oh-my-dot init to initialize your dotfiles repository", util.Yellow)
 			os.Exit(1)
@@ -47,7 +48,7 @@ oh-my-dot uses git to manage your dotfiles, so you can easily push and pull your
 	Example: "oh-my-dot help init",
 }
 
-func Execute() {
+func Execute() *cobra.Command {
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
 			// Config file not found; ignore error if desired
@@ -74,6 +75,8 @@ func Execute() {
 		Title: "Dotfile:",
 	})
 
+	// rootCmd.SetOut(os.Stdout)
+	// rootCmd.SetErr(os.Stderr)
 	// fmt.Println(rootCmd.UsageString())
 	// fmt.Println(rootCmd.HelpTemplate())
 
@@ -81,6 +84,7 @@ func Execute() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	return rootCmd
 }
 
 func CreateConfigFile() {

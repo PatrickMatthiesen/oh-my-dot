@@ -1,6 +1,7 @@
 package util_test
 
 import (
+	"os"
 	"path/filepath"
 
 	"testing"
@@ -43,4 +44,35 @@ func Test_IsDir(t *testing.T) {
 	if !util.IsDir(dir) {
 		t.Error("Directory does not exist")
 	}
+}
+
+func Fuzz_ExpandPath_NonEmptyHomePath(f *testing.F) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		f.Error(err)
+	}
+	temp := f.TempDir()
+	f.Add(temp, temp)
+
+	f.Add("~\\", home)
+	f.Add("~/", home)
+	f.Add("~", home)
+
+	rel, err := filepath.Rel(home, temp)
+	if err != nil {
+		f.Error(err)
+	}
+	f.Add("~/" + rel, temp)
+	f.Add("~//" + rel, temp)
+	f.Add("~" + rel, temp)
+
+	f.Fuzz(func(t *testing.T, testPath string, expected string) {
+		result, err := util.ExpandPath(testPath)
+		if err != nil {
+			t.Error(err)
+		}
+		if result != expected {
+			t.Errorf("Expected %s, got %s", expected, result)
+		}
+	})
 }

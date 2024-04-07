@@ -1,6 +1,7 @@
 package util
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -31,6 +32,16 @@ func IsFile(configFile string) bool {
 func PathExists(path string) bool {
 	_, err := os.Stat(path)
 	return !os.IsNotExist(err)
+}
+
+func ExpandPath(path string) (string, error) {
+	if len(path) == 0 {
+		return "", fmt.Errorf("could not expand empty path")
+	}
+	if path[:1] == "~" {
+		return filepath.Join(homeDir, string(filepath.Separator), path[1:]), nil
+	}
+	return path, nil
 }
 
 func CopyFile(src, dst string) error {
