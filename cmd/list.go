@@ -6,6 +6,8 @@ import (
 )
 
 func init() {
+	listCommand.Flags().BoolP("verbose", "v", false, "List all files and their linkings (TODO)")
+
 	rootCmd.AddCommand(listCommand)
 }
 
@@ -21,6 +23,8 @@ var listCommand = &cobra.Command{
 			util.ColorPrintfn(util.Red, "Error listing files: %s", err)
 			return
 		}
+
+		//TODO add verbose flag to show all files and their linkings, depends on linkings being implemented
 
 		util.ColorPrintfn(util.Cyan, "Files in repository:")
 		for _, file := range f {

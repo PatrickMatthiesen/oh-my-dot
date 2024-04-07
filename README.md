@@ -19,7 +19,7 @@ It also supports multiple profiles, so you can have different configurations for
 3. Add the folder to your PATH
 4. Start using oh-my-dot
 
-### CLI (Automatic) TO BE IMPLIMENTED
+### Package manager (Automatic) TO BE IMPLEMENTED
 
 1. Run in a terminal
 
@@ -51,7 +51,7 @@ oh-my-dot init -r github.com/username/dotfiles -f /path/to/dotfiles --force
 
 ### SSH
 
-If you are using SSH to clone your dotfiles, you will need to add your SSH key to the ssh-agent. You can do this by running the following command:
+If you are using SSH to clone your dotfiles, you will need to add your SSH key to the SSH-Agent. This is because Oh-My-Dot uses Git under the hood. You can add your key by running the following command:
 
 ```sh
 ssh-add ~/.ssh/id_rsa

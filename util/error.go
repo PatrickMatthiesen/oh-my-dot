@@ -47,6 +47,13 @@ func SColorPrintln(message string, color string) string {
 	return fmt.Sprintf("%s%s\x1b[0m\n", color, message)
 }
 
+func SColorPrintf(format string, a ...interface{}) string {
+	if false {
+		_ = fmt.Sprintf(format, a...) // enable printf analyser
+	}
+	return fmt.Sprintf(format+"\x1b[0m", a...)
+}
+
 const (
 	Red    string = "\x1b[31;1m"
 	Green  string = "\x1b[32;1m"

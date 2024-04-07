@@ -20,6 +20,16 @@ func IsGitRepo(path string) bool {
 	return err == nil
 }
 
+// GetWorktree returns the worktree of the git repository located at the specified path.
+func GetWorktree(rootGitRepoPath string) (*git.Worktree, error) {
+	r, err := git.PlainOpen(rootGitRepoPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return r.Worktree()
+}
+
 // LinkAndAddFile takes a file path as an argument, makes a har-link to the git repo,
 // adds the file to the git repo, and commits the changes.
 func LinkAndAddFile(file string) error {
@@ -35,28 +45,84 @@ func LinkAndAddFile(file string) error {
 		return err
 	}
 
-	err = AddFileToRepo(fileRepoPath)
+	return addFileToRepo(fileRepoPath)
+}
+
+// CopyAndAddFile takes a file path as an argument, copies the file to the git repo,
+// adds the file to the git repo, and commits the changes.
+func CopyAndAddFile(file, destination string) error {
+	fileName := filepath.Base(file)
+	fileRepoPath := fmt.Sprint("files/", fileName)
+
+	if IsDir(destination) {
+		destination = filepath.Join(destination, fileName)
+	} else if !IsDir(filepath.Dir(destination)) { // TODO: consider if we sould have a force or create-dir flag to force the copy
+		return fmt.Errorf("file cannot be coppied to %s. Is not a valid path or dirrectory does not exist", destination)
+	}
+
+	err := CopyFile(file, destination)
+
+	newFile := filepath.Join(viper.GetString("repo-path"), fileRepoPath)
+	log.Println("Copying", file, "to", newFile)
+
+	EnsureDir(filepath.Dir(newFile))
+	err = CopyFile(file, newFile)
 	if err != nil {
 		return err
 	}
 
-	return nil
+	return addFileToRepo(fileRepoPath)
 }
 
-// GetWorktree returns the worktree of the git repository located at the specified path.
-func GetWorktree(rootGitRepoPath string) (*git.Worktree, error) {
-	r, err := git.PlainOpen(rootGitRepoPath)
+// addFileToRepo adds the specified file to the git repository.
+func addFileToRepo(file string) error {
+	worktree, err := GetWorktree(viper.GetString("repo-path"))
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	worktree, err := r.Worktree()
+	_, err = worktree.Add(file)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return worktree, nil
+	_, err = worktree.Commit(fmt.Sprint("Add ", file), &git.CommitOptions{})
+
+	return err
 }
+
+func RemoveFile(file string) error {
+	repoPath := viper.GetString("repo-path")
+	worktree, err := GetWorktree(repoPath)
+	if err != nil {
+		return err
+	}
+
+	filesPath := filepath.Join(viper.GetString("repo-path"), "files")
+
+	if !strings.HasPrefix(file, filesPath) {
+		file = filepath.Join(filesPath, file)
+	}
+
+	if !IsFile(file){
+		return fmt.Errorf("file %s does not exist or is a directory", file)
+	}
+
+	relativeFilePath, err := filepath.Rel(repoPath, file)
+	if err != nil {
+		return fmt.Errorf("file %s is not in the repository\nInternal error: %v", file, err)
+	}
+
+	_, err = worktree.Remove(relativeFilePath)
+	if err != nil {
+		return err
+	}
+
+	_, err = worktree.Commit(fmt.Sprint("Remove ", file), &git.CommitOptions{})
+
+	return err
+}
+
 
 // InitGitRepo initializes a new git repository at the specified path,
 // with an optional remote URL and bare repository flag.
@@ -101,24 +167,45 @@ func InitFromExistingRepo(rootGitRepoPath string) error {
 	return nil
 }
 
-// AddFileToRepo adds the specified file to the git repository.
-func AddFileToRepo(file string) error {
-	worktree, err := GetWorktree(viper.GetString("repo-path"))
-	if err != nil{
+// PushRepo pushes the changes in the git repository located at the specified path to the remote repository.
+func PushRepo() error {
+	r, err := git.PlainOpen(viper.GetString("repo-path"))
+	CheckIfError(err)
+
+	remote, err := r.Remote("origin")
+	if err != nil {
 		return err
 	}
 
-	_, err = worktree.Add(file)
-	if err != nil{
+	err = remote.Push(&git.PushOptions{})
+	if err != nil {
 		return err
 	}
 
-	_, err = worktree.Commit(fmt.Sprint("Add ", file), &git.CommitOptions{})
-
-	return err
+	return nil
 }
 
-func UrlIsGitRepo(url string) bool {
+func ListFiles() ([]string, error) {
+	worktree, err := GetWorktree(viper.GetString("repo-path"))
+	if err != nil {
+		return nil, err
+	}
+
+	infos, err := worktree.Filesystem.ReadDir("files")
+	if err != nil {
+		return nil, err
+	}
+
+	files := make([]string, len(infos))
+	for i, info := range infos {
+		files[i] = info.Name()
+	}
+
+	return files, nil
+}
+
+
+func UrlIsGitRepo(url string) bool { // unused
 	stat, _ := os.Stat(url)
 	if stat != nil && stat.IsDir() {
 		_, err := git.PlainOpen(url)
@@ -147,20 +234,20 @@ func UrlIsGitRepo(url string) bool {
 }
 
 func isFolderEmpty(name string) (bool, error) {
-    f, err := os.Open(name)
-    if err != nil {
-        return false, err
-    }
-    defer f.Close()
+	f, err := os.Open(name)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
 
-    _, err = f.Readdirnames(1) // Or f.Readdir(1)
-    if err == io.EOF {
-        return true, nil
-    }
-    return false, err // Either not empty or error, suits both cases
+	_, err = f.Readdirnames(1) // Or f.Readdir(1)
+	if err == io.EOF {
+		return true, nil
+	}
+	return false, err // Either not empty or error, suits both cases
 }
 
-func ReadyForClone(folderPath string) (bool, error) {
+func ReadyForClone(folderPath string) (bool, error) { // unused
 	// Check if the folder exists
 	info, err := os.Stat(folderPath)
 	if err != nil {
@@ -188,44 +275,5 @@ func ReadyForClone(folderPath string) (bool, error) {
 	return true, nil
 }
 
-// PushRepo pushes the changes in the git repository located at the specified path to the remote repository.
-func PushRepo() error {
-	r, err := git.PlainOpen(viper.GetString("repo-path"))
-	CheckIfError(err)
 
-	remote, err := r.Remote("origin")
-	if err != nil {
-		return err
-	}
 
-	err = remote.Push(&git.PushOptions{})
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func ListFiles() ([]string, error) {
-	r, err := git.PlainOpen(viper.GetString("repo-path"))
-	if err != nil {
-		return nil, err
-	}
-
-	worktree, err := r.Worktree()
-	if err != nil {
-		return nil, err
-	}
-
-	status, err := worktree.Status()
-	if err != nil {
-		return nil, err
-	}
-
-	var files []string
-	for file := range status {
-		files = append(files, file)
-	}
-
-	return files, nil
-}
