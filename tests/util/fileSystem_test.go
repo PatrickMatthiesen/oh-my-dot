@@ -12,9 +12,7 @@ import (
 
 func Test_FileExists(t *testing.T) {
 	err := SetupTestFile(t)
-	if err != nil {
-		t.Error(err)
-	}
+	TBErrorIfNotNil(t, err)
 
 	file := filepath.Join(viper.GetString("test-dir"), "test.txt")
 	if !util.IsFile(file) {
@@ -24,9 +22,7 @@ func Test_FileExists(t *testing.T) {
 
 func Test_FileDoesNotExist(t *testing.T) {
 	err := SetupTestFile(t)
-	if err != nil {
-		t.Error(err)
-	}
+	TBErrorIfNotNil(t, err)
 
 	file := filepath.Join(viper.GetString("test-dir"), "does-not-exist.txt")
 	if util.IsFile(file) {
@@ -36,9 +32,7 @@ func Test_FileDoesNotExist(t *testing.T) {
 
 func Test_IsDir(t *testing.T) {
 	err := SetupTestFile(t)
-	if err != nil {
-		t.Error(err)
-	}
+	TBErrorIfNotNil(t, err)
 
 	dir := viper.GetString("test-dir")
 	if !util.IsDir(dir) {
@@ -48,9 +42,8 @@ func Test_IsDir(t *testing.T) {
 
 func Fuzz_ExpandPath_NonEmptyHomePath(f *testing.F) {
 	home, err := os.UserHomeDir()
-	if err != nil {
-		f.Error(err)
-	}
+	FErrorIfNotNil(f, err)
+
 	temp := f.TempDir()
 	f.Add(temp, temp)
 
@@ -59,18 +52,16 @@ func Fuzz_ExpandPath_NonEmptyHomePath(f *testing.F) {
 	f.Add("~", home)
 
 	rel, err := filepath.Rel(home, temp)
-	if err != nil {
-		f.Error(err)
-	}
-	f.Add("~/" + rel, temp)
-	f.Add("~//" + rel, temp)
-	f.Add("~" + rel, temp)
+	FErrorIfNotNil(f, err)
+
+	f.Add("~/"+rel, temp)
+	f.Add("~//"+rel, temp)
+	f.Add("~"+rel, temp)
 
 	f.Fuzz(func(t *testing.T, testPath string, expected string) {
 		result, err := util.ExpandPath(testPath)
-		if err != nil {
-			t.Error(err)
-		}
+		TBErrorIfNotNil(t, err)
+
 		if result != expected {
 			t.Errorf("Expected %s, got %s", expected, result)
 		}

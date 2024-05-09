@@ -1,0 +1,14 @@
+{
+  "scripts": {
+    "build": "bun run build.ts"
+  },
+  "name": "oh-my-dot",
+  "module": "build.ts",
+  "type": "module",
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

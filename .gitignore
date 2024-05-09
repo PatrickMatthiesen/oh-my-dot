@@ -19,3 +19,9 @@
 
 # Go workspace file
 go.work
+
+# node_modules for bun build pipeline
+node_modules
+
+# go build output directory
+build

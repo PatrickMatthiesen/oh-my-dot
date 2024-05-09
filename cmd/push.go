@@ -10,10 +10,10 @@ func init() {
 }
 
 var pushCommand = &cobra.Command{
-	Aliases: []string{"p"},
-	Use:     "push",
-	Short:   "Push changes to the remote repository",
-	Long:    `Push changes to the remote repository.`,
+	Aliases:          []string{"p"},
+	Use:              "push",
+	Short:            "Push changes to the remote repository",
+	Long:             `Push changes to the remote repository.`,
 	TraverseChildren: true,
 	GroupID:          "dotfiles",
 	Run: func(cmd *cobra.Command, args []string) {

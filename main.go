@@ -13,6 +13,16 @@ func main() {
 	// fmt.Println(filepath.Abs("~\\dotfiles"))
 	// fmt.Println(util.IsDir("~\\dotfiles"))
 	// fmt.Println(util.IsDir("C:/Users/patr7/Desktop/Ting/My projects/oh-my-dot"))
+	// fmt.Println(util.IsDir("C:\\Users\\patr7\\Desktop\\Ting\\My projects\\oh-my-dot"))
+	// fmt.Println(util.ExpandPath("~\\dotfiles"))
+	// stat, err := os.Stat("")
+	// fmt.Println(stat, err)
+
+	// fmt.Println(filepath.Abs(filepath.ToSlash("C:\\Users\\patr7\\Desktop\\Ting\\My projects\\oh-my-dot")))
+	// fmt.Println(filepath.ToSlash("C:\\Users\\patr7\\Desktop\\Ting\\My projects\\oh-my-dot"))
+	// fmt.Println(filepath.Join("C:/Users/patr7/Desktop/Ting/My projects/oh-my-dot"))
+
+	// return
 	home, err := os.UserHomeDir()
 	util.CheckIfErrorWithMessage(err, "Error getting home directory")
 

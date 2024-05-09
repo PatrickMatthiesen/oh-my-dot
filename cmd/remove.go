@@ -13,7 +13,7 @@ func init() {
 
 	removeCommand.Flags().BoolP("source", "s", false, util.SColorPrintf("Delete the source file as well. %sNotice%s removes the file from the repository and the linked location.", util.Yellow, util.Reset))
 
-	addCommand.Flags().BoolP("no-commit", "n", false, "Dont commit changes")
+	removeCommand.Flags().BoolP("no-commit", "n", false, "Dont commit changes")
 
 	rootCmd.AddCommand(removeCommand)
 }

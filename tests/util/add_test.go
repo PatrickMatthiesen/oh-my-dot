@@ -12,7 +12,7 @@ import (
 
 func Test_LinkAndAddFile(t *testing.T) {
 	r, err := SetupTestRepo(t)
-	util.CheckIfError(err)
+	TBErrorIfNotNil(t, err)
 
 	// Create a file
 	tempSourceDir := t.TempDir()
@@ -25,7 +25,12 @@ func Test_LinkAndAddFile(t *testing.T) {
 
 	// Link the file to the git repo
 	err = util.LinkAndAddFile(file.Name())
-	util.CheckIfError(err)
+	if err != nil {
+		t.Error(err)
+	}
+
+	err = util.Commit("test")
+	TBErrorIfNotNil(t, err)
 
 	// Check if the file exists in the git repo
 	testFilePath := filepath.Join(viper.GetString("repo-path"), "files", filepath.Base(file.Name()))
@@ -35,29 +40,28 @@ func Test_LinkAndAddFile(t *testing.T) {
 	}
 
 	commits, err := r.Log(&git.LogOptions{})
-	util.CheckIfError(err)
+	TBErrorIfNotNil(t, err)
 	commit, err := commits.Next()
-	util.CheckIfError(err)
+	TBErrorIfNotNil(t, err)
 	files, err := commit.Files()
-	util.CheckIfError(err)
+	TBErrorIfNotNil(t, err)
 	_, err = files.Next()
-	util.CheckIfError(err)
+	TBErrorIfNotNil(t, err)
 
 	t.Run("Test config push", func(t *testing.T) {
 		// Make a bare repo to push to
 		_, err := git.PlainInit(viper.GetString("remote-url"), true)
-		util.CheckIfError(err)
+		TBErrorIfNotNil(t, err)
 
 		// Push the repo
 		err = util.PushRepo()
-		util.CheckIfError(err)
+		TBErrorIfNotNil(t, err)
 	})
 }
 
-
 func Test_CopyAndAddFile(t *testing.T) {
 	r, err := SetupTestRepo(t)
-	util.CheckIfError(err)
+	TBErrorIfNotNil(t, err)
 
 	// Create a file
 	tempSourceDir := t.TempDir()
@@ -72,7 +76,10 @@ func Test_CopyAndAddFile(t *testing.T) {
 
 	// Copy the file to the git repo
 	err = util.CopyAndAddFile(file.Name(), tempDestDir)
-	util.CheckIfError(err)
+	TBErrorIfNotNil(t, err)
+
+	err = util.Commit("test")
+	TBErrorIfNotNil(t, err)
 
 	// Check if the file exists in the git repo
 	testFilePath := filepath.Join(viper.GetString("repo-path"), "files", filepath.Base(file.Name()))
@@ -82,21 +89,21 @@ func Test_CopyAndAddFile(t *testing.T) {
 	}
 
 	commits, err := r.Log(&git.LogOptions{})
-	util.CheckIfError(err)
+	TBErrorIfNotNil(t, err)
 	commit, err := commits.Next()
-	util.CheckIfError(err)
+	TBErrorIfNotNil(t, err)
 	files, err := commit.Files()
-	util.CheckIfError(err)
+	TBErrorIfNotNil(t, err)
 	_, err = files.Next()
-	util.CheckIfError(err)
+	TBErrorIfNotNil(t, err)
 
 	t.Run("Test config push", func(t *testing.T) {
 		// Make a bare repo to push to
 		_, err := git.PlainInit(viper.GetString("remote-url"), true)
-		util.CheckIfError(err)
+		TBErrorIfNotNil(t, err)
 
 		// Push the repo
 		err = util.PushRepo()
-		util.CheckIfError(err)
+		TBErrorIfNotNil(t, err)
 	})
 }

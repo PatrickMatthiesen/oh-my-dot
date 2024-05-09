@@ -28,5 +28,12 @@
             "program": "${workspaceFolder}",
             "args": ["remove", ".\\.\\readme.md"],
         },
+        {
+            "name": "Test file",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${relativeFileDirname}",
+        },
     ]
 }

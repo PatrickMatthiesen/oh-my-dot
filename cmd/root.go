@@ -48,7 +48,7 @@ oh-my-dot uses git to manage your dotfiles, so you can easily push and pull your
 	Example: "oh-my-dot help init",
 }
 
-func Execute() *cobra.Command {
+func Execute(funcs ...func(*cobra.Command)) error {
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
 			// Config file not found; ignore error if desired
@@ -80,11 +80,12 @@ func Execute() *cobra.Command {
 	// fmt.Println(rootCmd.UsageString())
 	// fmt.Println(rootCmd.HelpTemplate())
 
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+	// Apply optional functions to rootCmd
+	for _, f := range funcs {
+		f(rootCmd)
 	}
-	return rootCmd
+
+	return rootCmd.Execute()
 }
 
 func CreateConfigFile() {

@@ -12,6 +12,8 @@ import (
 )
 
 func SetupTestFile(t testing.TB) error {
+	viper.Reset()
+
 	// Set the test dir path
 	temp := t.TempDir()
 	viper.Set("test-dir", temp)
@@ -27,6 +29,8 @@ func SetupTestFile(t testing.TB) error {
 }
 
 func SetupTestRepo(t testing.TB) (*git.Repository, error) {
+	viper.Reset()
+
 	// Set the test repo path
 	temp := t.TempDir()
 	viper.Set("repo-path", temp)
@@ -41,4 +45,16 @@ func SetupTestRepo(t testing.TB) (*git.Repository, error) {
 
 	// Initialize the git repo
 	return util.InitGitRepo(temp, remote, false)
+}
+
+func TBErrorIfNotNil(t testing.TB, err error) {
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func FErrorIfNotNil(f *testing.F, err error) {
+	if err != nil {
+		f.Error(err)
+	}
 }
