@@ -11,6 +11,9 @@ jobs:
     permissions:
       contents: write
 
+    env:
+      ldflag: '-X github.com/PatrickMatthiesen/oh-my-dot/'
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4.1.1
@@ -19,7 +22,14 @@ jobs:
         uses: actions/setup-go@v5.0.0
         with:
           go-version: "1.21"
-
+          
+      - name: Get next version
+        uses: reecetech/version-increment@2023.10.2
+        id: version
+        with:
+          scheme: semver
+          increment: patch
+          
       - name: Build windows
         run: env GOOS=windows GOARCH=amd64 go build -o ./build/oh-my-dot.exe
 
@@ -32,12 +42,6 @@ jobs:
       - name: Build MacOS arm
         run: env GOOS=darwin GOARCH=arm64 go build -o ./build/oh-my-dot_arm64_mac
 
-      - name: Get next version
-        uses: reecetech/version-increment@2023.10.2
-        id: version
-        with:
-          scheme: semver
-          increment: patch
 
       - name: Create Release
         id: create_release

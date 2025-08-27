@@ -47,7 +47,9 @@ func Fuzz_ExpandPath_NonEmptyHomePath(f *testing.F) {
 	temp := f.TempDir()
 	f.Add(temp, temp)
 
-	f.Add("~\\", home)
+	if (os.PathListSeparator == '\\') {
+		f.Add("~\\", home)
+	}
 	f.Add("~/", home)
 	f.Add("~", home)
 

@@ -12,15 +12,17 @@ import (
 
 func Fuzz_RemoveFile(f *testing.F) {
 	f.Add("", "")
-	f.Add(".\\", "")
-	f.Add("", "\\")
 	f.Add("", "/")
 	f.Add("/", "")
 	f.Add("./", "")
+	if (os.PathListSeparator == '\\') {
+		f.Add(".\\", "")
+		f.Add("", "\\")
+	}
 
 	f.Fuzz(func(t *testing.T, testPrefix string, testSufix string) {
 		r, err := SetupTestRepo(t)
-		util.CheckIfError(err)
+		TBErrorIfNotNil(t, err)
 
 		// create files dir
 		err = os.MkdirAll(filepath.Join(viper.GetString("repo-path"), "files"), os.ModePerm)
@@ -49,29 +51,30 @@ func Fuzz_RemoveFile(f *testing.F) {
 
 		// Link the file to the git repo
 		err = util.LinkAndAddFile(file.Name())
-		util.CheckIfError(err)
+		TBErrorIfNotNil(t, err)
 
 		commits, err := r.Log(&git.LogOptions{})
-		util.CheckIfError(err)
+		TBErrorIfNotNil(t, err)
 		commit, err := commits.Next()
-		util.CheckIfError(err)
+		TBErrorIfNotNil(t, err)
 		files, err := commit.Files()
-		util.CheckIfError(err)
+		TBErrorIfNotNil(t, err)
 		_, err = files.Next()
-		util.CheckIfError(err)
+		TBErrorIfNotNil(t, err)
 		t.Run("Test config push", func(t *testing.T) {
 			// Make a bare repo to push to
 			_, err := git.PlainInit(viper.GetString("remote-url"), true)
-			util.CheckIfError(err)
+			TBErrorIfNotNil(t, err)
 			
 			// Push the repo
 			err = util.PushRepo()
-			util.CheckIfError(err)
+			TBErrorIfNotNil(t, err)
 		})
 		
 		// Remove the file from the git repo
-		err = util.RemoveFile(testPrefix + filepath.Base(file.Name()) + testSufix)
-		util.CheckIfError(err)
+		fileToRemove := testPrefix + filepath.Base(file.Name()) + testSufix
+		err = util.RemoveFile(fileToRemove)
+		TBErrorIfNotNil(t, err)
 
 		// Check if the file exists in the git repo
 		// _, err = os.Stat(testFilePath)
