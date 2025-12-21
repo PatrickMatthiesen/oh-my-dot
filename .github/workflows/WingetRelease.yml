@@ -18,17 +18,25 @@ jobs:
           $parts = $version -split '\.'
           
           if ($parts.Count -ge 3) {
-            $patch = [int]$parts[2]
-            if ($patch -eq 0) {
-              echo "is_major_minor=true" >> $env:GITHUB_OUTPUT
-              echo "Version $version is a major or minor release (patch is 0)"
+            # Extract just the numeric part from patch version (handles cases like "0-beta")
+            $patchStr = $parts[2] -replace '[^0-9].*$', ''
+            
+            if ($patchStr -match '^\d+$') {
+              $patch = [int]$patchStr
+              if ($patch -eq 0) {
+                echo "is_major_minor=true" >> $env:GITHUB_OUTPUT
+                echo "Version $version is a major or minor release (patch is 0)"
+              } else {
+                echo "is_major_minor=false" >> $env:GITHUB_OUTPUT
+                echo "Version $version is a patch release (patch is $patch) - skipping Winget submission"
+              }
             } else {
               echo "is_major_minor=false" >> $env:GITHUB_OUTPUT
-              echo "Version $version is a patch release (patch is $patch) - skipping Winget submission"
+              echo "Invalid patch version format - skipping Winget submission"
             }
           } else {
-            echo "is_major_minor=true" >> $env:GITHUB_OUTPUT
-            echo "Invalid version format, defaulting to true"
+            echo "is_major_minor=false" >> $env:GITHUB_OUTPUT
+            echo "Invalid version format (expected X.Y.Z) - skipping Winget submission"
           }
 
       - name: Submit package to Winget
