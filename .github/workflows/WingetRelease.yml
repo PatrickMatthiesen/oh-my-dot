@@ -45,4 +45,6 @@ jobs:
         with:
           identifier: PatrickMatthiesen.oh-my-dot
           installers-regex: '\.exe$'
+          # WINGET_TOKEN should be a GitHub PAT with public_repo scope
+          # stored in repository secrets for submitting PRs to winget-pkgs
           token: ${{ secrets.WINGET_TOKEN }}
