@@ -47,14 +47,3 @@ jobs:
           files: |
             ./build/*
           tag_name: ${{ steps.version.outputs.version }}
-
-  winget-release:
-    needs: build
-    runs-on: windows-latest
-    steps:
-      - name: Submit package to Winget
-        uses: vedantmgoyal9/winget-releaser@v2
-        with:
-          identifier: PatrickMatthiesen.oh-my-dot
-          installers-regex: '\.exe$'
-          token: ${{ secrets.WINGET_TOKEN }}
