@@ -53,6 +53,7 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
+      pull-requests: write
     steps:
       - name: Submit package to Winget
         uses: vedantmgoyal9/winget-releaser@v2
