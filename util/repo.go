@@ -32,23 +32,43 @@ func GetWorktree(rootGitRepoPath string) (*git.Worktree, error) {
 
 // InitGitRepo initializes a new git repository at the specified path,
 // with an optional remote URL and bare repository flag.
+// If a remote URL is provided and the remote repository exists, it clones the repository.
+// Otherwise, it initializes a new empty repository and sets up the remote.
 func InitGitRepo(rootGitRepoPath string, remoteUrl string, opts ...bool) (*git.Repository, error) {
 	bare := false
 	if len(opts) > 0 {
 		bare = opts[0]
 	}
 
+	// If a remote URL is provided, try to clone the repository first
+	if remoteUrl != "" && !bare {
+		// Attempt to clone the remote repository
+		r, err := git.PlainClone(rootGitRepoPath, false, &git.CloneOptions{
+			URL: remoteUrl,
+		})
+		if err == nil {
+			// Clone succeeded, return the cloned repository
+			return r, nil
+		}
+		// If clone fails, fall back to initializing a new repository
+		// This handles cases where the remote doesn't exist yet or is inaccessible
+	}
+
+	// Fall back to creating a new empty repository
 	r, err := git.PlainInit(rootGitRepoPath, bare)
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = r.CreateRemote(&config.RemoteConfig{
-		Name: "origin",
-		URLs: []string{remoteUrl},
-	})
-	if err != nil {
-		return nil, err
+	// Only set up the remote if a URL was provided
+	if remoteUrl != "" {
+		_, err = r.CreateRemote(&config.RemoteConfig{
+			Name: "origin",
+			URLs: []string{remoteUrl},
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return r, nil
