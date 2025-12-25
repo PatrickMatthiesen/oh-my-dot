@@ -1,6 +1,7 @@
 module github.com/PatrickMatthiesen/oh-my-dot
 
-go 1.21.5
+go 1.23.0
+
 toolchain go1.23.7
 
 require (
