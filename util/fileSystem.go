@@ -23,7 +23,7 @@ func IsDir(path string) bool {
 
 func IsFile(configFile string) bool {
 	fi, err := os.Stat(configFile)
-	if os.IsNotExist(err) {
+	if err != nil { // return false on any error (not only NotExist) to avoid nil dereference
 		return false
 	}
 	return !fi.IsDir()
@@ -38,12 +38,24 @@ func ExpandPath(path string) (string, error) {
 	if len(path) == 0 {
 		return "", fmt.Errorf("could not expand empty path")
 	}
-	if path[:1] == "~" {
+	if path[0] == '~' {
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
 			return "", err
 		}
-		return filepath.Join(homeDir, string(filepath.Separator), path[1:]), nil
+		
+		// Support: "~", "~/sub", "~\\sub"
+		if len(path) == 1 {
+			return homeDir, nil
+		}
+		// Trim optional path separators after ~
+		rest := path[1:]
+		for len(rest) > 0 && (rest[0] == '/' || rest[0] == '\\') {
+			rest = rest[1:]
+		}
+		// Join using OS-specific separator
+		joined := filepath.Join(homeDir, rest)
+		return joined, nil
 	}
 	return path, nil
 }
@@ -69,6 +81,5 @@ func CopyFile(src, dst string) error {
 }
 
 func CopyFileToDir(src, dst string) error {
-	return CopyFile(src, dst+"/"+filepath.Base(src))
+	return CopyFile(src, filepath.Join(dst, filepath.Base(src)))
 }
-

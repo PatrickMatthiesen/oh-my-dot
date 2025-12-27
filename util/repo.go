@@ -146,11 +146,14 @@ func RemoveFile(file string) error {
 		return err
 	}
 
-	filesPath := filepath.Join(viper.GetString("repo-path"), "files")
-
-	if !strings.HasPrefix(file, filesPath) {
-		file = filepath.Join(filesPath, file)
-	}
+    filesPath := filepath.Join(repoPath, "files")
+    // If only a base name was provided, treat it as under files/
+    if filepath.Base(file) == file { // no path components
+        file = filepath.Join(filesPath, file)
+    } else if !strings.HasPrefix(file, repoPath) {
+        // If a path is given but not within the repo, assume it's within files/
+        file = filepath.Join(filesPath, filepath.Base(file))
+    }
 
 	if !IsFile(file){
 		return fmt.Errorf("file %s does not exist or is a directory", file)
@@ -166,7 +169,7 @@ func RemoveFile(file string) error {
 		return err
 	}
 
-	return err
+	return nil
 }
 
 // StageChange adds the specified file to the git repository.

@@ -30,18 +30,19 @@ var applyCommand = &cobra.Command{
 
 		missingFiles := 0
 
+		// Read verbose once
+		verbose, verr := cmd.Flags().GetBool("verbose")
+		if verr != nil {
+			util.ColorPrintfn(util.Red, "Error%s getting verbose flag: %s", util.Reset, verr)
+			return
+		}
+
 		for file, link := range linkings {
 			file = filepath.Join(viper.GetString("repo-path"), "files", file)
 			if !util.IsFile(file) {
 				missingFiles++
 				util.ColorPrintfn(util.Red, "Error%s file %s does not exist", util.Reset, file)
 				continue
-			}
-
-			verbose, err := cmd.Flags().GetBool("verbose")
-			if err != nil {
-				util.ColorPrintfn(util.Red, "Error%s getting verbose flag: %s", util.Reset, err)
-				return
 			}
 
 			if util.IsFile(link) {

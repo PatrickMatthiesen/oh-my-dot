@@ -54,6 +54,10 @@ func GetLinkings() (Linkings, error) {
 
 func SaveLinkings(links Linkings) error {
 	linkFile := filepath.Join(viper.GetString("repo-path"), "linkings.json")
+	// Ensure repository directory exists
+	if err := EnsureDir(filepath.Dir(linkFile)); err != nil {
+		return fmt.Errorf("error ensuring repo path: %w", err)
+	}
 	
 	file, err := json.MarshalIndent(links, "", "  ")
 	if err != nil{
@@ -65,6 +69,7 @@ func SaveLinkings(links Linkings) error {
 		return fmt.Errorf("error writing links to file: %w", err)
 	}
 
+	// Use slash path for git regardless of OS
 	err = StageChange("linkings.json")
 	if err != nil {
 		return fmt.Errorf("error staging changes: %w", err)
@@ -84,9 +89,14 @@ func BuildLinkPath(file string) (string, error) {
 		return "", fmt.Errorf("error getting home directory: %w", err)
 	}
 
-	absPath, found := strings.CutPrefix(absPath, home)
-	if found {
-		absPath = "~" + absPath
+	// Normalize both paths for comparison
+	home = filepath.Clean(home)
+	absPath = filepath.Clean(absPath)
+	if after, ok := strings.CutPrefix(absPath, home); ok  {
+		rel := after
+		// Ensure single leading separator is removed
+		rel = strings.TrimPrefix(rel, string(os.PathSeparator))
+		absPath = "~" + string(os.PathSeparator) + rel
 	}
 	// relPath, err := filepath.Rel(viper.GetString("repo-path"), absPath)
 	// if err != nil {
