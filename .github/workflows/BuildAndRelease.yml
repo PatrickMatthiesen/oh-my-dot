@@ -11,17 +11,14 @@ jobs:
     permissions:
       contents: write
 
-    env:
-      ldflag: '-X github.com/PatrickMatthiesen/oh-my-dot/'
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4.1.1
 
       - name: Set up Go
-        uses: actions/setup-go@v5.0.0
+        uses: actions/setup-go@v6.1.0
         with:
-          go-version: "1.21"
+          go-version-file: 'go.mod'
           
       - name: Get next version
         uses: reecetech/version-increment@2023.10.2
@@ -29,19 +26,25 @@ jobs:
         with:
           scheme: semver
           increment: patch
-          
+
+      - name: Get short commit hash
+        id: commit
+        run: echo "short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Set LDFLAGS
+        run: echo "LDFLAGS=-ldflags \"-X github.com/PatrickMatthiesen/oh-my-dot/cmd.Version=${{ steps.version.outputs.version }} -X github.com/PatrickMatthiesen/oh-my-dot/cmd.CommitHash=${{ steps.commit.outputs.short }}\"" >> $GITHUB_ENV
+
       - name: Build windows
-        run: env GOOS=windows GOARCH=amd64 go build -o ./build/oh-my-dot.exe
+        run: env GOOS=windows GOARCH=amd64 go build ${{ env.LDFLAGS }} -o ./build/oh-my-dot.exe
 
       - name: Build Linux
-        run: env GOOS=linux GOARCH=amd64 go build -o ./build/oh-my-dot_x64_linux
+        run: env GOOS=linux GOARCH=amd64 go build ${{ env.LDFLAGS }} -o ./build/oh-my-dot_x64_linux
 
       - name: Build MacOS intel
-        run: env GOOS=darwin GOARCH=amd64 go build -o ./build/oh-my-dot_x64_mac
+        run: env GOOS=darwin GOARCH=amd64 go build ${{ env.LDFLAGS }} -o ./build/oh-my-dot_x64_mac
 
       - name: Build MacOS arm
-        run: env GOOS=darwin GOARCH=arm64 go build -o ./build/oh-my-dot_arm64_mac
-
+        run: env GOOS=darwin GOARCH=arm64 go build ${{ env.LDFLAGS }} -o ./build/oh-my-dot_arm64_mac
 
       - name: Create Release
         id: create_release
