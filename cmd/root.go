@@ -4,10 +4,10 @@ import (
 	_ "embed"
 	"fmt"
 	"os"
-	"path/filepath"
+	// "path/filepath"
 	"text/template"
 
-	"log"
+	// "log"
 
 	"github.com/PatrickMatthiesen/oh-my-dot/util"
 	"github.com/spf13/cobra"
@@ -88,25 +88,6 @@ func Execute(funcs ...func(*cobra.Command)) error {
 	return rootCmd.Execute()
 }
 
-func CreateConfigFile() {
-	log.Println("No config file found")
-	log.Println("Making a new one")
-
-	configFile := viper.GetString("dot-home")
-	configDir := filepath.Dir(configFile)
-	if _, err := os.Stat(configDir); os.IsNotExist(err) {
-		os.MkdirAll(configDir, 0600)
-	}
-
-	err := viper.WriteConfigAs(configFile)
-	if err != nil {
-		log.Println("Error creating config file")
-		log.Println(err)
-		os.Exit(1)
-	}
-
-	log.Println("Config file created at " + configFile)
-}
 
 var templateColorMap = &template.FuncMap{
 	"color":  util.SColorPrint,
