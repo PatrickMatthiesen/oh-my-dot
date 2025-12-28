@@ -1,0 +1,50 @@
+name: Winget Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  winget-release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Check if version is major or minor
+        id: version_check
+        run: |
+          $version = "${{ github.event.release.tag_name }}" -replace '^v', ''
+          $parts = $version -split '\.'
+          
+          if ($parts.Count -ge 3) {
+            # Extract just the numeric part from patch version (handles cases like "0-beta")
+            $patchStr = $parts[2] -replace '[^0-9].*$', ''
+            
+            if ($patchStr -match '^\d+$') {
+              $patch = [int]$patchStr
+              if ($patch -eq 0) {
+                echo "is_major_minor=true" >> $env:GITHUB_OUTPUT
+                echo "Version $version is a major or minor release (patch is 0)"
+              } else {
+                echo "is_major_minor=false" >> $env:GITHUB_OUTPUT
+                echo "Version $version is a patch release (patch is $patch) - skipping Winget submission"
+              }
+            } else {
+              echo "is_major_minor=false" >> $env:GITHUB_OUTPUT
+              echo "Invalid patch version format - skipping Winget submission"
+            }
+          } else {
+            echo "is_major_minor=false" >> $env:GITHUB_OUTPUT
+            echo "Invalid version format (expected X.Y.Z) - skipping Winget submission"
+          }
+
+      - name: Submit package to Winget
+        if: steps.version_check.outputs.is_major_minor == 'true'
+        uses: vedantmgoyal9/winget-releaser@v2
+        with:
+          identifier: PatrickMatthiesen.oh-my-dot
+          installers-regex: '\.exe$'
+          # WINGET_TOKEN should be a GitHub PAT with public_repo scope
+          # stored in repository secrets for submitting PRs to winget-pkgs
+          token: ${{ secrets.WINGET_TOKEN }}

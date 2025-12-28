@@ -19,14 +19,19 @@ It also supports multiple profiles, so you can have different configurations for
 3. Add the folder to your PATH
 4. Start using oh-my-dot
 
-### Package manager (Automatic) TO BE IMPLEMENTED
+### Package manager (Automatic)
 
-1. Run in a terminal
+#### Windows (Winget)
 
 ```sh
-winget install oh-my-dot
-apt install oh-my-dot
-brew install oh-my-dot
+winget install PatrickMatthiesen.oh-my-dot
+```
+
+#### Linux and macOS (Coming Soon)
+
+```sh
+# apt install oh-my-dot (Coming Soon)
+# brew install oh-my-dot (Coming Soon)
 ```
 
 ## Init config
