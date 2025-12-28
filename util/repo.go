@@ -146,40 +146,35 @@ func RemoveFile(file string) error {
 	}
 
 	filesPath := filepath.Join(repoPath, "files")
-	// If an absolute path outside the repo is provided, reject it explicitly.
-	if filepath.IsAbs(file) && !strings.HasPrefix(file, repoPath) {
-		return fmt.Errorf("file %s is not in the repository", file)
+	
+	// Normalize the path: if it's absolute and within the repo, keep it as-is
+	// Otherwise, treat it as relative to filesPath
+	var fullPath string
+	if filepath.IsAbs(file) && strings.HasPrefix(file, repoPath) {
+		// Already an absolute path within the repo
+		fullPath = file
+	} else {
+		// Treat as relative path - join with filesPath
+		// Strip leading separators to handle accidental user input like "/myfile.txt"
+		file = strings.TrimPrefix(file, string(filepath.Separator))
+		fullPath = filepath.Join(filesPath, file)
 	}
 
-	// If only a base name was provided, treat it as under files/
-	if filepath.Base(file) == file { // no path components
-		// update to full path
-		file = filepath.Join(filesPath, file)
-	} else if !strings.HasPrefix(file, repoPath) {
-		// If a relative path is given (or a non-repo path that is not absolute),
-		// assume it's within files/ and preserve any subdirectories.
-		file = filepath.Join(filesPath, file)
-	}
-
-	is, err := IsFileErr(file)
+	is, err := IsFileErr(fullPath)
 	if err != nil {
-		return fmt.Errorf("cannot inspect %s: %w", file, err)
+		return fmt.Errorf("cannot inspect %s: %w", fullPath, err)
 	}
 	if !is {
-		return fmt.Errorf("%s exists but is not a file", file)
+		return fmt.Errorf("%s exists but is not a file", fullPath)
 	}
 
-	relativeFilePath, err := filepath.Rel(repoPath, file)
+	relativeFilePath, err := filepath.Rel(repoPath, fullPath)
 	if err != nil {
-		return fmt.Errorf("file %s is not in the repository\nInternal error: %v", file, err)
+		return fmt.Errorf("file %s is not in the repository\nInternal error: %v", fullPath, err)
 	}
 
 	_, err = worktree.Remove(relativeFilePath)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
 
 // StageChange adds the specified file to the git repository.

@@ -16,7 +16,7 @@ func Fuzz_RemoveFile(f *testing.F) {
 	f.Add("", "/")
 	f.Add("/", "")
 	f.Add("./", "")
-	if os.PathListSeparator == '\\' {
+	if os.PathSeparator == '\\' {
 		f.Add(".\\", "")
 		f.Add("", "\\")
 	}
@@ -74,9 +74,9 @@ func Fuzz_RemoveFile(f *testing.F) {
 		testutil.TBErrorIfNotNil(t, err)
 
 		// Check if the file exists in the git repo
-		// _, err = os.Stat(testFilePath)
-		// if err == nil {
-		// 	t.Error("File was not removed from the git repo")
-		// }
+		_, err = os.Stat(file.Name())
+		if os.IsExist(err) {
+			t.Error("File was not removed from the git repo")
+		}
 	})
 }
