@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/PatrickMatthiesen/oh-my-dot/util"
 	"github.com/spf13/cobra"
 )
@@ -24,11 +26,27 @@ var listCommand = &cobra.Command{
 			return
 		}
 
-		//TODO add verbose flag to show all files and their linkings, depends on linkings being implemented
+		if len(f) == 0 {
+			util.ColorPrintln("No files in repository", util.Yellow)
+			return
+		}
+
+		linkings, lerr := util.GetLinkings()
+		if lerr != nil {
+			util.ColorPrintfn(util.Red, "Error getting linkings: %s", lerr)
+			return
+		}
 
 		util.ColorPrintfn(util.Cyan, "Files in repository:")
 		for _, file := range f {
-			util.ColorPrintfn(util.Green, file)
+			if linkedPath, ok := linkings[file]; ok {
+				s := util.SColorPrint(file, util.Green) +
+					" -> " +
+					util.SColorPrint(linkedPath, util.Blue)
+				fmt.Println(s)
+			} else {
+				util.ColorPrintfn(util.Yellow, "%s (not linked)", file)
+			}
 		}
 	},
 }

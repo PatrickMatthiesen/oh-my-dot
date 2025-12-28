@@ -24,11 +24,17 @@ var applyCommand = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		linkings, err := util.GetLinkings()
 		if err != nil {
-			util.ColorPrintfn(util.Red, "Error%s retriveing linkings: %s", util.Reset, err)
+			util.ColorPrintfn(util.Red, "Error%s retrieving linkings: %s", util.Reset, err)
 			return
 		}
 
 		missingFiles := 0
+
+		verbose, verr := cmd.Flags().GetBool("verbose")
+		if verr != nil {
+			util.ColorPrintfn(util.Red, "Error%s getting verbose flag: %s", util.Reset, verr)
+			return
+		}
 
 		for file, link := range linkings {
 			file = filepath.Join(viper.GetString("repo-path"), "files", file)
@@ -36,12 +42,6 @@ var applyCommand = &cobra.Command{
 				missingFiles++
 				util.ColorPrintfn(util.Red, "Error%s file %s does not exist", util.Reset, file)
 				continue
-			}
-
-			verbose, err := cmd.Flags().GetBool("verbose")
-			if err != nil {
-				util.ColorPrintfn(util.Red, "Error%s getting verbose flag: %s", util.Reset, err)
-				return
 			}
 
 			if util.IsFile(link) {

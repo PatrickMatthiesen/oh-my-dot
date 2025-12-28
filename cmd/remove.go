@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"os"
+	"path/filepath"
 
 	"github.com/PatrickMatthiesen/oh-my-dot/util"
 
@@ -13,7 +14,7 @@ func init() {
 
 	removeCommand.Flags().BoolP("source", "s", false, util.SColorPrintf("Delete the source file as well. %sNotice%s removes the file from the repository and the linked location.", util.Yellow, util.Reset))
 
-	removeCommand.Flags().BoolP("no-commit", "n", false, "Dont commit changes")
+	removeCommand.Flags().BoolP("no-commit", "n", false, "Don't commit changes")
 
 	rootCmd.AddCommand(removeCommand)
 }
@@ -41,11 +42,12 @@ var removeCommand = &cobra.Command{
 		if source {
 			linkings, err := util.GetLinkings()
 			if err != nil {
-				util.ColorPrintfn(util.Red, "Error%s retriveing linkings: %s", util.Reset, err)
+				util.ColorPrintfn(util.Red, "Error%s retrieving linkings: %s", util.Reset, err)
 				return
 			}
 
-			link, ok := linkings[file]
+			// Look up by base name to match how linkings are stored (basename -> absolute path)
+			link, ok := linkings[filepath.Base(file)]
 			if ok {
 				err = os.Remove(link)
 				if err != nil {
@@ -61,7 +63,7 @@ var removeCommand = &cobra.Command{
 			return
 		}
 
-		err = util.RemoveLinking(file)
+		err = util.RemoveLinking(filepath.Base(file))
 		if err != nil {
 			util.ColorPrintfn(util.Red, "Error%s removing linking: %s", util.Reset, err)
 			return
@@ -69,7 +71,7 @@ var removeCommand = &cobra.Command{
 
 		noCommit, _ := cmd.Flags().GetBool("no-commit")
 		if !noCommit {
-			err = util.Commit("Removed " + file)
+			err = util.Commit("Removed " + filepath.Base(file))
 			if err != nil {
 				util.ColorPrintfn(util.Red, "Error%s committing changes: %s", util.Reset, err)
 				return

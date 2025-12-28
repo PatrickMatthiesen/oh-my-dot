@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // EnsureDir creates a directory if it does not exist.
@@ -21,12 +22,17 @@ func IsDir(path string) bool {
 	return fi.IsDir()
 }
 
-func IsFile(configFile string) bool {
-	fi, err := os.Stat(configFile)
-	if os.IsNotExist(err) {
-		return false
+func IsFile(file string) bool {
+	is, _ := IsFileErr(file)
+	return is
+}
+
+func IsFileErr(file string) (bool, error) {
+	fi, err := os.Stat(file)
+	if err != nil {
+		return false, err
 	}
-	return !fi.IsDir()
+	return !fi.IsDir(), nil
 }
 
 func PathExists(path string) bool {
@@ -38,12 +44,22 @@ func ExpandPath(path string) (string, error) {
 	if len(path) == 0 {
 		return "", fmt.Errorf("could not expand empty path")
 	}
-	if path[:1] == "~" {
+	if path[0] == '~' {
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
 			return "", err
 		}
-		return filepath.Join(homeDir, string(filepath.Separator), path[1:]), nil
+
+		// Support: "~", "~/sub", "~\\sub"
+		if len(path) == 1 {
+			return homeDir, nil
+		}
+		// Trim optional path separators after ~
+		rest := path[1:]
+		rest = strings.TrimLeft(rest, "/\\")
+		// Join using OS-specific separator
+		joined := filepath.Join(homeDir, rest)
+		return joined, nil
 	}
 	return path, nil
 }
@@ -69,6 +85,5 @@ func CopyFile(src, dst string) error {
 }
 
 func CopyFileToDir(src, dst string) error {
-	return CopyFile(src, dst+"/"+filepath.Base(src))
+	return CopyFile(src, filepath.Join(dst, filepath.Base(src)))
 }
-
