@@ -24,13 +24,12 @@ var applyCommand = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		linkings, err := util.GetLinkings()
 		if err != nil {
-			util.ColorPrintfn(util.Red, "Error%s retriveing linkings: %s", util.Reset, err)
+			util.ColorPrintfn(util.Red, "Error%s retrieving linkings: %s", util.Reset, err)
 			return
 		}
 
 		missingFiles := 0
 
-		// Read verbose once
 		verbose, verr := cmd.Flags().GetBool("verbose")
 		if verr != nil {
 			util.ColorPrintfn(util.Red, "Error%s getting verbose flag: %s", util.Reset, verr)

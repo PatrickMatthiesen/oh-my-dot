@@ -26,9 +26,9 @@ func RemoveLinking(name string) error {
 	if err != nil {
 		return fmt.Errorf("error getting links for removal: %w", err)
 	}
-	
+
 	delete(links, name)
-	
+
 	return SaveLinkings(links)
 }
 
@@ -37,18 +37,18 @@ func GetLinkings() (Linkings, error) {
 	if !IsFile(linkFile) {
 		return Linkings{}, nil
 	}
-	
+
 	file, err := os.ReadFile(linkFile)
 	if err != nil {
 		return nil, fmt.Errorf("error reading links file: %w", err)
 	}
-	
+
 	var links Linkings
 	err = json.Unmarshal(file, &links)
 	if err != nil {
 		return nil, fmt.Errorf("error unmarshalling links: %w", err)
 	}
-	
+
 	return links, nil
 }
 
@@ -58,12 +58,12 @@ func SaveLinkings(links Linkings) error {
 	if err := EnsureDir(filepath.Dir(linkFile)); err != nil {
 		return fmt.Errorf("error ensuring repo path: %w", err)
 	}
-	
+
 	file, err := json.MarshalIndent(links, "", "  ")
-	if err != nil{
+	if err != nil {
 		return fmt.Errorf("error marshalling links: %w", err)
 	}
-	
+
 	err = os.WriteFile(linkFile, file, 0644)
 	if err != nil {
 		return fmt.Errorf("error writing links to file: %w", err)
@@ -92,16 +92,13 @@ func BuildLinkPath(file string) (string, error) {
 	// Normalize both paths for comparison
 	home = filepath.Clean(home)
 	absPath = filepath.Clean(absPath)
-	if after, ok := strings.CutPrefix(absPath, home); ok  {
+	if after, ok := strings.CutPrefix(absPath, home); ok {
 		rel := after
 		// Ensure single leading separator is removed
 		rel = strings.TrimPrefix(rel, string(os.PathSeparator))
-		absPath = "~" + string(os.PathSeparator) + rel
+		// Use forward slash here, matching the final filepath.ToSlash normalization.
+		absPath = "~/" + rel
 	}
-	// relPath, err := filepath.Rel(viper.GetString("repo-path"), absPath)
-	// if err != nil {
-	// 	return "", fmt.Errorf("error getting relative path: %w", err)
-	// }
 
 	return filepath.ToSlash(absPath), nil
 }

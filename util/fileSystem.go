@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // EnsureDir creates a directory if it does not exist.
@@ -21,12 +22,17 @@ func IsDir(path string) bool {
 	return fi.IsDir()
 }
 
-func IsFile(configFile string) bool {
-	fi, err := os.Stat(configFile)
-	if err != nil { // return false on any error (not only NotExist) to avoid nil dereference
-		return false
+func IsFile(file string) bool {
+	is, _ := IsFileErr(file)
+	return is
+}
+
+func IsFileErr(file string) (bool, error) {
+	fi, err := os.Stat(file)
+	if err != nil {
+		return false, err
 	}
-	return !fi.IsDir()
+	return !fi.IsDir(), nil
 }
 
 func PathExists(path string) bool {
@@ -43,16 +49,14 @@ func ExpandPath(path string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		
+
 		// Support: "~", "~/sub", "~\\sub"
 		if len(path) == 1 {
 			return homeDir, nil
 		}
 		// Trim optional path separators after ~
 		rest := path[1:]
-		for len(rest) > 0 && (rest[0] == '/' || rest[0] == '\\') {
-			rest = rest[1:]
-		}
+		rest = strings.TrimLeft(rest, "/\\")
 		// Join using OS-specific separator
 		joined := filepath.Join(homeDir, rest)
 		return joined, nil

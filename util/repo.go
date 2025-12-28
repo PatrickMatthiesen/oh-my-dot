@@ -93,7 +93,6 @@ func InitFromExistingRepo(rootGitRepoPath string) error {
 	return nil
 }
 
-
 // LinkAndAddFile takes a file path as an argument, makes a har-link to the git repo and adds the file to the git repo.
 func LinkAndAddFile(file string) error {
 	fileName := filepath.Base(file)
@@ -146,17 +145,28 @@ func RemoveFile(file string) error {
 		return err
 	}
 
-    filesPath := filepath.Join(repoPath, "files")
-    // If only a base name was provided, treat it as under files/
-    if filepath.Base(file) == file { // no path components
-        file = filepath.Join(filesPath, file)
-    } else if !strings.HasPrefix(file, repoPath) {
-        // If a path is given but not within the repo, assume it's within files/
-        file = filepath.Join(filesPath, filepath.Base(file))
-    }
+	filesPath := filepath.Join(repoPath, "files")
+	// If an absolute path outside the repo is provided, reject it explicitly.
+	if filepath.IsAbs(file) && !strings.HasPrefix(file, repoPath) {
+		return fmt.Errorf("file %s is not in the repository", file)
+	}
 
-	if !IsFile(file){
-		return fmt.Errorf("file %s does not exist or is a directory", file)
+	// If only a base name was provided, treat it as under files/
+	if filepath.Base(file) == file { // no path components
+		// update to full path
+		file = filepath.Join(filesPath, file)
+	} else if !strings.HasPrefix(file, repoPath) {
+		// If a relative path is given (or a non-repo path that is not absolute),
+		// assume it's within files/ and preserve any subdirectories.
+		file = filepath.Join(filesPath, file)
+	}
+
+	is, err := IsFileErr(file)
+	if err != nil {
+		return fmt.Errorf("cannot inspect %s: %w", file, err)
+	}
+	if !is {
+		return fmt.Errorf("%s exists but is not a file", file)
 	}
 
 	relativeFilePath, err := filepath.Rel(repoPath, file)
@@ -238,7 +248,6 @@ func ListFiles() ([]string, error) {
 
 	return files, nil
 }
-
 
 func UrlIsGitRepo(url string) bool { // unused
 	stat, _ := os.Stat(url)

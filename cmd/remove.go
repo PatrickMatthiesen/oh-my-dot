@@ -14,7 +14,7 @@ func init() {
 
 	removeCommand.Flags().BoolP("source", "s", false, util.SColorPrintf("Delete the source file as well. %sNotice%s removes the file from the repository and the linked location.", util.Yellow, util.Reset))
 
-	removeCommand.Flags().BoolP("no-commit", "n", false, "Dont commit changes")
+	removeCommand.Flags().BoolP("no-commit", "n", false, "Don't commit changes")
 
 	rootCmd.AddCommand(removeCommand)
 }
@@ -71,7 +71,7 @@ var removeCommand = &cobra.Command{
 
 		noCommit, _ := cmd.Flags().GetBool("no-commit")
 		if !noCommit {
-			err = util.Commit("Removed " + file)
+			err = util.Commit("Removed " + filepath.Base(file))
 			if err != nil {
 				util.ColorPrintfn(util.Red, "Error%s committing changes: %s", util.Reset, err)
 				return
