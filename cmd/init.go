@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"fmt"
+	// "fmt"
 	"os"
 
 	"github.com/PatrickMatthiesen/oh-my-dot/util"
@@ -14,7 +14,7 @@ func init() {
 	// initcmd.Flags().SetInterspersed(true)
 	viper.BindPFlag("remote-url", initcmd.Flags().Lookup("remote"))
 
-	initcmd.Flags().StringP("folder", "f", util.DefaultRepoPath, "Path to the root of the dotfiles repository")
+	initcmd.Flags().StringP("folder", "f", util.GetDefaultRepoPath(), "Path to the root of the dotfiles repository")
 	initcmd.MarkFlagDirname("folder")
 	viper.BindPFlag("repo-path", initcmd.Flags().Lookup("folder"))
 
@@ -32,9 +32,9 @@ Default folder is $HOME/dotfiles but can be changed with the --folder flag.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if util.IsGitRepo(viper.GetString("repo-path")) {
 			util.InitFromExistingRepo(viper.GetString("repo-path"))
-			fmt.Println("Initialized dotfiles repo 🎉🎉🎉")
+			util.ColorPrintln("Dotfiles repo initialized 🎉🎉🎉", util.Green)
 			viper.Set("initialized", true)
-			CreateConfigFile()
+			viper.WriteConfig()
 			return
 		}
 
@@ -49,11 +49,11 @@ Default folder is $HOME/dotfiles but can be changed with the --folder flag.`,
 		_, err := util.InitGitRepo(viper.GetString("repo-path"), viper.GetString("remote-url"))
 		util.CheckIfErrorWithMessage(err, "Error initializing git repository")
 
-		fmt.Println("Initialized dotfiles repo")
+		util.ColorPrintln("Dotfiles repo initialized 🎉🎉🎉", util.Green)
 
 		// write the config to the config file
 		viper.Set("initialized", true)
-		CreateConfigFile()
+		viper.WriteConfig()
 	},
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		force, err := cmd.Flags().GetBool("force")
@@ -61,7 +61,7 @@ Default folder is $HOME/dotfiles but can be changed with the --folder flag.`,
 
 		if viper.IsSet("initialized") && !force {
 			util.ColorPrintln("Dotfiles repository has been initialized previously", util.Yellow)
-			util.ColorPrintln("Use the --force flag to reinitialize the repository", util.Green)
+			util.ColorPrintln("Use the --force flag to reinitialize the repository", util.Blue)
 			os.Exit(0)
 		}
 	},

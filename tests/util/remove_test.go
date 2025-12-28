@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/PatrickMatthiesen/oh-my-dot/tests/testutil"
 	"github.com/PatrickMatthiesen/oh-my-dot/util"
 	"github.com/go-git/go-git/v5"
 	"github.com/spf13/viper"
@@ -15,19 +16,19 @@ func Fuzz_RemoveFile(f *testing.F) {
 	f.Add("", "/")
 	f.Add("/", "")
 	f.Add("./", "")
-	if (os.PathListSeparator == '\\') {
+	if os.PathListSeparator == '\\' {
 		f.Add(".\\", "")
 		f.Add("", "\\")
 	}
 
 	f.Fuzz(func(t *testing.T, testPrefix string, testSufix string) {
-		r, err := SetupTestRepo(t)
-		TBErrorIfNotNil(t, err)
+		r, err := testutil.SetupTestRepo(t)
+		testutil.TBErrorIfNotNil(t, err)
 
 		// create files dir
 		err = os.MkdirAll(filepath.Join(viper.GetString("repo-path"), "files"), os.ModePerm)
 		// TODO: Remove when fix has been implemented in go-git https://github.com/go-git/go-git/pull/1050
-		paddingFile, err := os.CreateTemp(filepath.Join(viper.GetString("repo-path"),"files"), "keepsRepoFromBeingEmpty.txt")
+		paddingFile, err := os.CreateTemp(filepath.Join(viper.GetString("repo-path"), "files"), "keepsRepoFromBeingEmpty.txt")
 		if err != nil {
 			t.Error(err)
 		}
@@ -51,30 +52,26 @@ func Fuzz_RemoveFile(f *testing.F) {
 
 		// Link the file to the git repo
 		err = util.LinkAndAddFile(file.Name())
-		TBErrorIfNotNil(t, err)
+		testutil.TBErrorIfNotNil(t, err)
 
 		commits, err := r.Log(&git.LogOptions{})
-		TBErrorIfNotNil(t, err)
+		testutil.TBErrorIfNotNil(t, err)
 		commit, err := commits.Next()
-		TBErrorIfNotNil(t, err)
+		testutil.TBErrorIfNotNil(t, err)
 		files, err := commit.Files()
-		TBErrorIfNotNil(t, err)
+		testutil.TBErrorIfNotNil(t, err)
 		_, err = files.Next()
-		TBErrorIfNotNil(t, err)
+		testutil.TBErrorIfNotNil(t, err)
 		t.Run("Test config push", func(t *testing.T) {
-			// Make a bare repo to push to
-			_, err := git.PlainInit(viper.GetString("remote-url"), true)
-			TBErrorIfNotNil(t, err)
-			
-			// Push the repo
-			err = util.PushRepo()
-			TBErrorIfNotNil(t, err)
+			// Push the repo (remote is already set up by SetupTestRepo)
+			err := util.PushRepo()
+			testutil.TBErrorIfNotNil(t, err)
 		})
-		
+
 		// Remove the file from the git repo
 		fileToRemove := testPrefix + filepath.Base(file.Name()) + testSufix
 		err = util.RemoveFile(fileToRemove)
-		TBErrorIfNotNil(t, err)
+		testutil.TBErrorIfNotNil(t, err)
 
 		// Check if the file exists in the git repo
 		// _, err = os.Stat(testFilePath)

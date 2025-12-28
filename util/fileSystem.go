@@ -10,7 +10,7 @@ import (
 // EnsureDir creates a directory if it does not exist.
 // The dirName parameter should only contain the directory path and should not include the filename.
 func EnsureDir(dirName string) error {
-	return os.MkdirAll(dirName, os.ModePerm)
+	return os.MkdirAll(dirName, 0700)
 }
 
 func IsDir(path string) bool {
@@ -39,6 +39,10 @@ func ExpandPath(path string) (string, error) {
 		return "", fmt.Errorf("could not expand empty path")
 	}
 	if path[:1] == "~" {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
 		return filepath.Join(homeDir, string(filepath.Separator), path[1:]), nil
 	}
 	return path, nil
