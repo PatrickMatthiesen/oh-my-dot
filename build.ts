@@ -1,5 +1,7 @@
 import { $ } from "bun";
 import { parseArgs } from "util";
+import os from "os";
+import path from "path";
 
 const { values } = parseArgs({
     args: Bun.argv,
@@ -29,3 +31,25 @@ if (!version || version.trim() === "") {
 console.log("Version: " + version);
 
 await $`go build -ldflags "-X github.com/PatrickMatthiesen/oh-my-dot/cmd.Version=${version} -X github.com/PatrickMatthiesen/oh-my-dot/cmd.CommitHash=${ref}" -o ${values.out} .`
+
+// set the oh-my-dot_version environment variable
+if (os.platform() === "win32") {
+    const fullPath = path.resolve(values.out);
+    const currentDebugPath = (await $`powershell -NoProfile -Command "[Environment]::GetEnvironmentVariable('OhMyDot_Debug','User')"`.text()).trim();
+    if (currentDebugPath !== fullPath) {
+        console.log("Setting OhMyDot_Debug environment variable to built exe path");
+        const escapedFullPath = fullPath.replace(/'/g, "''");
+        await $`powershell -NoProfile -Command "[Environment]::SetEnvironmentVariable('OhMyDot_Debug', '${escapedFullPath}', 'User')"`;
+    }
+    
+    // if not in PATH, add it
+    const userPath = (await $`powershell -NoProfile -Command "[Environment]::GetEnvironmentVariable('Path','User')"`.text()).trim();
+    if (!userPath.includes("%OhMyDot_Debug%")) {
+        console.log("Adding %OhMyDot_Debug% to User PATH (works as a reference to the OhMyDot_Debug env var)");
+        const newUserPath = userPath + ';%OhMyDot_Debug%';
+        const escapedNewUserPath = newUserPath.replace(/'/g, "''");
+        await $`powershell -NoProfile -Command "[Environment]::SetEnvironmentVariable('Path', '${escapedNewUserPath}', 'User')"`;
+    }
+}
+
+console.log("Build complete.");
