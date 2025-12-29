@@ -1,10 +1,11 @@
-package util
+package config
 
 import (
 	"log"
 	"os"
 	"path/filepath"
 
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 	"github.com/spf13/viper"
 )
 
@@ -22,7 +23,7 @@ func GetDefaultRepoPath() string {
 func InitializeConfig(configFile string) error {
 	// Ensure the directory exists
 	configDir := filepath.Dir(configFile)
-	if err := EnsureDir(configDir); err != nil {
+	if err := fileops.EnsureDir(configDir); err != nil {
 		log.Println("No config directory found")
 		log.Println("Making a new one")
 		return err

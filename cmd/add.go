@@ -5,7 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/PatrickMatthiesen/oh-my-dot/util"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/git"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/symlink"
 
 	"github.com/spf13/cobra"
 )
@@ -33,17 +35,17 @@ var addCommand = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		file, err := cmd.Flags().GetString("file")
 		if (err != nil || file == "") && len(args) == 0 {
-			util.ColorPrintln("No file was specified", util.Red)
+			fileops.ColorPrintln("No file was specified", fileops.Red)
 			cmd.Help()
 			return
 		}
 
-		if file == "" && util.IsFile(args[0]) {
+		if file == "" && fileops.IsFile(args[0]) {
 			file = args[0]
 		}
 
-		if !util.IsFile(file) {
-			util.ColorPrintln("File does not exist", util.Red)
+		if !fileops.IsFile(file) {
+			fileops.ColorPrintln("File does not exist", fileops.Red)
 			return
 		}
 
@@ -51,18 +53,18 @@ var addCommand = &cobra.Command{
 		if copy != "" {
 			copy, err = filepath.Abs(copy)
 			if err != nil {
-				util.ColorPrintfn(util.Red, "Error%s when adding %s: %s", util.Reset, file, err)
+				fileops.ColorPrintfn(fileops.Red, "Error%s when adding %s: %s", fileops.Reset, file, err)
 				return
 			}
 
-			if util.IsDir(copy) {
-				err = util.CopyFileToDir(file, copy)
+			if fileops.IsDir(copy) {
+				err = fileops.CopyFileToDir(file, copy)
 			} else {
-				err = util.CopyFile(file, copy)
+				err = fileops.CopyFile(file, copy)
 			}
 
 			if err != nil {
-				util.ColorPrintfn(util.Red, "Error%s when adding %s: %s", util.Reset, file, err)
+				fileops.ColorPrintfn(fileops.Red, "Error%s when adding %s: %s", fileops.Reset, file, err)
 				return
 			}
 			file = copy
@@ -73,45 +75,45 @@ var addCommand = &cobra.Command{
 			log.Println("Moving file to", move)
 			move, err = filepath.Abs(move)
 			if err != nil {
-				util.ColorPrintfn(util.Red, "Error%s when adding %s: %s", util.Reset, file, err)
+				fileops.ColorPrintfn(fileops.Red, "Error%s when adding %s: %s", fileops.Reset, file, err)
 				return
 			}
 
-			if util.IsDir(move) {
+			if fileops.IsDir(move) {
 				move = filepath.Join(move, filepath.Base(file))
 			}
 
 			err = os.Rename(file, move)
 
 			if err != nil {
-				util.ColorPrintfn(util.Red, "Error%s when adding %s: %s", util.Reset, file, err)
+				fileops.ColorPrintfn(fileops.Red, "Error%s when adding %s: %s", fileops.Reset, file, err)
 				return
 			}
 
 			file = move
 		}
 
-		err = util.LinkAndAddFile(file)
+		err = git.LinkAndAddFile(file)
 		if err != nil {
-			util.ColorPrintfn(util.Red, "Error%s when adding %s: %s", util.Reset, file, err)
+			fileops.ColorPrintfn(fileops.Red, "Error%s when adding %s: %s", fileops.Reset, file, err)
 			return
 		}
 
 		absFilePath, _ := filepath.Abs(file)
-		err = util.AddLinking(filepath.Base(file), absFilePath)
+		err = symlink.AddLinking(filepath.Base(file), absFilePath)
 		if err != nil {
 			return
 		}
 
 		noCommit, _ := cmd.Flags().GetBool("no-commit")
 		if !noCommit {
-			err = util.Commit("Added " + file)
+			err = git.Commit("Added " + file)
 			if err != nil {
-				util.ColorPrintfn(util.Red, "Error%s when adding and commiting %s: %s", util.Reset, file, err)
+				fileops.ColorPrintfn(fileops.Red, "Error%s when adding and commiting %s: %s", fileops.Reset, file, err)
 				return
 			}
 		}
 
-		util.ColorPrintfn(util.Green, "Added%s %s", util.Reset, file)
+		fileops.ColorPrintfn(fileops.Green, "Added%s %s", fileops.Reset, file)
 	},
 }

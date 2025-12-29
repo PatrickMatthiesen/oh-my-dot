@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/PatrickMatthiesen/oh-my-dot/util"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/symlink"
 )
 
 func Fuzz_BuildLinkPath(f *testing.F) {
@@ -19,7 +19,7 @@ func Fuzz_BuildLinkPath(f *testing.F) {
 	f.Add(filepath.Join(home, "test/test/test.txt"), "~/test/test/test.txt")
 
 	f.Fuzz(func(t *testing.T, path string, expected string) {
-		link, err := util.BuildLinkPath(path)
+		link, err := symlink.BuildLinkPath(path)
 		if err != nil {
 			t.Error(err)
 		}

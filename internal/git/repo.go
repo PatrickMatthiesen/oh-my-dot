@@ -1,4 +1,4 @@
-package util
+package git
 
 import (
 	"fmt"
@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/spf13/viper"
@@ -99,9 +100,9 @@ func LinkAndAddFile(file string) error {
 	fileRepoPath := fmt.Sprint("files/", fileName)
 
 	newFile := filepath.Join(viper.GetString("repo-path"), fileRepoPath)
-	fmt.Println("Linking", SColorPrint(file, Blue), "to", SColorPrint(newFile, Cyan))
+	fmt.Println("Linking", fileops.SColorPrint(file, fileops.Blue), "to", fileops.SColorPrint(newFile, fileops.Cyan))
 
-	EnsureDir(filepath.Dir(newFile))
+	fileops.EnsureDir(filepath.Dir(newFile))
 	err := os.Link(file, newFile)
 	if err != nil {
 		return err
@@ -115,13 +116,13 @@ func CopyAndAddFile(file, destination string) error {
 	fileName := filepath.Base(file)
 	fileRepoPath := fmt.Sprint("files/", fileName)
 
-	if IsDir(destination) {
+	if fileops.IsDir(destination) {
 		destination = filepath.Join(destination, fileName)
-	} else if !IsDir(filepath.Dir(destination)) { // TODO: consider if we sould have a force or create-dir flag to force the copy
+	} else if !fileops.IsDir(filepath.Dir(destination)) { // TODO: consider if we sould have a force or create-dir flag to force the copy
 		return fmt.Errorf("file cannot be coppied to %s. Is not a valid path or dirrectory does not exist", destination)
 	}
 
-	err := CopyFile(file, destination)
+	err := fileops.CopyFile(file, destination)
 	if err != nil {
 		return err
 	}
@@ -129,8 +130,8 @@ func CopyAndAddFile(file, destination string) error {
 	newFile := filepath.Join(viper.GetString("repo-path"), fileRepoPath)
 	log.Println("Copying", file, "to", newFile)
 
-	EnsureDir(filepath.Dir(newFile))
-	err = CopyFile(file, newFile)
+	fileops.EnsureDir(filepath.Dir(newFile))
+	err = fileops.CopyFile(file, newFile)
 	if err != nil {
 		return err
 	}
@@ -160,7 +161,7 @@ func RemoveFile(file string) error {
 		fullPath = filepath.Join(filesPath, file)
 	}
 
-	is, err := IsFileErr(fullPath)
+	is, err := fileops.IsFileErr(fullPath)
 	if err != nil {
 		return fmt.Errorf("cannot inspect %s: %w", fullPath, err)
 	}
@@ -210,7 +211,7 @@ func Commit(message string) error {
 // PushRepo pushes the changes in the git repository located at the specified path to the remote repository.
 func PushRepo() error {
 	r, err := git.PlainOpen(viper.GetString("repo-path"))
-	CheckIfError(err)
+	fileops.CheckIfError(err)
 
 	remote, err := r.Remote("origin")
 	if err != nil {

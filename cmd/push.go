@@ -1,7 +1,8 @@
 package cmd
 
 import (
-	"github.com/PatrickMatthiesen/oh-my-dot/util"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/git"
 	"github.com/spf13/cobra"
 )
 
@@ -17,12 +18,12 @@ var pushCommand = &cobra.Command{
 	TraverseChildren: true,
 	GroupID:          "dotfiles",
 	Run: func(cmd *cobra.Command, args []string) {
-		err := util.PushRepo()
+		err := git.PushRepo()
 		if err != nil {
-			util.ColorPrintfn(util.Red, "Error pushing changes: %s", err)
+			fileops.ColorPrintfn(fileops.Red, "Error pushing changes: %s", err)
 			return
 		}
 
-		util.ColorPrintfn(util.Green, "Pushed changes to repository")
+		fileops.ColorPrintfn(fileops.Green, "Pushed changes to repository")
 	},
 }

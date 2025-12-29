@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/PatrickMatthiesen/oh-my-dot/tests/testutil"
-	"github.com/PatrickMatthiesen/oh-my-dot/util"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 	"github.com/spf13/viper"
 )
 
@@ -16,7 +16,7 @@ func Test_FileExists(t *testing.T) {
 	testutil.TBErrorIfNotNil(t, err)
 
 	file := filepath.Join(viper.GetString("test-dir"), "test.txt")
-	if !util.IsFile(file) {
+	if !fileops.IsFile(file) {
 		t.Error("File does not exist")
 	}
 }
@@ -26,7 +26,7 @@ func Test_FileDoesNotExist(t *testing.T) {
 	testutil.TBErrorIfNotNil(t, err)
 
 	file := filepath.Join(viper.GetString("test-dir"), "does-not-exist.txt")
-	if util.IsFile(file) {
+	if fileops.IsFile(file) {
 		t.Error("File exists")
 	}
 }
@@ -36,7 +36,7 @@ func Test_IsDir(t *testing.T) {
 	testutil.TBErrorIfNotNil(t, err)
 
 	dir := viper.GetString("test-dir")
-	if !util.IsDir(dir) {
+	if !fileops.IsDir(dir) {
 		t.Error("Directory does not exist")
 	}
 }
@@ -62,7 +62,7 @@ func Fuzz_ExpandPath_NonEmptyHomePath(f *testing.F) {
 	f.Add("~"+rel, temp)
 
 	f.Fuzz(func(t *testing.T, testPath string, expected string) {
-		result, err := util.ExpandPath(testPath)
+		result, err := fileops.ExpandPath(testPath)
 		testutil.TBErrorIfNotNil(t, err)
 
 		if result != expected {

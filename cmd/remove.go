@@ -4,7 +4,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/PatrickMatthiesen/oh-my-dot/util"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/git"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/symlink"
 
 	"github.com/spf13/cobra"
 )
@@ -12,7 +14,7 @@ import (
 func init() {
 	removeCommand.Flags().StringP("file", "f", "", "Path of the file to remove")
 
-	removeCommand.Flags().BoolP("source", "s", false, util.SColorPrintf("Delete the source file as well. %sNotice%s removes the file from the repository and the linked location.", util.Yellow, util.Reset))
+	removeCommand.Flags().BoolP("source", "s", false, fileops.SColorPrintf("Delete the source file as well. %sNotice%s removes the file from the repository and the linked location.", fileops.Yellow, fileops.Reset))
 
 	removeCommand.Flags().BoolP("no-commit", "n", false, "Don't commit changes")
 
@@ -29,7 +31,7 @@ var removeCommand = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		file, err := cmd.Flags().GetString("file")
 		if (err != nil || file == "") && len(args) == 0 {
-			util.ColorPrintln("No file was specified", util.Red)
+			fileops.ColorPrintln("No file was specified", fileops.Red)
 			cmd.Help()
 			return
 		}
@@ -40,9 +42,9 @@ var removeCommand = &cobra.Command{
 
 		source, _ := cmd.Flags().GetBool("source")
 		if source {
-			linkings, err := util.GetLinkings()
+			linkings, err := symlink.GetLinkings()
 			if err != nil {
-				util.ColorPrintfn(util.Red, "Error%s retrieving linkings: %s", util.Reset, err)
+				fileops.ColorPrintfn(fileops.Red, "Error%s retrieving linkings: %s", fileops.Reset, err)
 				return
 			}
 
@@ -51,33 +53,33 @@ var removeCommand = &cobra.Command{
 			if ok {
 				err = os.Remove(link)
 				if err != nil {
-					util.ColorPrintfn(util.Red, "Error%s removing source file: %s", util.Reset, err)
+					fileops.ColorPrintfn(fileops.Red, "Error%s removing source file: %s", fileops.Reset, err)
 					return
 				}
 			}
 		}
 
-		err = util.RemoveFile(file)
+		err = git.RemoveFile(file)
 		if err != nil {
-			util.ColorPrintfn(util.Red, "Error%s when removing %s from repository: %s", util.Reset, file, err)
+			fileops.ColorPrintfn(fileops.Red, "Error%s when removing %s from repository: %s", fileops.Reset, file, err)
 			return
 		}
 
-		err = util.RemoveLinking(filepath.Base(file))
+		err = symlink.RemoveLinking(filepath.Base(file))
 		if err != nil {
-			util.ColorPrintfn(util.Red, "Error%s removing linking: %s", util.Reset, err)
+			fileops.ColorPrintfn(fileops.Red, "Error%s removing linking: %s", fileops.Reset, err)
 			return
 		}
 
 		noCommit, _ := cmd.Flags().GetBool("no-commit")
 		if !noCommit {
-			err = util.Commit("Removed " + filepath.Base(file))
+			err = git.Commit("Removed " + filepath.Base(file))
 			if err != nil {
-				util.ColorPrintfn(util.Red, "Error%s committing changes: %s", util.Reset, err)
+				fileops.ColorPrintfn(fileops.Red, "Error%s committing changes: %s", fileops.Reset, err)
 				return
 			}
 		}
 
-		util.ColorPrintfn(util.Green, "Successfully removed %s from repository", file)
+		fileops.ColorPrintfn(fileops.Green, "Successfully removed %s from repository", file)
 	},
 }
