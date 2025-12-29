@@ -4,7 +4,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/PatrickMatthiesen/oh-my-dot/util"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/symlink"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -22,9 +23,9 @@ var applyCommand = &cobra.Command{
 	Long:    `Applies the dotfiles to the system.`,
 	GroupID: "dotfiles",
 	Run: func(cmd *cobra.Command, args []string) {
-		linkings, err := util.GetLinkings()
+		linkings, err := symlink.GetLinkings()
 		if err != nil {
-			util.ColorPrintfn(util.Red, "Error%s retrieving linkings: %s", util.Reset, err)
+			fileops.ColorPrintfn(fileops.Red, "Error%s retrieving linkings: %s", fileops.Reset, err)
 			return
 		}
 
@@ -32,21 +33,21 @@ var applyCommand = &cobra.Command{
 
 		verbose, verr := cmd.Flags().GetBool("verbose")
 		if verr != nil {
-			util.ColorPrintfn(util.Red, "Error%s getting verbose flag: %s", util.Reset, verr)
+			fileops.ColorPrintfn(fileops.Red, "Error%s getting verbose flag: %s", fileops.Reset, verr)
 			return
 		}
 
 		for file, link := range linkings {
 			file = filepath.Join(viper.GetString("repo-path"), "files", file)
-			if !util.IsFile(file) {
+			if !fileops.IsFile(file) {
 				missingFiles++
-				util.ColorPrintfn(util.Red, "Error%s file %s does not exist", util.Reset, file)
+				fileops.ColorPrintfn(fileops.Red, "Error%s file %s does not exist", fileops.Reset, file)
 				continue
 			}
 
-			if util.IsFile(link) {
+			if fileops.IsFile(link) {
 				if verbose {
-					util.ColorPrintfn(util.Reset, "Skipping %s%s%s: link already exists", util.Blue, link, util.Reset)
+					fileops.ColorPrintfn(fileops.Reset, "Skipping %s%s%s: link already exists", fileops.Blue, link, fileops.Reset)
 				}
 				continue
 			}
@@ -54,16 +55,16 @@ var applyCommand = &cobra.Command{
 			err = os.Link(file, link)
 			if err != nil {
 				missingFiles++
-				util.ColorPrintfn(util.Red, "Error%s creating hard link %s -> %s: %s", util.Reset, link, file, err)
+				fileops.ColorPrintfn(fileops.Red, "Error%s creating hard link %s -> %s: %s", fileops.Reset, link, file, err)
 				continue
 			}
 		}
 
-		util.ColorPrintln("Completed", util.Green)
+		fileops.ColorPrintln("Completed", fileops.Green)
 
 		if missingFiles > 0 {
-			util.ColorPrintfn(util.Yellow, "%d%s could not be applied", missingFiles, util.Reset)
-			util.ColorPrintln("Check your permissions and try again with --verbose for more info", util.Yellow)
+			fileops.ColorPrintfn(fileops.Yellow, "%d%s could not be applied", missingFiles, fileops.Reset)
+			fileops.ColorPrintln("Check your permissions and try again with --verbose for more info", fileops.Yellow)
 		}
 	},
 }

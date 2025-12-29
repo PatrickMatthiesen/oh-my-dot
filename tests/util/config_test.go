@@ -6,7 +6,8 @@ import (
 	"testing"
 
 	"github.com/PatrickMatthiesen/oh-my-dot/tests/testutil"
-	"github.com/PatrickMatthiesen/oh-my-dot/util"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/config"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 	"github.com/spf13/viper"
 )
 
@@ -17,16 +18,16 @@ func Test_InitializeConfig(t *testing.T) {
 	}
 
 	file := filepath.Join(viper.GetString("test-dir"), ".oh-my-dot", "config.json")
-	err = util.InitializeConfig(file)
+	err = config.InitializeConfig(file)
 	if err != nil {
 		t.Error(err)
 	}
 
-	if !util.IsDir(filepath.Dir(file)) {
+	if !fileops.IsDir(filepath.Dir(file)) {
 		t.Error("Directory does not exist")
 	}
 
-	if !util.IsFile(file) {
+	if !fileops.IsFile(file) {
 		t.Error("Config file was not created")
 	}
 }

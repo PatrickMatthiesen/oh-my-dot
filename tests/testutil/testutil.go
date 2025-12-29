@@ -7,7 +7,8 @@ import (
 
 	"testing"
 
-	"github.com/PatrickMatthiesen/oh-my-dot/util"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
+	internalgit "github.com/PatrickMatthiesen/oh-my-dot/internal/git"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -115,10 +116,10 @@ func SetupTestRepo(t testing.TB) (*git.Repository, error) {
 
 	// Create a git repo
 	err := os.MkdirAll(temp, os.ModePerm)
-	util.CheckIfError(err)
+	fileops.CheckIfError(err)
 
 	// Initialize the git repo
-	return util.InitGitRepo(temp, remote, false)
+	return internalgit.InitGitRepo(temp, remote, false)
 }
 
 func TBErrorIfNotNil(t testing.TB, err error) {

@@ -1,4 +1,4 @@
-package util
+package symlink
 
 import (
 	"encoding/json"
@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/git"
 	"github.com/spf13/viper"
 )
 
@@ -34,7 +36,7 @@ func RemoveLinking(name string) error {
 
 func GetLinkings() (Linkings, error) {
 	linkFile := filepath.Join(viper.GetString("repo-path"), "linkings.json")
-	if !IsFile(linkFile) {
+	if !fileops.IsFile(linkFile) {
 		return Linkings{}, nil
 	}
 
@@ -55,7 +57,7 @@ func GetLinkings() (Linkings, error) {
 func SaveLinkings(links Linkings) error {
 	linkFile := filepath.Join(viper.GetString("repo-path"), "linkings.json")
 	// Ensure repository directory exists
-	if err := EnsureDir(filepath.Dir(linkFile)); err != nil {
+	if err := fileops.EnsureDir(filepath.Dir(linkFile)); err != nil {
 		return fmt.Errorf("error ensuring repo path: %w", err)
 	}
 
@@ -70,7 +72,7 @@ func SaveLinkings(links Linkings) error {
 	}
 
 	// Use slash path for git regardless of OS
-	err = StageChange("linkings.json")
+	err = git.StageChange("linkings.json")
 	if err != nil {
 		return fmt.Errorf("error staging changes: %w", err)
 	}

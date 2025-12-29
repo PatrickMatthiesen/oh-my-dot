@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/PatrickMatthiesen/oh-my-dot/tests/testutil"
-	"github.com/PatrickMatthiesen/oh-my-dot/util"
+	internalgit "github.com/PatrickMatthiesen/oh-my-dot/internal/git"
 	"github.com/go-git/go-git/v5"
 	"github.com/spf13/viper"
 )
@@ -51,7 +51,7 @@ func Fuzz_RemoveFile(f *testing.F) {
 		defer file.Close()
 
 		// Link the file to the git repo
-		err = util.LinkAndAddFile(file.Name())
+		err = internalgit.LinkAndAddFile(file.Name())
 		testutil.TBErrorIfNotNil(t, err)
 
 		commits, err := r.Log(&git.LogOptions{})
@@ -64,13 +64,13 @@ func Fuzz_RemoveFile(f *testing.F) {
 		testutil.TBErrorIfNotNil(t, err)
 		t.Run("Test config push", func(t *testing.T) {
 			// Push the repo (remote is already set up by SetupTestRepo)
-			err := util.PushRepo()
+			err := internalgit.PushRepo()
 			testutil.TBErrorIfNotNil(t, err)
 		})
 
 		// Remove the file from the git repo
 		fileToRemove := testPrefix + filepath.Base(file.Name()) + testSufix
-		err = util.RemoveFile(fileToRemove)
+		err = internalgit.RemoveFile(fileToRemove)
 		testutil.TBErrorIfNotNil(t, err)
 
 		// Check if the file exists in the git repo

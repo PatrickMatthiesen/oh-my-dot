@@ -3,7 +3,9 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/PatrickMatthiesen/oh-my-dot/util"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/git"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/symlink"
 	"github.com/spf13/cobra"
 )
 
@@ -20,32 +22,32 @@ var listCommand = &cobra.Command{
 	Long:    `List all files in the repository.`,
 	GroupID: "basics",
 	Run: func(cmd *cobra.Command, args []string) {
-		f, err := util.ListFiles()
+		f, err := git.ListFiles()
 		if err != nil {
-			util.ColorPrintfn(util.Red, "Error listing files: %s", err)
+			fileops.ColorPrintfn(fileops.Red, "Error listing files: %s", err)
 			return
 		}
 
 		if len(f) == 0 {
-			util.ColorPrintln("No files in repository", util.Yellow)
+			fileops.ColorPrintln("No files in repository", fileops.Yellow)
 			return
 		}
 
-		linkings, lerr := util.GetLinkings()
+		linkings, lerr := symlink.GetLinkings()
 		if lerr != nil {
-			util.ColorPrintfn(util.Red, "Error getting linkings: %s", lerr)
+			fileops.ColorPrintfn(fileops.Red, "Error getting linkings: %s", lerr)
 			return
 		}
 
-		util.ColorPrintfn(util.Cyan, "Files in repository:")
+		fileops.ColorPrintfn(fileops.Cyan, "Files in repository:")
 		for _, file := range f {
 			if linkedPath, ok := linkings[file]; ok {
-				s := util.SColorPrint(file, util.Green) +
+				s := fileops.SColorPrint(file, fileops.Green) +
 					" -> " +
-					util.SColorPrint(linkedPath, util.Blue)
+					fileops.SColorPrint(linkedPath, fileops.Blue)
 				fmt.Println(s)
 			} else {
-				util.ColorPrintfn(util.Yellow, "%s (not linked)", file)
+				fileops.ColorPrintfn(fileops.Yellow, "%s (not linked)", file)
 			}
 		}
 	},

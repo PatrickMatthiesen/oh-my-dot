@@ -9,7 +9,7 @@ import (
 
 	// "log"
 
-	"github.com/PatrickMatthiesen/oh-my-dot/util"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -29,8 +29,8 @@ oh-my-dot uses git to manage your dotfiles, so you can easily push and pull your
 		cmd.Help()
 		if !viper.IsSet("remote-url") || !viper.IsSet("repo-path") {
 			fmt.Print("\n\n")
-			util.ColorPrintfn("Run oh-my-dot init to initialize your dotfiles repository", util.Green)
-			util.ColorPrintln("Use the --help flag for more information on the init command", util.Yellow)
+			fileops.ColorPrintfn("Run oh-my-dot init to initialize your dotfiles repository", fileops.Green)
+			fileops.ColorPrintln("Use the --help flag for more information on the init command", fileops.Yellow)
 		}
 	},
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
@@ -40,8 +40,8 @@ oh-my-dot uses git to manage your dotfiles, so you can easily push and pull your
 
 		cmdName := cmd.Name()
 		if !viper.IsSet("initialized") && !(cmdName == "init" || cmdName == "help") {
-			util.ColorPrintln("Dotfiles repository has not been initialized", util.Yellow)
-			util.ColorPrintln("Run oh-my-dot init to initialize your dotfiles repository", util.Yellow)
+			fileops.ColorPrintln("Dotfiles repository has not been initialized", fileops.Yellow)
+			fileops.ColorPrintln("Run oh-my-dot init to initialize your dotfiles repository", fileops.Yellow)
 			os.Exit(1)
 		}
 	},
@@ -90,14 +90,14 @@ func Execute(funcs ...func(*cobra.Command)) error {
 
 
 var templateColorMap = &template.FuncMap{
-	"color":  util.SColorPrint,
-	"red":    func() string { return util.Red },
-	"green":  func() string { return util.Green },
-	"yellow": func() string { return util.Yellow },
-	"blue":   func() string { return util.Blue },
-	"purple": func() string { return util.Purple },
-	"cyan":   func() string { return util.Cyan },
-	"white":  func() string { return util.White },
-	"weird":  func() string { return util.WeirdColor },
-	"reset":  func() string { return util.Reset },
+	"color":  fileops.SColorPrint,
+	"red":    func() string { return fileops.Red },
+	"green":  func() string { return fileops.Green },
+	"yellow": func() string { return fileops.Yellow },
+	"blue":   func() string { return fileops.Blue },
+	"purple": func() string { return fileops.Purple },
+	"cyan":   func() string { return fileops.Cyan },
+	"white":  func() string { return fileops.White },
+	"weird":  func() string { return fileops.WeirdColor },
+	"reset":  func() string { return fileops.Reset },
 }

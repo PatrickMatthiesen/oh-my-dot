@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/PatrickMatthiesen/oh-my-dot/tests/testutil"
-	"github.com/PatrickMatthiesen/oh-my-dot/util"
+	internalgit "github.com/PatrickMatthiesen/oh-my-dot/internal/git"
 	"github.com/go-git/go-git/v5"
 	"github.com/spf13/viper"
 )
@@ -25,12 +25,12 @@ func Test_LinkAndAddFile(t *testing.T) {
 	defer file.Close()
 
 	// Link the file to the git repo
-	err = util.LinkAndAddFile(file.Name())
+	err = internalgit.LinkAndAddFile(file.Name())
 	if err != nil {
 		t.Error(err)
 	}
 
-	err = util.Commit("test")
+	err = internalgit.Commit("test")
 	testutil.TBErrorIfNotNil(t, err)
 
 	// Check if the file exists in the git repo
@@ -51,7 +51,7 @@ func Test_LinkAndAddFile(t *testing.T) {
 
 	t.Run("Test config push", func(t *testing.T) {
 		// Push the repo (remote is already set up by SetupTestRepo)
-		err := util.PushRepo()
+		err := internalgit.PushRepo()
 		testutil.TBErrorIfNotNil(t, err)
 	})
 }
@@ -72,10 +72,10 @@ func Test_CopyAndAddFile(t *testing.T) {
 	tempDestDir := t.TempDir()
 
 	// Copy the file to the git repo
-	err = util.CopyAndAddFile(file.Name(), tempDestDir)
+	err = internalgit.CopyAndAddFile(file.Name(), tempDestDir)
 	testutil.TBErrorIfNotNil(t, err)
 
-	err = util.Commit("test")
+	err = internalgit.Commit("test")
 	testutil.TBErrorIfNotNil(t, err)
 
 	// Check if the file exists in the git repo
@@ -96,7 +96,7 @@ func Test_CopyAndAddFile(t *testing.T) {
 
 	t.Run("Test config push", func(t *testing.T) {
 		// Push the repo (remote is already set up by SetupTestRepo)
-		err := util.PushRepo()
+		err := internalgit.PushRepo()
 		testutil.TBErrorIfNotNil(t, err)
 	})
 }

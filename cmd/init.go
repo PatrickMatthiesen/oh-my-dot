@@ -4,7 +4,9 @@ import (
 	// "fmt"
 	"os"
 
-	"github.com/PatrickMatthiesen/oh-my-dot/util"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/config"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/git"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -14,7 +16,7 @@ func init() {
 	// initcmd.Flags().SetInterspersed(true)
 	viper.BindPFlag("remote-url", initcmd.Flags().Lookup("remote"))
 
-	initcmd.Flags().StringP("folder", "f", util.GetDefaultRepoPath(), "Path to the root of the dotfiles repository")
+	initcmd.Flags().StringP("folder", "f", config.GetDefaultRepoPath(), "Path to the root of the dotfiles repository")
 	initcmd.MarkFlagDirname("folder")
 	viper.BindPFlag("repo-path", initcmd.Flags().Lookup("folder"))
 
@@ -30,9 +32,9 @@ var initcmd = &cobra.Command{
 Makes a git repository and sets remote origin to the specified URL.
 Default folder is $HOME/dotfiles but can be changed with the --folder flag.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if util.IsGitRepo(viper.GetString("repo-path")) {
-			util.InitFromExistingRepo(viper.GetString("repo-path"))
-			util.ColorPrintln("Dotfiles repo initialized 🎉🎉🎉", util.Green)
+		if git.IsGitRepo(viper.GetString("repo-path")) {
+			git.InitFromExistingRepo(viper.GetString("repo-path"))
+			fileops.ColorPrintln("Dotfiles repo initialized 🎉🎉🎉", fileops.Green)
 			viper.Set("initialized", true)
 			viper.WriteConfig()
 			return
@@ -42,14 +44,14 @@ Default folder is $HOME/dotfiles but can be changed with the --folder flag.`,
 		if viper.GetString("remote-url") == "" && len(args) > 0 {
 			viper.Set("remote-url", args[0])
 		} else if viper.GetString("remote-url") == "" {
-			util.ColorPrintln("No remote URL specified", util.Red)
+			fileops.ColorPrintln("No remote URL specified", fileops.Red)
 			return
 		}
 
-		_, err := util.InitGitRepo(viper.GetString("repo-path"), viper.GetString("remote-url"))
-		util.CheckIfErrorWithMessage(err, "Error initializing git repository")
+		_, err := git.InitGitRepo(viper.GetString("repo-path"), viper.GetString("remote-url"))
+		fileops.CheckIfErrorWithMessage(err, "Error initializing git repository")
 
-		util.ColorPrintln("Dotfiles repo initialized 🎉🎉🎉", util.Green)
+		fileops.ColorPrintln("Dotfiles repo initialized 🎉🎉🎉", fileops.Green)
 
 		// write the config to the config file
 		viper.Set("initialized", true)
@@ -57,11 +59,11 @@ Default folder is $HOME/dotfiles but can be changed with the --folder flag.`,
 	},
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		force, err := cmd.Flags().GetBool("force")
-		util.CheckIfErrorWithMessage(err, "Error getting force flag")
+		fileops.CheckIfErrorWithMessage(err, "Error getting force flag")
 
 		if viper.IsSet("initialized") && !force {
-			util.ColorPrintln("Dotfiles repository has been initialized previously", util.Yellow)
-			util.ColorPrintln("Use the --force flag to reinitialize the repository", util.Blue)
+			fileops.ColorPrintln("Dotfiles repository has been initialized previously", fileops.Yellow)
+			fileops.ColorPrintln("Use the --force flag to reinitialize the repository", fileops.Blue)
 			os.Exit(0)
 		}
 	},

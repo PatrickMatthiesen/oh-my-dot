@@ -7,8 +7,9 @@ import (
 	"log"
 
 	"github.com/PatrickMatthiesen/oh-my-dot/cmd"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/config"
+	internalgit "github.com/PatrickMatthiesen/oh-my-dot/internal/git"
 	"github.com/PatrickMatthiesen/oh-my-dot/tests/testutil"
-	"github.com/PatrickMatthiesen/oh-my-dot/util"
 	"github.com/go-git/go-git/v5"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -32,7 +33,7 @@ func Test_Plain_Init_cmd(t *testing.T) {
 
 	invokeCommand(t, []string{"init", fakeGitRepoPath})
 
-	isRepo := util.IsGitRepo(viper.GetString("repo-path"))
+	isRepo := internalgit.IsGitRepo(viper.GetString("repo-path"))
 	if !isRepo {
 		t.Error("repo-path is not a git repo")
 	}
@@ -45,7 +46,7 @@ func Test_Existing_Init_cmd(t *testing.T) {
 
 	invokeCommand(t, []string{"init", fakeGitRepoPath})
 
-	isRepo := util.IsGitRepo(viper.GetString("repo-path"))
+	isRepo := internalgit.IsGitRepo(viper.GetString("repo-path"))
 	if !isRepo {
 		t.Error("repo-path is not a git repo")
 	}
@@ -61,7 +62,7 @@ func Test_Init_Clone_Remote_With_Main_Branch(t *testing.T) {
 	invokeCommand(t, []string{"init", remoteRepoPath})
 
 	// Verify the cloned repository exists
-	isRepo := util.IsGitRepo(viper.GetString("repo-path"))
+	isRepo := internalgit.IsGitRepo(viper.GetString("repo-path"))
 	if !isRepo {
 		t.Error("repo-path is not a git repo")
 	}
@@ -142,7 +143,7 @@ func Fuzz_Init_With_Random_Branch_Names(f *testing.F) {
 		invokeCommand(t, []string{"init"}, remoteRepoPath)
 
 		// Verify the cloned repository exists
-		isRepo := util.IsGitRepo(viper.GetString("repo-path"))
+		isRepo := internalgit.IsGitRepo(viper.GetString("repo-path"))
 		if !isRepo {
 			t.Error("repo-path is not a git repo")
 		}
@@ -172,7 +173,7 @@ func invokeCommand(t *testing.T, args []string, remote ...string) {
 	
 	viper.Reset()
 
-	util.InitializeConfig(configFile)
+	config.InitializeConfig(configFile)
 	
 	viper.SetDefault("repo-path", repoPath)
 	viper.SetDefault("dot-home", configFile)
