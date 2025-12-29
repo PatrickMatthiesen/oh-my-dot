@@ -94,7 +94,7 @@ func InitFromExistingRepo(rootGitRepoPath string) error {
 	return nil
 }
 
-// LinkAndAddFile takes a file path as an argument, makes a har-link to the git repo and adds the file to the git repo.
+// LinkAndAddFile takes a file path as an argument, makes a hard-link to the git repo and adds the file to the git repo.
 func LinkAndAddFile(file string) error {
 	fileName := filepath.Base(file)
 	fileRepoPath := fmt.Sprint("files/", fileName)
@@ -118,8 +118,8 @@ func CopyAndAddFile(file, destination string) error {
 
 	if fileops.IsDir(destination) {
 		destination = filepath.Join(destination, fileName)
-	} else if !fileops.IsDir(filepath.Dir(destination)) { // TODO: consider if we sould have a force or create-dir flag to force the copy
-		return fmt.Errorf("file cannot be coppied to %s. Is not a valid path or dirrectory does not exist", destination)
+	} else if !fileops.IsDir(filepath.Dir(destination)) { // TODO: consider if we should have a force or create-dir flag to force the copy
+		return fmt.Errorf("file cannot be copied to %s. Is not a valid path or directory does not exist", destination)
 	}
 
 	err := fileops.CopyFile(file, destination)
