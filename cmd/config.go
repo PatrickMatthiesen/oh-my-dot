@@ -37,55 +37,61 @@ func showAllConfig() {
 	// Config folder location
 	dotHome := viper.GetString("dot-home")
 	if dotHome != "" {
-		fileops.ColorPrintfn(fileops.Green, "  location: %s", dotHome)
+		fileops.ColorPrintf(fileops.Blue, "  location: ")
+		fileops.ColorPrintfn(fileops.Green, "%s", dotHome)
 	}
 
 	// Dotfiles folder location
 	repoPath := viper.GetString("repo-path")
 	if repoPath != "" {
-		fileops.ColorPrintfn(fileops.Green, "  dotfiles: %s", repoPath)
+		fileops.ColorPrintf(fileops.Blue, "  dotfiles: ")
+		fileops.ColorPrintfn(fileops.Green, "%s", repoPath)
 	}
 
 	// Remote URL if set
 	remoteURL := viper.GetString("remote-url")
 	if remoteURL != "" {
-		fileops.ColorPrintfn(fileops.Green, "  remote-url: %s", remoteURL)
+		fileops.ColorPrintf(fileops.Blue, "  remote-url: ")
+		fileops.ColorPrintfn(fileops.Green, "%s", remoteURL)
 	}
 
 	// Initialized status
 	initialized := viper.GetBool("initialized")
-	fileops.ColorPrintfn(fileops.Green, "  initialized: %t", initialized)
+	fileops.ColorPrintf(fileops.Blue, "  initialized: ")
+	fileops.ColorPrintfn(fileops.Green, "%t", initialized)
 }
 
 func showConfigValue(key string) {
+	// Show specific config value based on the key
+	// Note: we dont use color in case the output is being piped
 	switch key {
 	case "initialized":
 		initialized := viper.GetBool("initialized")
-		fileops.ColorPrintfn(fileops.Green, "%t", initialized)
+		fmt.Printf("%t\n", initialized)
 		return
 	case "location":
 		value := viper.GetString("dot-home")
 		if value != "" {
-			fileops.ColorPrintfn(fileops.Green, "%s", value)
+			fmt.Println(value)
 		} else {
-			fileops.ColorPrintfn(fileops.Yellow, "%s is not set", key)
+			fmt.Printf("%s is not set\n", key)
 		}
 	case "dotfiles":
 		value := viper.GetString("repo-path")
 		if value != "" {
-			fileops.ColorPrintfn(fileops.Green, "%s", value)
+			fmt.Println(value)
 		} else {
-			fileops.ColorPrintfn(fileops.Yellow, "%s is not set", key)
+			fmt.Printf("%s is not set\n", key)
 		}
 	case "remote-url":
 		value := viper.GetString("remote-url")
 		if value != "" {
-			fileops.ColorPrintfn(fileops.Green, "%s", value)
+			fmt.Println(value)
 		} else {
-			fileops.ColorPrintfn(fileops.Yellow, "%s is not set", key)
+			fmt.Printf("%s is not set\n", key)
 		}
 	default:
-		fileops.ColorPrintfn(fileops.Red, "Unknown config key: %s", key)
-		fileops.ColorPrintfn(fileops.Yellow, "Valid keys: location, dotfiles, remote-url, initialized")
+		fmt.Printf("Unknown config key: %s\n", key)
+		fmt.Println("Valid keys: location, dotfiles, remote-url, initialized")
 	}
 }

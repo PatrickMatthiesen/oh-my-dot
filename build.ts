@@ -46,7 +46,7 @@ if (os.platform() === "win32") {
     
     // if not in PATH, add it
     const userPath = (await $`powershell -NoProfile -Command "[Environment]::GetEnvironmentVariable('Path','User')"`.text()).trim();
-    if (!userPath.includes("%OhMyDot_Debug%") || !userPath.includes(fullPath)) {
+    if (!userPath.includes("%OhMyDot_Debug%") && !userPath.includes(fullPath)) {
         console.log("Adding %OhMyDot_Debug% to User PATH (works as a reference to the OhMyDot_Debug env var)");
         const newUserPath = userPath + ';%OhMyDot_Debug%';
         const escapedNewUserPath = newUserPath.replace(/'/g, "''");
