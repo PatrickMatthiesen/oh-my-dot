@@ -4,8 +4,10 @@ import (
 	_ "embed"
 	"fmt"
 	"os"
-	// "path/filepath"
+	"path/filepath"
+	"strings"
 	"text/template"
+	"unicode"
 
 	// "log"
 
@@ -29,23 +31,23 @@ oh-my-dot uses git to manage your dotfiles, so you can easily push and pull your
 		cmd.Help()
 		if !viper.IsSet("remote-url") || !viper.IsSet("repo-path") {
 			fmt.Print("\n\n")
-			fileops.ColorPrintfn("Run oh-my-dot init to initialize your dotfiles repository", fileops.Green)
+			fileops.ColorPrintfn("Run "+cmd.Root().Name()+" init to initialize your dotfiles repository", fileops.Green)
 			fileops.ColorPrintln("Use the --help flag for more information on the init command", fileops.Yellow)
 		}
 	},
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		if cmd.Use == "oh-my-dot" {
+		// Skip this check if we're running the root command itself
+		if cmd == cmd.Root() {
 			return
 		}
 
 		cmdName := cmd.Name()
 		if !viper.IsSet("initialized") && !(cmdName == "init" || cmdName == "help" || cmdName == "config") {
 			fileops.ColorPrintln("Dotfiles repository has not been initialized", fileops.Yellow)
-			fileops.ColorPrintln("Run oh-my-dot init to initialize your dotfiles repository", fileops.Yellow)
+			fileops.ColorPrintln("Run "+cmd.Root().Name()+" init to initialize your dotfiles repository", fileops.Yellow)
 			os.Exit(1)
 		}
 	},
-	Example: "oh-my-dot help init",
 }
 
 func Execute(funcs ...func(*cobra.Command)) error {
@@ -56,6 +58,60 @@ func Execute(funcs ...func(*cobra.Command)) error {
 			// Config file was found but another error was produced
 		}
 		// CreateConfigFile()
+	}
+
+	// Get the actual invoked command name from os.Args[0]
+	// This allows users to use aliases (symlinks, shortcuts, etc.) and see them in help
+	invokedAs := filepath.Base(os.Args[0])
+	
+	// Sanitize the invoked name to prevent control characters or special sequences
+	// This protects against malicious symlinks with control characters
+	invokedAs = strings.Map(func(r rune) rune {
+		// Only allow letters, digits, hyphen, underscore, and dot
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' || r == '.' {
+			return r
+		}
+		return -1 // Drop other characters
+	}, invokedAs)
+	
+	// strip dotfile extensions like .exe, .bat, .cmd on Windows
+	invokedAs = strings.TrimSuffix(invokedAs, filepath.Ext(invokedAs))
+
+	// Fallback to "oh-my-dot" if the sanitized name is empty
+	if invokedAs == "" {
+		invokedAs = "oh-my-dot"
+	}
+	
+	rootCmd.Use = invokedAs
+	
+	// Update the root command example dynamically
+	// Try to find the init command and create an example, fallback to a generic example if not found
+	if initCmd, _, err := rootCmd.Find([]string{"init"}); err == nil {
+		rootCmd.Example = invokedAs + " help " + initCmd.Name()
+	} else {
+		rootCmd.Example = invokedAs + " help [command]"
+	}
+	
+	// Update examples in all subcommands to use the invoked name
+	// Skip if we're already using the default name to avoid unnecessary work
+	if invokedAs != "oh-my-dot" {
+		// This walks through all commands recursively to handle any nested commands
+		var updateExamples func(*cobra.Command)
+		updateExamples = func(cmd *cobra.Command) {
+			if cmd.Example != "" {
+				// Replace "oh-my-dot" at word boundaries to avoid incorrect replacements in URLs or paths
+				// This ensures we only replace the command name, not parts of other text
+				cmd.Example = strings.ReplaceAll(cmd.Example, "oh-my-dot ", invokedAs+" ")
+				cmd.Example = strings.ReplaceAll(cmd.Example, "oh-my-dot\n", invokedAs+"\n")
+			}
+			for _, subCmd := range cmd.Commands() {
+				updateExamples(subCmd)
+			}
+		}
+		// Update all subcommands, but not the root command (we set it explicitly above)
+		for _, cmd := range rootCmd.Commands() {
+			updateExamples(cmd)
+		}
 	}
 
 	// fmt.Println("padding:", rootCmd.UsagePadding())
