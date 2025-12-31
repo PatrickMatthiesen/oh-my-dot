@@ -164,9 +164,8 @@ var updateCommand = &cobra.Command{
 			// Provide helpful error messages for common issues
 			if os.IsPermission(err) {
 				fileops.ColorPrintfn(fileops.Yellow, "Permission denied. Try running with elevated privileges (sudo on Unix/Linux)")
-			} else {
-				fileops.ColorPrintfn(fileops.Yellow, "Please ensure you have write permissions to the binary location")
 			}
+			
 			return
 		}
 
