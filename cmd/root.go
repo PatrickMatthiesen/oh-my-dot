@@ -61,18 +61,41 @@ func Execute(funcs ...func(*cobra.Command)) error {
 	// Get the actual invoked command name from os.Args[0]
 	// This allows users to use aliases (symlinks, shortcuts, etc.) and see them in help
 	invokedAs := filepath.Base(os.Args[0])
+	
+	// Sanitize the invoked name to prevent control characters or special sequences
+	// This protects against malicious symlinks with control characters
+	invokedAs = strings.Map(func(r rune) rune {
+		// Only allow alphanumeric, hyphen, underscore, and dot
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.' {
+			return r
+		}
+		return -1 // Drop other characters
+	}, invokedAs)
+	
+	// Fallback to "oh-my-dot" if the sanitized name is empty
+	if invokedAs == "" {
+		invokedAs = "oh-my-dot"
+	}
+	
 	rootCmd.Use = invokedAs
 	
-	// Set the example to use the actual invoked name
-	rootCmd.Example = invokedAs + " help init"
+	// Update the root command example dynamically
+	if initCmd, _, err := rootCmd.Find([]string{"init"}); err == nil && initCmd != nil {
+		rootCmd.Example = invokedAs + " help " + initCmd.Name()
+	}
 	
-	// Update examples in subcommands to use the invoked name
-	for _, cmd := range rootCmd.Commands() {
+	// Update examples in all subcommands to use the invoked name
+	// This walks through all commands recursively to handle any nested commands
+	var updateExamples func(*cobra.Command)
+	updateExamples = func(cmd *cobra.Command) {
 		if cmd.Example != "" {
-			// Replace "oh-my-dot" with the actual invoked name in examples
 			cmd.Example = strings.ReplaceAll(cmd.Example, "oh-my-dot", invokedAs)
 		}
+		for _, subCmd := range cmd.Commands() {
+			updateExamples(subCmd)
+		}
 	}
+	updateExamples(rootCmd)
 
 	// fmt.Println("padding:", rootCmd.UsagePadding())
 	// fmt.Println("help:", rootCmd.HelpTemplate())
