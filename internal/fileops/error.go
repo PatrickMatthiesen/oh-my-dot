@@ -32,7 +32,14 @@ func ColorPrintln(message string, color string) {
 	fmt.Printf("%s%s\x1b[0m\n", color, message)
 }
 
-func ColorPrintfn(color string, format string, a ...interface{}) {
+func ColorPrintf(color string, format string, a ...any) {
+	if false {
+		_ = fmt.Sprintf(format, a...) // enable printf analyser
+	}
+	fmt.Printf(color+format+"\x1b[0m", a...)
+}
+
+func ColorPrintfn(color string, format string, a ...any) {
 	if false {
 		_ = fmt.Sprintf(format, a...) // enable printf analyser
 	}
@@ -47,7 +54,7 @@ func SColorPrintln(message string, color string) string {
 	return fmt.Sprintf("%s%s\x1b[0m\n", color, message)
 }
 
-func SColorPrintf(format string, a ...interface{}) string {
+func SColorPrintf(format string, a ...any) string {
 	if false {
 		_ = fmt.Sprintf(format, a...) // enable printf analyser
 	}
