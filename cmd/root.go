@@ -42,7 +42,7 @@ oh-my-dot uses git to manage your dotfiles, so you can easily push and pull your
 		}
 
 		cmdName := cmd.Name()
-		if !viper.IsSet("initialized") && !(cmdName == "init" || cmdName == "help" || cmdName == "config") {
+		if !viper.IsSet("initialized") && !(cmdName == "init" || cmdName == "help" || cmdName == "config" || cmdName == "version" || cmdName == "update") {
 			fileops.ColorPrintln("Dotfiles repository has not been initialized", fileops.Yellow)
 			fileops.ColorPrintln("Run "+cmd.Root().Name()+" init to initialize your dotfiles repository", fileops.Yellow)
 			os.Exit(1)
