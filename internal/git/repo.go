@@ -315,6 +315,8 @@ func ReadyForClone(folderPath string) (bool, error) { // unused
 	return true, nil
 }
 
+// permissionTestFileName is the name of the temporary file used to test write permissions.
+// Uses a dot prefix to make it hidden on Unix systems, avoiding clutter in the repository directory.
 const permissionTestFileName = ".oh-my-dot-permission-test"
 
 // CheckRepoWritePermission checks if the user has write permissions on the dotfiles directory
@@ -354,7 +356,8 @@ func CheckRepoWritePermission() error {
 	return nil
 }
 
-// CheckRemotePushPermission checks if the user has valid git credentials for pushing to the remote repository
+// CheckRemotePushPermission checks if the user has valid git credentials for pushing to the remote repository.
+// It uses the same authentication mechanism as git push (SSH keys, credential helpers, etc.) to verify access.
 func CheckRemotePushPermission() error {
 	repoPath := viper.GetString("repo-path")
 	if repoPath == "" {
@@ -371,8 +374,9 @@ func CheckRemotePushPermission() error {
 		return fmt.Errorf("no remote 'origin' configured: %w", err)
 	}
 
-	// List references from the remote to check connectivity and credentials
-	// This is a lightweight operation that verifies we can authenticate without actually pushing
+	// List references from the remote to check connectivity and credentials.
+	// This is a lightweight operation that verifies we can authenticate without actually pushing.
+	// Uses default git authentication (SSH keys, credential helpers, etc.).
 	_, err = remote.List(&git.ListOptions{})
 	if err != nil {
 		return fmt.Errorf("unable to access remote repository (check credentials and network): %w", err)
