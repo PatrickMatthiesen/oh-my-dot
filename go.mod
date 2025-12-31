@@ -8,7 +8,6 @@ require (
 	dario.cat/mergo v1.0.0 // indirect
 	github.com/Microsoft/go-winio v0.6.1 // indirect
 	github.com/ProtonMail/go-crypto v1.1.3 // indirect
-	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/cloudflare/circl v1.6.1 // indirect
 	github.com/cyphar/filepath-securejoin v0.3.6 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
@@ -28,7 +27,6 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.1.0 // indirect
 	github.com/pjbgf/sha1cd v0.3.0 // indirect
-	github.com/rhysd/go-github-selfupdate v1.2.3 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
 	github.com/sergi/go-diff v1.3.2-0.20230802210424-5b0b94c5c0d3 // indirect
@@ -60,7 +58,9 @@ require (
 )
 
 require (
+	github.com/blang/semver v3.5.1+incompatible
 	github.com/go-git/go-git/v5 v5.13.1
+	github.com/rhysd/go-github-selfupdate v1.2.3
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/viper v1.18.2
 )
