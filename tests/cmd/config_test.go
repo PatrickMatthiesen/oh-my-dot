@@ -13,12 +13,13 @@ import (
 	"github.com/spf13/viper"
 )
 
-func Test_Config_Show_All(t *testing.T) {
-	// Setup
+// setupTestConfig initializes a test configuration with temporary directories
+func setupTestConfig(t *testing.T) (configFile, repoPath string) {
+	t.Helper()
 	configFolder := t.TempDir()
-	configFile := filepath.Join(configFolder, "config.json")
+	configFile = filepath.Join(configFolder, "config.json")
 	repoFolder := t.TempDir()
-	repoPath := filepath.Join(repoFolder, "dotfiles")
+	repoPath = filepath.Join(repoFolder, "dotfiles")
 
 	viper.Reset()
 	config.InitializeConfig(configFile)
@@ -27,25 +28,35 @@ func Test_Config_Show_All(t *testing.T) {
 	viper.SetConfigFile(configFile)
 	viper.ReadInConfig()
 
-	// Capture output
+	return configFile, repoPath
+}
+
+// captureOutput captures stdout during command execution
+func captureOutput(t *testing.T, args []string) string {
+	t.Helper()
 	old := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
 	err := cmd.Execute(func(c *cobra.Command) {
-		c.SetArgs([]string{"config"})
+		c.SetArgs(args)
 	})
 
 	w.Close()
 	os.Stdout = old
 
-	var buf bytes.Buffer
-	buf.ReadFrom(r)
-	output := buf.String()
-
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	return buf.String()
+}
+
+func Test_Config_Show_All(t *testing.T) {
+	configFile, repoPath := setupTestConfig(t)
+	output := captureOutput(t, []string{"config"})
 
 	// Check that output contains key configuration values
 	if !strings.Contains(output, "Configuration:") {
@@ -69,38 +80,8 @@ func Test_Config_Show_All(t *testing.T) {
 }
 
 func Test_Config_Show_Location(t *testing.T) {
-	// Setup
-	configFolder := t.TempDir()
-	configFile := filepath.Join(configFolder, "config.json")
-	repoFolder := t.TempDir()
-	repoPath := filepath.Join(repoFolder, "dotfiles")
-
-	viper.Reset()
-	config.InitializeConfig(configFile)
-	viper.SetDefault("repo-path", repoPath)
-	viper.SetDefault("dot-home", configFile)
-	viper.SetConfigFile(configFile)
-	viper.ReadInConfig()
-
-	// Capture output
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	err := cmd.Execute(func(c *cobra.Command) {
-		c.SetArgs([]string{"config", "location"})
-	})
-
-	w.Close()
-	os.Stdout = old
-
-	var buf bytes.Buffer
-	buf.ReadFrom(r)
-	output := strings.TrimSpace(buf.String())
-
-	if err != nil {
-		t.Fatalf("Expected no error, got: %v", err)
-	}
+	configFile, _ := setupTestConfig(t)
+	output := strings.TrimSpace(captureOutput(t, []string{"config", "location"}))
 
 	// Check that output contains the config file path
 	if !strings.Contains(output, configFile) {
@@ -109,38 +90,8 @@ func Test_Config_Show_Location(t *testing.T) {
 }
 
 func Test_Config_Show_Dotfiles(t *testing.T) {
-	// Setup
-	configFolder := t.TempDir()
-	configFile := filepath.Join(configFolder, "config.json")
-	repoFolder := t.TempDir()
-	repoPath := filepath.Join(repoFolder, "dotfiles")
-
-	viper.Reset()
-	config.InitializeConfig(configFile)
-	viper.SetDefault("repo-path", repoPath)
-	viper.SetDefault("dot-home", configFile)
-	viper.SetConfigFile(configFile)
-	viper.ReadInConfig()
-
-	// Capture output
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	err := cmd.Execute(func(c *cobra.Command) {
-		c.SetArgs([]string{"config", "dotfiles"})
-	})
-
-	w.Close()
-	os.Stdout = old
-
-	var buf bytes.Buffer
-	buf.ReadFrom(r)
-	output := strings.TrimSpace(buf.String())
-
-	if err != nil {
-		t.Fatalf("Expected no error, got: %v", err)
-	}
+	_, repoPath := setupTestConfig(t)
+	output := strings.TrimSpace(captureOutput(t, []string{"config", "dotfiles"}))
 
 	// Check that output contains the repo path
 	if !strings.Contains(output, repoPath) {
@@ -149,38 +100,8 @@ func Test_Config_Show_Dotfiles(t *testing.T) {
 }
 
 func Test_Config_Unknown_Key(t *testing.T) {
-	// Setup
-	configFolder := t.TempDir()
-	configFile := filepath.Join(configFolder, "config.json")
-	repoFolder := t.TempDir()
-	repoPath := filepath.Join(repoFolder, "dotfiles")
-
-	viper.Reset()
-	config.InitializeConfig(configFile)
-	viper.SetDefault("repo-path", repoPath)
-	viper.SetDefault("dot-home", configFile)
-	viper.SetConfigFile(configFile)
-	viper.ReadInConfig()
-
-	// Capture output
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	err := cmd.Execute(func(c *cobra.Command) {
-		c.SetArgs([]string{"config", "unknown-key"})
-	})
-
-	w.Close()
-	os.Stdout = old
-
-	var buf bytes.Buffer
-	buf.ReadFrom(r)
-	output := buf.String()
-
-	if err != nil {
-		t.Fatalf("Expected no error, got: %v", err)
-	}
+	setupTestConfig(t)
+	output := captureOutput(t, []string{"config", "unknown-key"})
 
 	// Check that output contains error message
 	if !strings.Contains(output, "Unknown config key") {

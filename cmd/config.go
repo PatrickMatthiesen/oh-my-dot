@@ -58,32 +58,34 @@ func showAllConfig() {
 }
 
 func showConfigValue(key string) {
-	var value string
-	var found bool
-
 	switch key {
-	case "location":
-		value = viper.GetString("dot-home")
-		found = true
-	case "dotfiles":
-		value = viper.GetString("repo-path")
-		found = true
-	case "remote-url":
-		value = viper.GetString("remote-url")
-		found = true
 	case "initialized":
 		initialized := viper.GetBool("initialized")
 		fileops.ColorPrintfn(fileops.Green, "%t", initialized)
 		return
+	case "location":
+		value := viper.GetString("dot-home")
+		if value != "" {
+			fileops.ColorPrintfn(fileops.Green, "%s", value)
+		} else {
+			fileops.ColorPrintfn(fileops.Yellow, "%s is not set", key)
+		}
+	case "dotfiles":
+		value := viper.GetString("repo-path")
+		if value != "" {
+			fileops.ColorPrintfn(fileops.Green, "%s", value)
+		} else {
+			fileops.ColorPrintfn(fileops.Yellow, "%s is not set", key)
+		}
+	case "remote-url":
+		value := viper.GetString("remote-url")
+		if value != "" {
+			fileops.ColorPrintfn(fileops.Green, "%s", value)
+		} else {
+			fileops.ColorPrintfn(fileops.Yellow, "%s is not set", key)
+		}
 	default:
 		fileops.ColorPrintfn(fileops.Red, "Unknown config key: %s", key)
 		fileops.ColorPrintfn(fileops.Yellow, "Valid keys: location, dotfiles, remote-url, initialized")
-		return
-	}
-
-	if found && value != "" {
-		fileops.ColorPrintfn(fileops.Green, "%s", value)
-	} else if found {
-		fileops.ColorPrintfn(fileops.Yellow, "%s is not set", key)
 	}
 }
