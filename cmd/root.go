@@ -83,26 +83,32 @@ func Execute(funcs ...func(*cobra.Command)) error {
 	
 	// Update the root command example dynamically
 	// Try to find the init command and create an example, fallback to a generic example if not found
-	if initCmd, _, err := rootCmd.Find([]string{"init"}); err == nil && initCmd != nil {
+	if initCmd, _, err := rootCmd.Find([]string{"init"}); err == nil {
 		rootCmd.Example = invokedAs + " help " + initCmd.Name()
 	} else {
 		rootCmd.Example = invokedAs + " help [command]"
 	}
 	
 	// Update examples in all subcommands to use the invoked name
-	// This walks through all commands recursively to handle any nested commands
-	var updateExamples func(*cobra.Command)
-	updateExamples = func(cmd *cobra.Command) {
-		if cmd.Example != "" {
-			cmd.Example = strings.ReplaceAll(cmd.Example, "oh-my-dot", invokedAs)
+	// Skip if we're already using the default name to avoid unnecessary work
+	if invokedAs != "oh-my-dot" {
+		// This walks through all commands recursively to handle any nested commands
+		var updateExamples func(*cobra.Command)
+		updateExamples = func(cmd *cobra.Command) {
+			if cmd.Example != "" {
+				// Replace "oh-my-dot" at word boundaries to avoid incorrect replacements in URLs or paths
+				// This ensures we only replace the command name, not parts of other text
+				cmd.Example = strings.ReplaceAll(cmd.Example, "oh-my-dot ", invokedAs+" ")
+				cmd.Example = strings.ReplaceAll(cmd.Example, "oh-my-dot\n", invokedAs+"\n")
+			}
+			for _, subCmd := range cmd.Commands() {
+				updateExamples(subCmd)
+			}
 		}
-		for _, subCmd := range cmd.Commands() {
-			updateExamples(subCmd)
+		// Update all subcommands, but not the root command (we set it explicitly above)
+		for _, cmd := range rootCmd.Commands() {
+			updateExamples(cmd)
 		}
-	}
-	// Update all subcommands, but not the root command (we set it explicitly above)
-	for _, cmd := range rootCmd.Commands() {
-		updateExamples(cmd)
 	}
 
 	// fmt.Println("padding:", rootCmd.UsagePadding())
