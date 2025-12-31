@@ -315,6 +315,8 @@ func ReadyForClone(folderPath string) (bool, error) { // unused
 	return true, nil
 }
 
+const permissionTestFileName = ".oh-my-dot-permission-test"
+
 // CheckRepoWritePermission checks if the user has write permissions on the dotfiles directory
 func CheckRepoWritePermission() error {
 	repoPath := viper.GetString("repo-path")
@@ -336,13 +338,18 @@ func CheckRepoWritePermission() error {
 	}
 
 	// Try to create a temporary file to verify write permissions
-	testFile := filepath.Join(repoPath, ".oh-my-dot-permission-test")
+	testFile := filepath.Join(repoPath, permissionTestFileName)
 	f, err := os.Create(testFile)
 	if err != nil {
 		return fmt.Errorf("no write permission on repository directory: %s", repoPath)
 	}
 	f.Close()
-	os.Remove(testFile)
+	
+	// Clean up the test file
+	if err := os.Remove(testFile); err != nil {
+		// Log the error but don't fail - permission check already succeeded
+		log.Printf("Warning: failed to remove permission test file %s: %v", testFile, err)
+	}
 
 	return nil
 }
