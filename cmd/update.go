@@ -43,8 +43,8 @@ var updateCommand = &cobra.Command{
 				return
 			}
 
-			// Ensure version has 'v' prefix
-			if requestedVersion[0] != 'v' {
+			// Ensure version has 'v' prefix (with safety check for empty string)
+			if len(requestedVersion) > 0 && requestedVersion[0] != 'v' {
 				requestedVersion = "v" + requestedVersion
 			}
 
@@ -141,6 +141,11 @@ var updateCommand = &cobra.Command{
 
 // isValidVersionFormat checks if the version string follows semantic versioning format
 func isValidVersionFormat(version string) bool {
+	// Reject empty strings
+	if len(version) == 0 {
+		return false
+	}
+	
 	// Match semantic versioning: v1.2.3 or 1.2.3
 	// Also allows pre-release and build metadata: v1.2.3-alpha.1+build.123
 	pattern := `^v?\d+\.\d+\.\d+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$`
