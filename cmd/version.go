@@ -13,7 +13,8 @@ func init() {
 }
 
 var (
-	Version = "dev"
+	// Version is set at build time and defaults to the constant from version.go
+	Version = "0.0.20"
 	CommitHash = "n/a"
 )
 
