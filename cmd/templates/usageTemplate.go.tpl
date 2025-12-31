@@ -1,8 +1,5 @@
 {{blue}}Usage:{{reset}}
-{{if .Runnable -}} {{.UseLine}} {{- end}}
-{{if and .HasAvailableSubCommands (not (eq .Name "oh-my-dot"))}}
-{{red}}{{.CommandPath}} [command]
-{{end -}}
+{{if .Runnable -}} {{.UseLine}} {{- end}}{{if .HasAvailableSubCommands}} [command]{{end}}
 
 {{ if .HasExample }}
 {{blue}}Examples:{{reset}}

@@ -30,7 +30,7 @@ var initcmd = &cobra.Command{
 	Short:   "Initialize dotfiles management",
 	Long: `Initialize dotfiles management.
 Makes a git repository and sets remote origin to the specified URL.
-Default folder is $HOME/dotfiles but can be changed with the --folder flag.`,
+The clone is placed in $HOME/dotfiles by default, but can be changed with --folder <new path>`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if git.IsGitRepo(viper.GetString("repo-path")) {
 			git.InitFromExistingRepo(viper.GetString("repo-path"))

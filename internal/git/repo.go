@@ -314,3 +314,73 @@ func ReadyForClone(folderPath string) (bool, error) { // unused
 
 	return true, nil
 }
+
+// permissionTestFileName is the name of the temporary file used to test write permissions.
+// Uses a dot prefix to make it hidden on Unix systems, avoiding clutter in the repository directory.
+const permissionTestFileName = ".oh-my-dot-permission-test"
+
+// CheckRepoWritePermission checks if the user has write permissions on the dotfiles directory
+func CheckRepoWritePermission() error {
+	repoPath := viper.GetString("repo-path")
+	if repoPath == "" {
+		return fmt.Errorf("repository path is not set")
+	}
+
+	// Check if the directory exists
+	info, err := os.Stat(repoPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("repository directory does not exist: %s", repoPath)
+		}
+		return fmt.Errorf("failed to stat repository directory: %w", err)
+	}
+
+	if !info.IsDir() {
+		return fmt.Errorf("repository path is not a directory: %s", repoPath)
+	}
+
+	// Try to create a temporary file to verify write permissions
+	testFile := filepath.Join(repoPath, permissionTestFileName)
+	f, err := os.Create(testFile)
+	if err != nil {
+		return fmt.Errorf("no write permission on repository directory: %s", repoPath)
+	}
+	f.Close()
+	
+	// Clean up the test file
+	if err := os.Remove(testFile); err != nil {
+		// Log the error but don't fail - permission check already succeeded
+		log.Printf("Warning: failed to remove permission test file %s: %v", testFile, err)
+	}
+
+	return nil
+}
+
+// CheckRemotePushPermission checks if the user has valid git credentials for pushing to the remote repository.
+// It uses the same authentication mechanism as git push (SSH keys, credential helpers, etc.) to verify access.
+func CheckRemotePushPermission() error {
+	repoPath := viper.GetString("repo-path")
+	if repoPath == "" {
+		return fmt.Errorf("repository path is not set")
+	}
+
+	r, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return fmt.Errorf("failed to open repository: %w", err)
+	}
+
+	remote, err := r.Remote("origin")
+	if err != nil {
+		return fmt.Errorf("no remote 'origin' configured: %w", err)
+	}
+
+	// List references from the remote to check connectivity and credentials.
+	// This is a lightweight operation that verifies we can authenticate without actually pushing.
+	// Uses default git authentication (SSH keys, credential helpers, etc.).
+	_, err = remote.List(&git.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("unable to access remote repository (check credentials and network): %w", err)
+	}
+
+	return nil
+}
