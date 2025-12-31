@@ -14,43 +14,33 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4.1.1
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v6.1.0
         with:
-          go-version-file: 'go.mod'
-          
+          go-version-file: "go.mod"
+
       - name: Get next version
-        uses: reecetech/version-increment@2023.10.2
+        uses: reecetech/version-increment@2024.10.1
         id: version
         with:
           scheme: semver
           increment: patch
 
-      - name: Get short commit hash
-        id: commit
-        run: echo "short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+      - name: Create and push tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a v${{ steps.version.outputs.version }} -m "Release v${{ steps.version.outputs.version }}"
+          git push origin v${{ steps.version.outputs.version }}
 
-      - name: Set LDFLAGS
-        run: echo "LDFLAGS=-ldflags \"-X github.com/PatrickMatthiesen/oh-my-dot/cmd.Version=${{ steps.version.outputs.version }} -X github.com/PatrickMatthiesen/oh-my-dot/cmd.CommitHash=${{ steps.commit.outputs.short }}\"" >> $GITHUB_ENV
-
-      - name: Build windows
-        run: env GOOS=windows GOARCH=amd64 go build ${{ env.LDFLAGS }} -o ./build/oh-my-dot.exe
-
-      - name: Build Linux
-        run: env GOOS=linux GOARCH=amd64 go build ${{ env.LDFLAGS }} -o ./build/oh-my-dot_x64_linux
-
-      - name: Build MacOS intel
-        run: env GOOS=darwin GOARCH=amd64 go build ${{ env.LDFLAGS }} -o ./build/oh-my-dot_x64_mac
-
-      - name: Build MacOS arm
-        run: env GOOS=darwin GOARCH=arm64 go build ${{ env.LDFLAGS }} -o ./build/oh-my-dot_arm64_mac
-
-      - name: Create Release
-        id: create_release
-        uses: softprops/action-gh-release@v0.1.15
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          files: |
-            ./build/*
-          tag_name: ${{ steps.version.outputs.version }}
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

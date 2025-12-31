@@ -1,12 +1,13 @@
 package cmd
 
 import (
+	"context"
 	"os"
 	"regexp"
 
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 	"github.com/blang/semver"
-	"github.com/rhysd/go-github-selfupdate/selfupdate"
+	"github.com/creativeprojects/go-selfupdate"
 	"github.com/spf13/cobra"
 )
 
@@ -30,12 +31,28 @@ var updateCommand = &cobra.Command{
 		}
 
 		// Repository information
-		const githubRepo = "PatrickMatthiesen/oh-my-dot"
+		repository := selfupdate.ParseSlug("PatrickMatthiesen/oh-my-dot")
+
+		// Create GitHub source
+		source, err := selfupdate.NewGitHubSource(selfupdate.GitHubConfig{})
+		if err != nil {
+			fileops.ColorPrintfn(fileops.Red, "Error creating GitHub source: %s", err)
+			return
+		}
+
+		// Create updater
+		updater, err := selfupdate.NewUpdater(selfupdate.Config{
+			Source: source,
+		})
+		if err != nil {
+			fileops.ColorPrintfn(fileops.Red, "Error creating updater: %s", err)
+			return
+		}
 
 		// Check if a specific version is requested
 		if len(args) > 0 {
 			requestedVersion := args[0]
-			
+
 			// Validate version format
 			if !isValidVersionFormat(requestedVersion) {
 				fileops.ColorPrintfn(fileops.Red, "Invalid version format: %s", requestedVersion)
@@ -50,8 +67,8 @@ var updateCommand = &cobra.Command{
 
 			fileops.ColorPrintfn(fileops.Yellow, "Updating to %s...", requestedVersion)
 
-			// Detect the specific version
-			release, found, err := selfupdate.DetectVersion(githubRepo, requestedVersion)
+			// Find the specific release
+			release, found, err := updater.DetectVersion(context.Background(), repository, requestedVersion)
 			if err != nil {
 				fileops.ColorPrintfn(fileops.Red, "Error finding version %s: %s", requestedVersion, err)
 				fileops.ColorPrintfn(fileops.Yellow, "Please check your internet connection and try again")
@@ -65,10 +82,10 @@ var updateCommand = &cobra.Command{
 			}
 
 			// Update to the specific version
-			err = selfupdate.UpdateTo(release.AssetURL, executable)
+			err = updater.UpdateTo(context.Background(), release, executable)
 			if err != nil {
 				fileops.ColorPrintfn(fileops.Red, "Error updating to version %s: %s", requestedVersion, err)
-				
+
 				// Provide helpful error messages for common issues
 				if os.IsPermission(err) {
 					fileops.ColorPrintfn(fileops.Yellow, "Permission denied. Try running with elevated privileges (sudo on Unix/Linux)")
@@ -84,8 +101,13 @@ var updateCommand = &cobra.Command{
 
 		// Update to the latest version
 		currentVersionStr := Version
-		
-		// Remove 'v' prefix if present for parsing
+
+		// Ensure current version has 'v' prefix
+		if len(currentVersionStr) > 0 && currentVersionStr[0] != 'v' {
+			currentVersionStr = "v" + currentVersionStr
+		}
+
+		// Remove 'v' prefix for parsing
 		versionToParse := currentVersionStr
 		if len(versionToParse) > 0 && versionToParse[0] == 'v' {
 			versionToParse = versionToParse[1:]
@@ -97,11 +119,22 @@ var updateCommand = &cobra.Command{
 			fileops.ColorPrintfn(fileops.Red, "Error parsing current version: %s", err)
 			return
 		}
+		fileops.ColorPrintfn(fileops.Yellow, "Current version: v%s", currentVersion)
 
 		fileops.ColorPrintfn(fileops.Yellow, "Checking for updates...")
 
-		// Detect the latest release
-		latest, found, err := selfupdate.DetectLatest(githubRepo)
+		release, found, err := updater.DetectVersion(context.Background(), repository, "0.0.23")
+		if err != nil {
+			fileops.ColorPrintfn(fileops.Red, "Error checking for updates: %s", err)
+			fileops.ColorPrintfn(fileops.Yellow, "Please check your internet connection and try again")
+			return
+		}
+		if found {
+			fileops.ColorPrintfn(fileops.Yellow, "Found release %s for testing purposes", release.Version())
+		}
+
+		// Find the latest release
+		latest, found, err := updater.DetectLatest(context.Background(), repository)
 		if err != nil {
 			fileops.ColorPrintfn(fileops.Red, "Error checking for updates: %s", err)
 			fileops.ColorPrintfn(fileops.Yellow, "Please check your internet connection and try again")
@@ -109,23 +142,34 @@ var updateCommand = &cobra.Command{
 		}
 
 		if !found {
-			fileops.ColorPrintfn(fileops.Yellow, "No releases found for %s", githubRepo)
+			fileops.ColorPrintfn(fileops.Yellow, "No releases found")
+			return
+		}
+
+		// Parse latest version
+		latestVersionStr := latest.Version()
+		if len(latestVersionStr) > 0 && latestVersionStr[0] == 'v' {
+			latestVersionStr = latestVersionStr[1:]
+		}
+		latestVersion, err := semver.Parse(latestVersionStr)
+		if err != nil {
+			fileops.ColorPrintfn(fileops.Red, "Error parsing latest version: %s", err)
 			return
 		}
 
 		// Compare versions
-		if latest.Version.LTE(currentVersion) {
+		if latestVersion.LTE(currentVersion) {
 			fileops.ColorPrintfn(fileops.Green, "Already up to date (v%s)", currentVersion)
 			return
 		}
 
-		fileops.ColorPrintfn(fileops.Yellow, "Updating from v%s to v%s...", currentVersion, latest.Version)
+		fileops.ColorPrintfn(fileops.Yellow, "Updating from v%s to v%s...", currentVersion, latestVersion)
 
-		// Perform the update
-		err = selfupdate.UpdateTo(latest.AssetURL, executable)
+		// Update to the latest release
+		err = updater.UpdateTo(context.Background(), latest, executable)
 		if err != nil {
 			fileops.ColorPrintfn(fileops.Red, "Error updating: %s", err)
-			
+
 			// Provide helpful error messages for common issues
 			if os.IsPermission(err) {
 				fileops.ColorPrintfn(fileops.Yellow, "Permission denied. Try running with elevated privileges (sudo on Unix/Linux)")
@@ -135,7 +179,7 @@ var updateCommand = &cobra.Command{
 			return
 		}
 
-		fileops.ColorPrintfn(fileops.Green, "Successfully updated to v%s!", latest.Version)
+		fileops.ColorPrintfn(fileops.Green, "Successfully updated to v%s!", latestVersion)
 	},
 }
 
@@ -145,7 +189,7 @@ func isValidVersionFormat(version string) bool {
 	if len(version) == 0 {
 		return false
 	}
-	
+
 	// Match semantic versioning: v1.2.3 or 1.2.3
 	// Also allows pre-release and build metadata: v1.2.3-alpha.1+build.123
 	pattern := `^v?\d+\.\d+\.\d+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$`

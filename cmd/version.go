@@ -13,9 +13,9 @@ func init() {
 }
 
 var (
-	// Version is typically set at build time via ldflags
+	// Version is set at build time via ldflags
 	// Example: go build -ldflags "-X github.com/PatrickMatthiesen/oh-my-dot/cmd.Version=1.0.0"
-	Version = "0.0.20"
+	Version = "0.0.0-dev"
 	CommitHash = "n/a"
 )
 

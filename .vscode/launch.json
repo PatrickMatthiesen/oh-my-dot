@@ -1,39 +1,77 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
-    "version": "0.2.0",
-    "configurations": [
-        {
-            "name": "Launch Root",
-            "type": "go",
-            "request": "launch",
-            "mode": "auto",
-            "program": "${workspaceFolder}",
-            // "args": ["."]
-        },
-        {
-            "name": "Launch init",
-            "type": "go",
-            "request": "launch",
-            "mode": "auto",
-            "program": "${workspaceFolder}",
-            "args": ["init", "-u", "https://github.com/PatrickMatthiesen/dotfiles", "-f", ""]
-        },
-        {
-            "name": "Launch remove",
-            "type": "go",
-            "request": "launch",
-            "mode": "auto",
-            "program": "${workspaceFolder}",
-            "args": ["remove", ".\\.\\readme.md"],
-        },
-        {
-            "name": "Test file",
-            "type": "go",
-            "request": "launch",
-            "mode": "auto",
-            "program": "${relativeFileDirname}",
-        },
-    ]
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch Root",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}"
+      // "args": ["."]
+    },
+    {
+      "name": "Launch init",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}",
+      "args": [
+        "init",
+        "-u",
+        "https://github.com/PatrickMatthiesen/dotfiles",
+        "-f",
+        ""
+      ]
+    },
+    {
+      "name": "Launch remove",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}",
+      "args": ["remove", ".\\.\\readme.md"]
+    },
+    {
+      "name": "Test file",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${relativeFileDirname}"
+    },
+    {
+      "name": "Launch with user input (command only)",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}",
+      "args": ["${input:command}"],
+      "buildFlags": "-ldflags '-X github.com/PatrickMatthiesen/oh-my-dot/cmd.Version=0.1.0-dev'"
+    },
+    {
+      "name": "Launch with user input (command + args)",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}",
+      "args": ["${input:command}", "${input:args}"],
+      "buildFlags": "-ldflags '-X github.com/PatrickMatthiesen/oh-my-dot/cmd.Version=0.1.0-dev'"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "command",
+      "type": "promptString",
+      "description": "Enter command (e.g., init, add, remove, list, push, apply, update)",
+      "default": "list"
+    },
+    {
+      "id": "args",
+      "type": "promptString",
+      "description": "Enter additional arguments",
+      "default": ""
+    }
+  ]
 }
