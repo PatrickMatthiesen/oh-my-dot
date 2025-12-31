@@ -74,6 +74,9 @@ func Execute(funcs ...func(*cobra.Command)) error {
 		return -1 // Drop other characters
 	}, invokedAs)
 	
+	// strip dotfile extensions like .exe, .bat, .cmd on Windows
+	invokedAs = strings.TrimSuffix(invokedAs, filepath.Ext(invokedAs))
+
 	// Fallback to "oh-my-dot" if the sanitized name is empty
 	if invokedAs == "" {
 		invokedAs = "oh-my-dot"
