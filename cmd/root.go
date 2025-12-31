@@ -4,7 +4,8 @@ import (
 	_ "embed"
 	"fmt"
 	"os"
-	// "path/filepath"
+	"path/filepath"
+	"strings"
 	"text/template"
 
 	// "log"
@@ -29,23 +30,22 @@ oh-my-dot uses git to manage your dotfiles, so you can easily push and pull your
 		cmd.Help()
 		if !viper.IsSet("remote-url") || !viper.IsSet("repo-path") {
 			fmt.Print("\n\n")
-			fileops.ColorPrintfn("Run oh-my-dot init to initialize your dotfiles repository", fileops.Green)
+			fileops.ColorPrintfn("Run "+cmd.Root().Name()+" init to initialize your dotfiles repository", fileops.Green)
 			fileops.ColorPrintln("Use the --help flag for more information on the init command", fileops.Yellow)
 		}
 	},
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		if cmd.Use == "oh-my-dot" {
+		if cmd.Use == "oh-my-dot" || cmd.Use == cmd.Root().Name() {
 			return
 		}
 
 		cmdName := cmd.Name()
 		if !viper.IsSet("initialized") && !(cmdName == "init" || cmdName == "help") {
 			fileops.ColorPrintln("Dotfiles repository has not been initialized", fileops.Yellow)
-			fileops.ColorPrintln("Run oh-my-dot init to initialize your dotfiles repository", fileops.Yellow)
+			fileops.ColorPrintln("Run "+cmd.Root().Name()+" init to initialize your dotfiles repository", fileops.Yellow)
 			os.Exit(1)
 		}
 	},
-	Example: "oh-my-dot help init",
 }
 
 func Execute(funcs ...func(*cobra.Command)) error {
@@ -56,6 +56,22 @@ func Execute(funcs ...func(*cobra.Command)) error {
 			// Config file was found but another error was produced
 		}
 		// CreateConfigFile()
+	}
+
+	// Get the actual invoked command name from os.Args[0]
+	// This allows users to use aliases (symlinks, shortcuts, etc.) and see them in help
+	invokedAs := filepath.Base(os.Args[0])
+	rootCmd.Use = invokedAs
+	
+	// Set the example to use the actual invoked name
+	rootCmd.Example = invokedAs + " help init"
+	
+	// Update examples in subcommands to use the invoked name
+	for _, cmd := range rootCmd.Commands() {
+		if cmd.Example != "" {
+			// Replace "oh-my-dot" with the actual invoked name in examples
+			cmd.Example = strings.ReplaceAll(cmd.Example, "oh-my-dot", invokedAs)
+		}
 	}
 
 	// fmt.Println("padding:", rootCmd.UsagePadding())
