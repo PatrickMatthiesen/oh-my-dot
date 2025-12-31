@@ -314,3 +314,62 @@ func ReadyForClone(folderPath string) (bool, error) { // unused
 
 	return true, nil
 }
+
+// CheckRepoWritePermission checks if the user has write permissions on the dotfiles directory
+func CheckRepoWritePermission() error {
+	repoPath := viper.GetString("repo-path")
+	if repoPath == "" {
+		return fmt.Errorf("repository path is not set")
+	}
+
+	// Check if the directory exists
+	info, err := os.Stat(repoPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("repository directory does not exist: %s", repoPath)
+		}
+		return fmt.Errorf("failed to stat repository directory: %w", err)
+	}
+
+	if !info.IsDir() {
+		return fmt.Errorf("repository path is not a directory: %s", repoPath)
+	}
+
+	// Try to create a temporary file to verify write permissions
+	testFile := filepath.Join(repoPath, ".oh-my-dot-permission-test")
+	f, err := os.Create(testFile)
+	if err != nil {
+		return fmt.Errorf("no write permission on repository directory: %s", repoPath)
+	}
+	f.Close()
+	os.Remove(testFile)
+
+	return nil
+}
+
+// CheckRemotePushPermission checks if the user has valid git credentials for pushing to the remote repository
+func CheckRemotePushPermission() error {
+	repoPath := viper.GetString("repo-path")
+	if repoPath == "" {
+		return fmt.Errorf("repository path is not set")
+	}
+
+	r, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return fmt.Errorf("failed to open repository: %w", err)
+	}
+
+	remote, err := r.Remote("origin")
+	if err != nil {
+		return fmt.Errorf("no remote 'origin' configured: %w", err)
+	}
+
+	// List references from the remote to check connectivity and credentials
+	// This is a lightweight operation that verifies we can authenticate without actually pushing
+	_, err = remote.List(&git.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("unable to access remote repository (check credentials and network): %w", err)
+	}
+
+	return nil
+}

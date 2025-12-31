@@ -28,6 +28,19 @@ var removeCommand = &cobra.Command{
 	Long:    `Removes config files from the repository.`,
 	GroupID: "dotfiles",
 	Args:    cobra.MaximumNArgs(1),
+	PreRun: func(cmd *cobra.Command, args []string) {
+		// Check write permissions on the repository
+		if err := git.CheckRepoWritePermission(); err != nil {
+			fileops.ColorPrintfn(fileops.Red, "Error: %s", err)
+			os.Exit(1)
+		}
+
+		// Check remote push permissions
+		if err := git.CheckRemotePushPermission(); err != nil {
+			fileops.ColorPrintfn(fileops.Yellow, "Warning: Unable to verify remote push access: %s", err)
+			fileops.ColorPrintln("You may not be able to push changes to the remote repository.", fileops.Yellow)
+		}
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		file, err := cmd.Flags().GetString("file")
 		if (err != nil || file == "") && len(args) == 0 {
