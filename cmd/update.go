@@ -90,7 +90,7 @@ var updateCommand = &cobra.Command{
 				if os.IsPermission(err) {
 					fileops.ColorPrintfn(fileops.Yellow, "Permission denied. Try running with elevated privileges (sudo on Unix/Linux)")
 				} else {
-					fileops.ColorPrintfn(fileops.Yellow, "Please ensure you have write permissions to the binary location")
+					fileops.ColorPrintfn(fileops.Yellow, "Please check the error message above and ensure the update can proceed")
 				}
 				return
 			}
@@ -123,15 +123,6 @@ var updateCommand = &cobra.Command{
 
 		fileops.ColorPrintfn(fileops.Yellow, "Checking for updates...")
 
-		release, found, err := updater.DetectVersion(context.Background(), repository, "0.0.23")
-		if err != nil {
-			fileops.ColorPrintfn(fileops.Red, "Error checking for updates: %s", err)
-			fileops.ColorPrintfn(fileops.Yellow, "Please check your internet connection and try again")
-			return
-		}
-		if found {
-			fileops.ColorPrintfn(fileops.Yellow, "Found release %s for testing purposes", release.Version())
-		}
 
 		// Find the latest release
 		latest, found, err := updater.DetectLatest(context.Background(), repository)
