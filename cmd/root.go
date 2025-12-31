@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"text/template"
+	"unicode"
 
 	// "log"
 
@@ -35,7 +36,8 @@ oh-my-dot uses git to manage your dotfiles, so you can easily push and pull your
 		}
 	},
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		if cmd.Use == "oh-my-dot" || cmd.Use == cmd.Root().Name() {
+		// Skip this check if we're running the root command itself
+		if cmd == cmd.Root() {
 			return
 		}
 
@@ -65,8 +67,8 @@ func Execute(funcs ...func(*cobra.Command)) error {
 	// Sanitize the invoked name to prevent control characters or special sequences
 	// This protects against malicious symlinks with control characters
 	invokedAs = strings.Map(func(r rune) rune {
-		// Only allow alphanumeric, hyphen, underscore, and dot
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.' {
+		// Only allow letters, digits, hyphen, underscore, and dot
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' || r == '.' {
 			return r
 		}
 		return -1 // Drop other characters
@@ -80,8 +82,11 @@ func Execute(funcs ...func(*cobra.Command)) error {
 	rootCmd.Use = invokedAs
 	
 	// Update the root command example dynamically
+	// Try to find the init command and create an example, fallback to a generic example if not found
 	if initCmd, _, err := rootCmd.Find([]string{"init"}); err == nil && initCmd != nil {
 		rootCmd.Example = invokedAs + " help " + initCmd.Name()
+	} else {
+		rootCmd.Example = invokedAs + " help [command]"
 	}
 	
 	// Update examples in all subcommands to use the invoked name
@@ -95,7 +100,10 @@ func Execute(funcs ...func(*cobra.Command)) error {
 			updateExamples(subCmd)
 		}
 	}
-	updateExamples(rootCmd)
+	// Update all subcommands, but not the root command (we set it explicitly above)
+	for _, cmd := range rootCmd.Commands() {
+		updateExamples(cmd)
+	}
 
 	// fmt.Println("padding:", rootCmd.UsagePadding())
 	// fmt.Println("help:", rootCmd.HelpTemplate())
