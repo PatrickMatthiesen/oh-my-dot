@@ -55,9 +55,9 @@ var addCommand = &cobra.Command{
 		// Check if interactive mode should be used
 		mode := interactive.GetMode(cmd)
 		if mode == interactive.ModeInteractive && file == "" && len(args) == 0 {
-			// Show file picker
-			homeDir, _ := os.UserHomeDir()
-			files, err := interactive.PromptFilePicker("Select file(s) to add:", homeDir)
+			// Show file picker starting from current directory
+			currentDir, _ := os.Getwd()
+			files, err := interactive.PromptFilePicker("Select file(s) to add:", currentDir)
 			if err != nil {
 				fileops.ColorPrintln("Cancelled", fileops.Yellow)
 				os.Exit(exitcodes.Error)

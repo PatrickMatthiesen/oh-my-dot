@@ -426,6 +426,8 @@ func PromptFilePicker(prompt string, directory string) ([]string, error) {
 	fp.CurrentDirectory = directory
 	fp.AllowedTypes = filepicker.New().AllowedTypes
 	fp.ShowHidden = false
+	fp.FileAllowed = true
+	fp.DirAllowed = false
 
 	m := filePickerModel{
 		filepicker: fp,
@@ -476,8 +478,21 @@ func (m filePickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cancelled = true
 			return m, tea.Quit
 		case " ":
-			// Toggle selection
+			// Toggle selection - only allow files, not directories
+			if m.filepicker.Path == "" {
+				// No file currently selected/highlighted
+				return m, nil
+			}
+			
 			selectedPath := filepath.Join(m.filepicker.CurrentDirectory, m.filepicker.Path)
+			
+			// Check if it's a file (not a directory)
+			fileInfo, err := os.Stat(selectedPath)
+			if err != nil || fileInfo.IsDir() {
+				// Don't select directories, only files
+				return m, nil
+			}
+			
 			if m.selected[selectedPath] {
 				delete(m.selected, selectedPath)
 			} else {

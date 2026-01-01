@@ -34,7 +34,15 @@ var initcmd = &cobra.Command{
 Makes a git repository and sets remote origin to the specified URL.
 The clone is placed in $HOME/dotfiles by default, but can be changed with --folder <new path>`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if git.IsGitRepo(viper.GetString("repo-path")) {
+		force, _ := cmd.Flags().GetBool("force")
+		
+		// If forcing reinitialiation without explicit URL, clear stored remote
+		if force && len(args) == 0 {
+			// Clear remote URL to allow interactive prompting
+			viper.Set("remote-url", "")
+		}
+		
+		if git.IsGitRepo(viper.GetString("repo-path")) && !force {
 			git.InitFromExistingRepo(viper.GetString("repo-path"))
 			fileops.ColorPrintln("Dotfiles repo initialized 🎉🎉🎉", fileops.Green)
 			viper.Set("initialized", true)
