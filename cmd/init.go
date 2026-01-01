@@ -5,8 +5,10 @@ import (
 	"os"
 
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/config"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/exitcodes"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/git"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/interactive"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -43,9 +45,42 @@ The clone is placed in $HOME/dotfiles by default, but can be changed with --fold
 		// allow for the remote url to be set in args
 		if viper.GetString("remote-url") == "" && len(args) > 0 {
 			viper.Set("remote-url", args[0])
-		} else if viper.GetString("remote-url") == "" {
-			fileops.ColorPrintln("No remote URL specified", fileops.Red)
-			return
+		}
+
+		// If no remote URL is provided, handle based on mode
+		if viper.GetString("remote-url") == "" {
+			// Check if we should prompt
+			if interactive.ShouldPrompt(cmd, false) {
+				// Ask if user wants to use a remote repository
+				useRemote, err := interactive.PromptConfirm("Do you want to use a remote repository?")
+				if err != nil {
+					fileops.ColorPrintln("Cancelled", fileops.Yellow)
+					os.Exit(exitcodes.Error)
+					return
+				}
+
+				if useRemote {
+					// Prompt for remote URL
+					remoteURL, err := interactive.PromptInput("Enter remote repository URL:", "")
+					if err != nil {
+						fileops.ColorPrintln("Cancelled", fileops.Yellow)
+						os.Exit(exitcodes.Error)
+						return
+					}
+					if remoteURL == "" {
+						fileops.ColorPrintln("No remote URL provided", fileops.Red)
+						os.Exit(exitcodes.MissingArgs)
+						return
+					}
+					viper.Set("remote-url", remoteURL)
+				}
+			} else {
+				// Non-interactive mode: error
+				fileops.ColorPrintln("No remote URL specified", fileops.Red)
+				fileops.ColorPrintln("Use: "+cmd.Root().Name()+" init <url> or set --remote flag", fileops.Yellow)
+				os.Exit(exitcodes.MissingArgs)
+				return
+			}
 		}
 
 		_, err := git.InitGitRepo(viper.GetString("repo-path"), viper.GetString("remote-url"))
