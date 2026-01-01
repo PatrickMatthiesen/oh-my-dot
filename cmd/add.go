@@ -124,7 +124,6 @@ func processAddFile(cmd *cobra.Command, file string, forceOverwrite bool) {
 				// Non-interactive mode: error on conflict
 				fileops.ColorPrintfn(fileops.Red, "Error: File %s already exists. Use --force to overwrite", targetFile)
 				os.Exit(exitcodes.Conflict)
-				return
 			}
 		}
 
@@ -168,7 +167,6 @@ func processAddFile(cmd *cobra.Command, file string, forceOverwrite bool) {
 				// Non-interactive mode: error on conflict
 				fileops.ColorPrintfn(fileops.Red, "Error: File %s already exists. Use --force to overwrite", move)
 				os.Exit(exitcodes.Conflict)
-				return
 			}
 		}
 

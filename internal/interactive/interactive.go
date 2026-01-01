@@ -410,7 +410,9 @@ func (m multiSelectModel) View() string {
 	return s
 }
 
-// PromptFilePicker prompts the user with a file picker
+// PromptFilePicker prompts the user with a file picker for multi-file selection
+// Returns a slice of absolute file paths that were selected.
+// Users must explicitly select files with Space key; Enter with no selection cancels.
 func PromptFilePicker(prompt string, directory string) ([]string, error) {
 	if directory == "" {
 		var err error
@@ -483,10 +485,10 @@ func (m filePickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "enter":
-			// If nothing selected, select current file
-			if len(m.selected) == 0 && m.filepicker.Path != "" {
-				selectedPath := filepath.Join(m.filepicker.CurrentDirectory, m.filepicker.Path)
-				m.selected[selectedPath] = true
+			// If nothing selected, don't auto-select - let user explicitly select with space
+			if len(m.selected) == 0 {
+				// Do nothing - require explicit selection with space
+				return m, nil
 			}
 			return m, tea.Quit
 		}

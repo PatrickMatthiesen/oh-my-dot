@@ -65,12 +65,10 @@ The clone is placed in $HOME/dotfiles by default, but can be changed with --fold
 					if err != nil {
 						fileops.ColorPrintln("Cancelled", fileops.Yellow)
 						os.Exit(exitcodes.Error)
-						return
 					}
 					if remoteURL == "" {
 						fileops.ColorPrintln("No remote URL provided", fileops.Red)
 						os.Exit(exitcodes.MissingArgs)
-						return
 					}
 					viper.Set("remote-url", remoteURL)
 				}
@@ -79,7 +77,6 @@ The clone is placed in $HOME/dotfiles by default, but can be changed with --fold
 				fileops.ColorPrintln("No remote URL specified", fileops.Red)
 				fileops.ColorPrintln("Use: "+cmd.Root().Name()+" init <url> or set --remote flag", fileops.Yellow)
 				os.Exit(exitcodes.MissingArgs)
-				return
 			}
 		}
 
