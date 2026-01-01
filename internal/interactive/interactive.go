@@ -424,7 +424,7 @@ func PromptFilePicker(prompt string, directory string) ([]string, error) {
 
 	fp := filepicker.New()
 	fp.CurrentDirectory = directory
-	fp.AllowedTypes = filepicker.New().AllowedTypes
+	// AllowedTypes is nil by default, allowing all file types
 	fp.ShowHidden = false
 	fp.FileAllowed = true
 	fp.DirAllowed = false

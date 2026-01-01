@@ -22,7 +22,7 @@ func init() {
 	initcmd.MarkFlagDirname("folder")
 	viper.BindPFlag("repo-path", initcmd.Flags().Lookup("folder"))
 
-	initcmd.Flags().BoolP("force", "", false, "Force initialization if a priveously initialized") //  or if given directory is not empty?
+	initcmd.Flags().BoolP("force", "", false, "Force initialization if previously initialized") //  or if given directory is not empty?
 	rootCmd.AddCommand(initcmd)
 }
 
