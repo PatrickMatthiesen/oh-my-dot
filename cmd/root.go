@@ -131,6 +131,15 @@ func Execute(funcs ...func(*cobra.Command)) error {
 		Title: "Dotfile:",
 	})
 
+	// Add global interactive flags (only if not already added)
+	if rootCmd.PersistentFlags().Lookup("interactive") == nil {
+		rootCmd.PersistentFlags().BoolP("interactive", "i", false,
+			"Force interactive mode with prompts and file selection")
+		rootCmd.PersistentFlags().Bool("no-interactive", false,
+			"Disable all interactive prompts (for CI/scripting)")
+		rootCmd.MarkFlagsMutuallyExclusive("interactive", "no-interactive")
+	}
+
 	// rootCmd.SetOut(os.Stdout)
 	// rootCmd.SetErr(os.Stderr)
 	// fmt.Println(rootCmd.UsageString())
