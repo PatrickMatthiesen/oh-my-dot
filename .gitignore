@@ -28,3 +28,5 @@ build
 
 # oh-my-dot binary
 oh-my-dot
+# Added by goreleaser init:
+dist/

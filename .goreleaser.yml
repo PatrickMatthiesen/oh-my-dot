@@ -14,33 +14,35 @@ builds:
     goarch:
       - amd64
       - arm64
+    binary: oh-my-dot
     ldflags:
       - -s -w
-      - -X github.com/PatrickMatthiesen/oh-my-dot/cmd.Version={{.Version}}
-      - -X github.com/PatrickMatthiesen/oh-my-dot/cmd.CommitHash={{.ShortCommit}}
-    binary: oh-my-dot
+      - -X github.com/PatrickMatthiesen/oh-my-dot/cmd.Version={{ .Version }}
+      - -X github.com/PatrickMatthiesen/oh-my-dot/cmd.CommitHash={{ .ShortCommit }}
 
 archives:
-  - format: tar.gz
-    name_template: >-
+  - name_template: >-
       {{ .ProjectName }}_
       {{- .Os }}_
       {{- if eq .Arch "amd64" }}x86_64
       {{- else }}{{ .Arch }}{{ end }}
+    formats:
+      - tar.gz
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
     files:
       - LICENSE*
       - README*
 
 checksum:
-  name_template: 'checksums.txt'
+  name_template: checksums.txt
 
 changelog:
   sort: asc
   filters:
     exclude:
-      - '^docs:'
-      - '^test:'
-      - '^ci:'
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
