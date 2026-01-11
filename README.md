@@ -9,7 +9,43 @@ It also supports multiple profiles, so you can have different configurations for
 
 ## Install manager
 
-### Release (manual)
+### Linux and macOS (Automatic)
+
+Run the install script to automatically download and install the latest version:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/PatrickMatthiesen/oh-my-dot/main/install.sh | bash
+```
+
+> **Security Note**: For added security, you can download and inspect the script before running it:
+> ```sh
+> curl -fsSL https://raw.githubusercontent.com/PatrickMatthiesen/oh-my-dot/main/install.sh -o install.sh
+> # Review the script
+> cat install.sh
+> # Run it
+> bash install.sh
+> ```
+
+This script will:
+- Detect your OS and architecture automatically
+- Download the latest release from GitHub
+- Install the binary to `~/.oh-my-dot/bin`
+- Create a symlink in `~/.local/bin`
+- Add the binary to your current session's PATH
+
+If you need to install a specific version, you can set the `OH_MY_DOT_VERSION` environment variable:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/PatrickMatthiesen/oh-my-dot/main/install.sh | OH_MY_DOT_VERSION=v0.0.25 bash
+```
+
+### Windows (Winget)
+
+```sh
+winget install PatrickMatthiesen.oh-my-dot
+```
+
+### Manual Installation
 
 1. Find the latest release matching your CPU architecture and Operating system.
 2. Download the executable to a persistent folder.
@@ -18,21 +54,6 @@ It also supports multiple profiles, so you can have different configurations for
    > I recommend putting it under `$HOME/oh-my-dot`
 3. Add the folder to your PATH
 4. Start using oh-my-dot
-
-### Package manager (Automatic)
-
-#### Windows (Winget)
-
-```sh
-winget install PatrickMatthiesen.oh-my-dot
-```
-
-#### Linux and macOS (Coming Soon)
-
-```sh
-# apt install oh-my-dot (Coming Soon)
-# brew install oh-my-dot (Coming Soon)
-```
 
 ## Init config
 
