@@ -54,13 +54,26 @@ if [ -n "$OH_MY_DOT_VERSION" ]; then
 else
     # Get latest release information from GitHub API
     echo "Fetching latest release information..."
-    LATEST_RELEASE=$(curl -s "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest")
-
-    # Extract tag name
-    TAG_NAME=$(echo "$LATEST_RELEASE" | grep '"tag_name":' | sed -E 's/.*"tag_name": "([^"]+)".*/\1/')
-
-    if [ -z "$TAG_NAME" ]; then
+    
+    # Try with timeout and check for errors
+    if ! LATEST_RELEASE=$(curl -sSf --max-time 10 "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest" 2>&1); then
         echo -e "${RED}Error: Failed to fetch latest release information${NC}"
+        echo "Network error or GitHub API unavailable."
+        echo "You can specify a version manually by setting the OH_MY_DOT_VERSION environment variable:"
+        echo "  OH_MY_DOT_VERSION=v0.0.25 bash install.sh"
+        exit 1
+    fi
+
+    # Extract tag name - try jq first, fall back to grep/sed
+    if command -v jq &> /dev/null; then
+        TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tag_name')
+    else
+        # Fallback: more robust grep/sed that handles various JSON formatting
+        TAG_NAME=$(echo "$LATEST_RELEASE" | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+    fi
+
+    if [ -z "$TAG_NAME" ] || [ "$TAG_NAME" = "null" ]; then
+        echo -e "${RED}Error: Failed to parse release information${NC}"
         echo "You can specify a version manually by setting the OH_MY_DOT_VERSION environment variable:"
         echo "  OH_MY_DOT_VERSION=v0.0.25 bash install.sh"
         exit 1
@@ -79,9 +92,13 @@ echo "Downloading $ARCHIVE_NAME..."
 TMP_DIR=$(mktemp -d)
 trap "rm -rf $TMP_DIR" EXIT
 
-# Download the archive
-if ! curl -fsSL "$DOWNLOAD_URL" -o "$TMP_DIR/$ARCHIVE_NAME"; then
+# Download the archive with timeout and proper error handling
+if ! curl -fsSL --max-time 60 "$DOWNLOAD_URL" -o "$TMP_DIR/$ARCHIVE_NAME"; then
     echo -e "${RED}Error: Failed to download $DOWNLOAD_URL${NC}"
+    echo "Please check:"
+    echo "  - Your internet connection"
+    echo "  - The release exists: https://github.com/$REPO_OWNER/$REPO_NAME/releases/tag/$TAG_NAME"
+    echo "  - The archive name is correct: $ARCHIVE_NAME"
     exit 1
 fi
 
@@ -112,12 +129,18 @@ fi
 ln -s "$INSTALL_DIR/oh-my-dot" "$SYMLINK_PATH"
 echo -e "${GREEN}✓ Created symlink: $SYMLINK_PATH -> $INSTALL_DIR/oh-my-dot${NC}"
 
+# Check if ~/.local/bin is in the user's PATH (before we modify it)
+PATH_WARNING=false
+if [[ ":$PATH:" != *":$SYMLINK_DIR:"* ]]; then
+    PATH_WARNING=true
+fi
+
 # Add to current session's PATH
 export PATH="$INSTALL_DIR:$PATH"
 echo -e "${GREEN}✓ Added $INSTALL_DIR to current session's PATH${NC}"
 
-# Check if ~/.local/bin is in the user's PATH
-if [[ ":$PATH:" != *":$SYMLINK_DIR:"* ]]; then
+# Show PATH warning if needed
+if [ "$PATH_WARNING" = true ]; then
     echo ""
     echo -e "${YELLOW}⚠ Warning: $SYMLINK_DIR is not in your PATH${NC}"
     echo ""
