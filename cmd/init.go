@@ -36,7 +36,7 @@ The clone is placed in $HOME/dotfiles by default, but can be changed with --fold
 	Run: func(cmd *cobra.Command, args []string) {
 		force, _ := cmd.Flags().GetBool("force")
 		
-		// If forcing reinitialiation without explicit URL, clear stored remote
+		// If forcing reinitialization without explicit URL, clear stored remote
 		if force && len(args) == 0 {
 			// Clear remote URL to allow interactive prompting
 			viper.Set("remote-url", "")
