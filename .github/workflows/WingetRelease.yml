@@ -16,7 +16,7 @@ jobs:
         run: |
           $version = "${{ github.event.release.tag_name }}" -replace '^v', ''
           $parts = $version -split '\.'
-          
+
           if ($parts.Count -ge 3) {
             # Extract just the numeric part from patch version (handles cases like "0-beta")
             $patchStr = $parts[2] -replace '[^0-9].*$', ''
@@ -44,7 +44,7 @@ jobs:
         uses: vedantmgoyal9/winget-releaser@v2
         with:
           identifier: PatrickMatthiesen.oh-my-dot
-          installers-regex: '\.exe$'
+          installers-regex: '_windows_.*\.zip$'
           # WINGET_TOKEN should be a GitHub PAT with public_repo scope
           # stored in repository secrets for submitting PRs to winget-pkgs
           token: ${{ secrets.WINGET_TOKEN }}
