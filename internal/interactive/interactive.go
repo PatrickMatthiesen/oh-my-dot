@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
+	"sort"
 	"strings"
 
 	"charm.land/bubbles/v2/filepicker"
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
@@ -19,9 +20,9 @@ import (
 type Mode int
 
 const (
-	ModeAuto Mode = iota // Smart detection
-	ModeInteractive      // Force interactive
-	ModeNonInteractive   // Force non-interactive
+	ModeAuto           Mode = iota // Smart detection
+	ModeInteractive                // Force interactive
+	ModeNonInteractive             // Force non-interactive
 )
 
 // GetMode detects the appropriate mode based on flags and environment
@@ -441,6 +442,7 @@ func PromptFilePicker(prompt string, directory string) ([]string, error) {
 		filepicker: fp,
 		prompt:     prompt,
 		selected:   make(map[string]bool),
+		keyMap:     defaultFilePickerKeyMap(),
 	}
 
 	p := tea.NewProgram(m)
@@ -472,6 +474,21 @@ type filePickerModel struct {
 	selected   map[string]bool
 	cancelled  bool
 	err        error
+	keyMap     filePickerKeyMap
+}
+
+type filePickerKeyMap struct {
+	Cancel  key.Binding
+	Toggle  key.Binding
+	Confirm key.Binding
+}
+
+func defaultFilePickerKeyMap() filePickerKeyMap {
+	return filePickerKeyMap{
+		Cancel:  key.NewBinding(key.WithKeys("esc", "ctrl+c"), key.WithHelp("esc", "cancel")),
+		Toggle:  key.NewBinding(key.WithKeys("space"), key.WithHelp("space", "toggle selection")),
+		Confirm: key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "confirm")),
+	}
 }
 
 func (m filePickerModel) Init() tea.Cmd {
@@ -481,33 +498,33 @@ func (m filePickerModel) Init() tea.Cmd {
 func (m filePickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "esc":
+		// Handle our keys BEFORE passing to filepicker
+		switch {
+		case key.Matches(msg, m.keyMap.Cancel):
 			m.cancelled = true
 			return m, tea.Quit
-		case " ":
+		case key.Matches(msg, m.keyMap.Toggle):
 			// Toggle selection - only allow files, not directories
-			if m.filepicker.Path == "" {
-				// No file currently selected/highlighted
+			selectedPath := m.filepicker.HighlightedPath()
+			if selectedPath == "" {
+				// No file currently highlighted
 				return m, nil
 			}
-			
-			selectedPath := filepath.Join(m.filepicker.CurrentDirectory, m.filepicker.Path)
-			
+
 			// Check if it's a file (not a directory)
 			fileInfo, err := os.Stat(selectedPath)
 			if err != nil || fileInfo.IsDir() {
 				// Don't select directories, only files
 				return m, nil
 			}
-			
+
 			if m.selected[selectedPath] {
 				delete(m.selected, selectedPath)
 			} else {
 				m.selected[selectedPath] = true
 			}
 			return m, nil
-		case "enter":
+		case key.Matches(msg, m.keyMap.Confirm):
 			// If nothing selected, don't auto-select - let user explicitly select with space
 			if len(m.selected) == 0 {
 				// Do nothing - require explicit selection with space
@@ -539,8 +556,19 @@ func (m filePickerModel) View() tea.View {
 
 	if len(m.selected) > 0 {
 		s.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Render(fmt.Sprintf("Selected %d file(s):", len(m.selected))) + "\n")
+
+		// Sort files for consistent display order
+		files := make([]string, 0, len(m.selected))
 		for file := range m.selected {
-			s.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("  • " + file) + "\n")
+			files = append(files, file)
+		}
+		// Sort by just the filename for cleaner display
+		sort.Slice(files, func(i, j int) bool {
+			return files[i] < files[j]
+		})
+
+		for _, file := range files {
+			s.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("  • "+file) + "\n")
 		}
 		s.WriteString("\n")
 	}
