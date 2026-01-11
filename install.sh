@@ -90,7 +90,7 @@ echo "Downloading $ARCHIVE_NAME..."
 
 # Create temporary directory for download
 TMP_DIR=$(mktemp -d)
-trap "rm -rf $TMP_DIR" EXIT
+trap "rm -rf '$TMP_DIR'" EXIT
 
 # Download the archive with timeout and proper error handling
 if ! curl -fsSL --max-time 60 "$DOWNLOAD_URL" -o "$TMP_DIR/$ARCHIVE_NAME"; then
@@ -109,6 +109,14 @@ mkdir -p "$INSTALL_DIR"
 # Extract the binary
 echo "Extracting binary to $INSTALL_DIR..."
 tar -xzf "$TMP_DIR/$ARCHIVE_NAME" -C "$TMP_DIR"
+
+# Verify the binary exists
+if [ ! -f "$TMP_DIR/oh-my-dot" ]; then
+    echo -e "${RED}Error: Binary 'oh-my-dot' not found in archive${NC}"
+    echo "Archive contents:"
+    tar -tzf "$TMP_DIR/$ARCHIVE_NAME"
+    exit 1
+fi
 
 # Move the binary to the installation directory
 mv "$TMP_DIR/oh-my-dot" "$INSTALL_DIR/oh-my-dot"
@@ -135,9 +143,15 @@ if [[ ":$PATH:" != *":$SYMLINK_DIR:"* ]]; then
     PATH_WARNING=true
 fi
 
-# Add to current session's PATH
-export PATH="$INSTALL_DIR:$PATH"
-echo -e "${GREEN}✓ Added $INSTALL_DIR to current session's PATH${NC}"
+# Add to current session's PATH - use SYMLINK_DIR if it's already in PATH, otherwise use INSTALL_DIR
+if [ "$PATH_WARNING" = false ]; then
+    # ~/.local/bin is already in PATH, so the symlink will work
+    echo -e "${GREEN}✓ Symlink is accessible via your existing PATH${NC}"
+else
+    # ~/.local/bin is not in PATH, add the install dir directly for this session
+    export PATH="$INSTALL_DIR:$PATH"
+    echo -e "${GREEN}✓ Added $INSTALL_DIR to current session's PATH${NC}"
+fi
 
 # Show PATH warning if needed
 if [ "$PATH_WARNING" = true ]; then
