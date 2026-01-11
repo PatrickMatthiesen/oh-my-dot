@@ -68,12 +68,12 @@ else
     if command -v jq > /dev/null 2>&1; then
         TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tag_name')
     else
-        # Fallback: use grep with PCRE if available, otherwise use sed
-        if echo "$LATEST_RELEASE" | grep -Po '"tag_name":\s*"\K[^"]*' > /dev/null 2>&1; then
-            TAG_NAME=$(echo "$LATEST_RELEASE" | grep -Po '"tag_name":\s*"\K[^"]*' | head -1)
-        else
-            # Final fallback for systems without grep -P
-            TAG_NAME=$(echo "$LATEST_RELEASE" | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+        # Try grep with PCRE if available (more readable)
+        TAG_NAME=$(echo "$LATEST_RELEASE" | grep -Po '"tag_name":\s*"\K[^"]*' 2>/dev/null | head -1)
+        
+        # Fall back to basic grep/sed for maximum compatibility
+        if [ -z "$TAG_NAME" ]; then
+            TAG_NAME=$(echo "$LATEST_RELEASE" | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
         fi
     fi
 

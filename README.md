@@ -17,6 +17,15 @@ Run the install script to automatically download and install the latest version:
 curl -fsSL https://raw.githubusercontent.com/PatrickMatthiesen/oh-my-dot/main/install.sh | bash
 ```
 
+> **Security Note**: For added security, you can download and inspect the script before running it:
+> ```sh
+> curl -fsSL https://raw.githubusercontent.com/PatrickMatthiesen/oh-my-dot/main/install.sh -o install.sh
+> # Review the script
+> cat install.sh
+> # Run it
+> bash install.sh
+> ```
+
 This script will:
 - Detect your OS and architecture automatically
 - Download the latest release from GitHub
