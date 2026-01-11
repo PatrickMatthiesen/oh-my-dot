@@ -65,7 +65,7 @@ else
     fi
 
     # Extract tag name - try jq first, fall back to grep/sed
-    if command -v jq &> /dev/null; then
+    if command -v jq > /dev/null 2>&1; then
         TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tag_name')
     else
         # Fallback: more robust grep/sed that handles various JSON formatting
@@ -130,8 +130,12 @@ mkdir -p "$SYMLINK_DIR"
 
 # Create or update symlink
 SYMLINK_PATH="$SYMLINK_DIR/oh-my-dot"
-if [ -e "$SYMLINK_PATH" ] || [ -L "$SYMLINK_PATH" ]; then
-    rm -rf "$SYMLINK_PATH"
+if [ -d "$SYMLINK_PATH" ]; then
+    echo -e "${RED}Error: $SYMLINK_PATH is a directory${NC}"
+    echo "Please remove or rename it before installing oh-my-dot"
+    exit 1
+elif [ -e "$SYMLINK_PATH" ] || [ -L "$SYMLINK_PATH" ]; then
+    rm -f "$SYMLINK_PATH"
 fi
 
 ln -s "$INSTALL_DIR/oh-my-dot" "$SYMLINK_PATH"
