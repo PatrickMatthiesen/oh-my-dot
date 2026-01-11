@@ -57,7 +57,8 @@
       "mode": "auto",
       "program": "${workspaceFolder}",
       "args": ["${input:command}", "${input:args}"],
-      "buildFlags": "-ldflags '-X github.com/PatrickMatthiesen/oh-my-dot/cmd.Version=0.1.0-dev'"
+      "buildFlags": "-ldflags '-X github.com/PatrickMatthiesen/oh-my-dot/cmd.Version=0.1.0-dev'",
+      "console": "integratedTerminal"
     }
   ],
   "inputs": [
