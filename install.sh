@@ -68,8 +68,13 @@ else
     if command -v jq > /dev/null 2>&1; then
         TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tag_name')
     else
-        # Fallback: more robust grep/sed that handles various JSON formatting
-        TAG_NAME=$(echo "$LATEST_RELEASE" | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+        # Fallback: use grep with PCRE if available, otherwise use sed
+        if echo "$LATEST_RELEASE" | grep -Po '"tag_name":\s*"\K[^"]*' > /dev/null 2>&1; then
+            TAG_NAME=$(echo "$LATEST_RELEASE" | grep -Po '"tag_name":\s*"\K[^"]*' | head -1)
+        else
+            # Final fallback for systems without grep -P
+            TAG_NAME=$(echo "$LATEST_RELEASE" | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+        fi
     fi
 
     if [ -z "$TAG_NAME" ] || [ "$TAG_NAME" = "null" ]; then
@@ -172,9 +177,7 @@ if [ "$PATH_WARNING" = true ]; then
     echo "  2. Add $INSTALL_DIR to your PATH"
     echo ""
     echo "Add one of these lines to your shell's configuration file:"
-    echo "  For bash (~/.bashrc or ~/.bash_profile):"
-    echo "    export PATH=\"\$HOME/.local/bin:\$PATH\""
-    echo "  For zsh (~/.zshrc):"
+    echo "  For bash (~/.bashrc or ~/.bash_profile) or zsh (~/.zshrc):"
     echo "    export PATH=\"\$HOME/.local/bin:\$PATH\""
     echo "  For fish (~/.config/fish/config.fish):"
     echo "    set -gx PATH \$HOME/.local/bin \$PATH"
