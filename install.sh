@@ -130,8 +130,8 @@ mkdir -p "$SYMLINK_DIR"
 
 # Create or update symlink
 SYMLINK_PATH="$SYMLINK_DIR/oh-my-dot"
-if [ -L "$SYMLINK_PATH" ] || [ -f "$SYMLINK_PATH" ]; then
-    rm -f "$SYMLINK_PATH"
+if [ -e "$SYMLINK_PATH" ] || [ -L "$SYMLINK_PATH" ]; then
+    rm -rf "$SYMLINK_PATH"
 fi
 
 ln -s "$INSTALL_DIR/oh-my-dot" "$SYMLINK_PATH"
@@ -139,9 +139,14 @@ echo -e "${GREEN}✓ Created symlink: $SYMLINK_PATH -> $INSTALL_DIR/oh-my-dot${N
 
 # Check if ~/.local/bin is in the user's PATH (before we modify it)
 PATH_WARNING=false
-if [[ ":$PATH:" != *":$SYMLINK_DIR:"* ]]; then
-    PATH_WARNING=true
-fi
+case ":$PATH:" in
+    *":$SYMLINK_DIR:"*)
+        # ~/.local/bin is in PATH
+        ;;
+    *)
+        PATH_WARNING=true
+        ;;
+esac
 
 # Add to current session's PATH - use SYMLINK_DIR if it's already in PATH, otherwise use INSTALL_DIR
 if [ "$PATH_WARNING" = false ]; then
