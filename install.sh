@@ -95,7 +95,7 @@ echo "Downloading $ARCHIVE_NAME..."
 
 # Create temporary directory for download
 TMP_DIR=$(mktemp -d)
-trap "rm -rf '$TMP_DIR'" EXIT
+trap 'rm -rf "$TMP_DIR"' EXIT
 
 # Download the archive with timeout and proper error handling
 if ! curl -fsSL --max-time 60 "$DOWNLOAD_URL" -o "$TMP_DIR/$ARCHIVE_NAME"; then
