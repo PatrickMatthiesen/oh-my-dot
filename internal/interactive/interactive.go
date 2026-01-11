@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/filepicker"
-	"github.com/charmbracelet/bubbles/list"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/filepicker"
+	"charm.land/bubbles/v2/list"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 )
@@ -77,7 +77,7 @@ func PromptInput(question string, defaultValue string) (string, error) {
 	m.textInput.Placeholder = defaultValue
 	m.textInput.Focus()
 	m.textInput.CharLimit = 256
-	m.textInput.Width = 50
+	m.textInput.SetWidth(50)
 
 	p := tea.NewProgram(m)
 	result, err := p.Run()
@@ -114,10 +114,16 @@ func (m textInputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.Type {
+		key := msg.Key()
+		switch key.Code {
 		case tea.KeyEnter:
 			return m, tea.Quit
-		case tea.KeyCtrlC, tea.KeyEsc:
+		case tea.KeyEscape:
+			m.cancelled = true
+			return m, tea.Quit
+		}
+		// Check for ctrl+c
+		if msg.String() == "ctrl+c" {
 			m.cancelled = true
 			return m, tea.Quit
 		}
@@ -127,13 +133,14 @@ func (m textInputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m textInputModel) View() string {
-	return fmt.Sprintf(
+func (m textInputModel) View() tea.View {
+	content := fmt.Sprintf(
 		"%s\n\n%s\n\n%s",
 		lipgloss.NewStyle().Bold(true).Render(m.question),
 		m.textInput.View(),
 		lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(Press Enter to confirm, Esc to cancel)"),
 	)
+	return tea.NewView(content)
 }
 
 // PromptConfirm prompts the user for yes/no confirmation
@@ -193,7 +200,7 @@ func (m confirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m confirmModel) View() string {
+func (m confirmModel) View() tea.View {
 	yesStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	noStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
@@ -203,13 +210,14 @@ func (m confirmModel) View() string {
 		noStyle = noStyle.Bold(true).Foreground(lipgloss.Color("196"))
 	}
 
-	return fmt.Sprintf(
+	content := fmt.Sprintf(
 		"%s\n\n  %s  %s\n\n%s",
 		lipgloss.NewStyle().Bold(true).Render(m.question),
 		yesStyle.Render("[Yes]"),
 		noStyle.Render("[No]"),
 		lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(Use arrow keys or y/n, Enter to confirm, Esc to cancel)"),
 	)
+	return tea.NewView(content)
 }
 
 // PromptSelect prompts the user to select one item from a list
@@ -316,8 +324,8 @@ func (m selectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m selectModel) View() string {
-	return m.list.View()
+func (m selectModel) View() tea.View {
+	return tea.NewView(m.list.View())
 }
 
 // PromptMultiSelect prompts the user to select multiple items from a list
@@ -388,7 +396,7 @@ func (m multiSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m multiSelectModel) View() string {
+func (m multiSelectModel) View() tea.View {
 	s := lipgloss.NewStyle().Bold(true).Render(m.question) + "\n\n"
 
 	for i, opt := range m.options {
@@ -407,7 +415,7 @@ func (m multiSelectModel) View() string {
 
 	s += "\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(Use arrows to move, Space to select, Enter to confirm, Esc to cancel)")
 
-	return s
+	return tea.NewView(s)
 }
 
 // PromptFilePicker prompts the user with a file picker for multi-file selection
@@ -519,9 +527,9 @@ func (m filePickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m filePickerModel) View() string {
+func (m filePickerModel) View() tea.View {
 	if m.err != nil {
-		return "Error: " + m.err.Error()
+		return tea.NewView("Error: " + m.err.Error())
 	}
 
 	var s strings.Builder
@@ -539,5 +547,5 @@ func (m filePickerModel) View() string {
 
 	s.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(Space to toggle, Enter to confirm, Esc to cancel)"))
 
-	return s.String()
+	return tea.NewView(s.String())
 }
