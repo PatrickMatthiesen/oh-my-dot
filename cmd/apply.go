@@ -1,10 +1,13 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/hooks"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/shell"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/symlink"
 
 	"github.com/spf13/cobra"
@@ -13,58 +16,152 @@ import (
 
 func init() {
 	applyCommand.Flags().BoolP("verbose", "v", false, "Prints more information about the linking process")
+	applyCommand.Flags().Bool("no-shell", false, "Skip shell hook application")
 
 	rootCmd.AddCommand(applyCommand)
 }
 
 var applyCommand = &cobra.Command{
 	Use:     "apply",
-	Short:   "Apply the dotfiles to the system",
-	Long:    `Applies the dotfiles to the system.`,
+	Short:   "Apply the dotfiles and shell hooks to the system",
+	Long:    `Applies the dotfiles to the system and installs shell integration hooks.`,
 	GroupID: "dotfiles",
 	Run: func(cmd *cobra.Command, args []string) {
+		verbose, verr := cmd.Flags().GetBool("verbose")
+		if verr != nil {
+			fileops.ColorPrintfn(fileops.Red, "Error getting verbose flag: %s", verr)
+			return
+		}
+
+		noShell, _ := cmd.Flags().GetBool("no-shell")
+		repoPath := viper.GetString("repo-path")
+
+		// Apply dotfiles
+		fileops.ColorPrintln("Applying dotfiles...", fileops.Cyan)
 		linkings, err := symlink.GetLinkings()
 		if err != nil {
-			fileops.ColorPrintfn(fileops.Red, "Error%s retrieving linkings: %s", fileops.Reset, err)
+			fileops.ColorPrintfn(fileops.Red, "Error retrieving linkings: %s", err)
 			return
 		}
 
 		missingFiles := 0
-
-		verbose, verr := cmd.Flags().GetBool("verbose")
-		if verr != nil {
-			fileops.ColorPrintfn(fileops.Red, "Error%s getting verbose flag: %s", fileops.Reset, verr)
-			return
-		}
+		linkedFiles := 0
 
 		for file, link := range linkings {
-			file = filepath.Join(viper.GetString("repo-path"), "files", file)
+			file = filepath.Join(repoPath, "files", file)
 			if !fileops.IsFile(file) {
 				missingFiles++
-				fileops.ColorPrintfn(fileops.Red, "Error%s file %s does not exist", fileops.Reset, file)
+				fileops.ColorPrintfn(fileops.Red, "  Error: file %s does not exist", file)
 				continue
 			}
 
 			if fileops.IsFile(link) {
 				if verbose {
-					fileops.ColorPrintfn(fileops.Reset, "Skipping %s%s%s: link already exists", fileops.Blue, link, fileops.Reset)
+					fileops.ColorPrintfn(fileops.Reset, "  Skipping %s: link already exists", link)
 				}
+				linkedFiles++
 				continue
 			}
 
 			err = os.Link(file, link)
 			if err != nil {
 				missingFiles++
-				fileops.ColorPrintfn(fileops.Red, "Error%s creating hard link %s -> %s: %s", fileops.Reset, link, file, err)
+				fileops.ColorPrintfn(fileops.Red, "  Error creating hard link %s -> %s: %s", link, file, err)
 				continue
+			}
+			linkedFiles++
+		}
+
+		if linkedFiles > 0 {
+			fileops.ColorPrintfn(fileops.Green, "  ✓ %d files linked", linkedFiles)
+		}
+
+		if missingFiles > 0 {
+			fileops.ColorPrintfn(fileops.Yellow, "  ✗ %d files could not be applied", missingFiles)
+		}
+
+		// Apply shell hooks if not disabled
+		if !noShell {
+			fmt.Println()
+			fileops.ColorPrintln("Applying shell integration...", fileops.Cyan)
+
+			shellsWithFeatures, err := shell.ListShellsWithFeatures(repoPath)
+			if err != nil {
+				fileops.ColorPrintfn(fileops.Red, "  Error listing shells: %s", err)
+				return
+			}
+
+			if len(shellsWithFeatures) == 0 {
+				fileops.ColorPrintln("  (no shell features configured)", fileops.Yellow)
+			} else {
+				addedHooks := 0
+				existingHooks := 0
+				for _, shellName := range shellsWithFeatures {
+					shellConfig, ok := shell.GetShellConfig(shellName)
+					if !ok {
+						if verbose {
+							fileops.ColorPrintfn(fileops.Yellow, "  Skipping unsupported shell: %s", shellName)
+						}
+						continue
+					}
+
+					// Resolve profile path
+					profilePath, err := shell.ResolveProfilePath(shellConfig)
+					if err != nil {
+						fileops.ColorPrintfn(fileops.Red, "  Error resolving profile path for %s: %s", shellName, err)
+						continue
+					}
+
+					// Get init script path
+					initScriptPath, err := shell.GetInitScriptPath(repoPath, shellName)
+					if err != nil {
+						fileops.ColorPrintfn(fileops.Red, "  Error getting init script path for %s: %s", shellName, err)
+						continue
+					}
+
+					// Generate hook content
+					hookContent := hooks.GenerateHook(shellName, initScriptPath)
+					if hookContent == "" {
+						if verbose {
+							fileops.ColorPrintfn(fileops.Yellow, "  Skipping %s: no hook template", shellName)
+						}
+						continue
+					}
+
+					// Insert hook
+					added, err := hooks.InsertHook(profilePath, hookContent)
+					if err != nil {
+						fileops.ColorPrintfn(fileops.Red, "  Error inserting hook for %s: %s", shellName, err)
+						continue
+					}
+
+					if added {
+						fileops.ColorPrintfn(fileops.Green, "  %s: Hook added to %s ✓", shellName, profilePath)
+						addedHooks++
+					} else {
+						if verbose {
+							// Print full message about existing hook
+							fileops.ColorPrintfn(fileops.Reset, "  Skipping %s: hook already present in %s", shellName, profilePath)
+						} else {
+							// Just print shell name with checkmark
+							fileops.ColorPrintfn(fileops.Green, "  ✓ %s", shellName)
+						}
+						existingHooks++
+					}
+				}
+				// Summary
+				// if addedHooks > 0 {
+				// 	fileops.ColorPrintfn(fileops.Green, "  ✓ Hooks added for %d shells", addedHooks)
+				// }
+				if existingHooks > 0 && verbose {
+					fileops.ColorPrintfn(fileops.Green, "  ✓ %d shell hooks already present", existingHooks)
+				}
+
+				// No summary needed since we show status per shell
 			}
 		}
 
-		fileops.ColorPrintln("Completed", fileops.Green)
-
-		if missingFiles > 0 {
-			fileops.ColorPrintfn(fileops.Yellow, "%d%s could not be applied", missingFiles, fileops.Reset)
-			fileops.ColorPrintln("Check your permissions and try again with --verbose for more info", fileops.Yellow)
-		}
+		fmt.Println()
+		fileops.ColorPrintln("Done!", fileops.Green)
 	},
 }
