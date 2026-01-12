@@ -1,37 +1,76 @@
-{{blue}}Usage:{{reset}}
-{{if .Runnable -}} {{.UseLine}} {{- end}}{{if .HasAvailableSubCommands}} [command]{{end}}
+{{/* Cobra usage template — same output, formatted for readability */ -}}
 
-{{ if .HasExample }}
-{{blue}}Examples:{{reset}}
-{{.Example}}
-{{end -}}
+{{ blue }}Usage:{{ reset }}
+{{- if .Runnable }}
+  {{ .UseLine }}
+{{- end }}
+{{- if .HasAvailableSubCommands }} [command]{{ end }}
 
-{{- if .HasAvailableSubCommands}}{{ $cmds := .Commands }}
+{{- if .HasExample }}
 
-{{- if eq (len .Groups) 0}}
-{{- /* If there are no groupe on the subcommand*/ -}}
-{{blue}}Available Commands:{{reset}}
-{{- range $cmds}}
-	{{if (or .IsAvailableCommand (eq .Name "help")) -}}
-		{{rpad .Name .NamePadding }} {{.Short}}
-	{{end}}
-{{end}}
+{{ blue }}Examples:{{ reset }}
+  {{ .Example }}
+{{- end }}
 
-{{else}}{{range $group := .Groups}}
+{{- if .HasAvailableSubCommands }}
+  {{- $cmds := .Commands }}
 
-{{green}}{{.Title}}{{reset}}{{range $cmds}}{{if (and (eq .GroupID $group.ID) (or .IsAvailableCommand (eq .Name "help")))}}
-{{cyan}}{{rpad .NameAndAliases .NamePadding }}{{reset}} {{.Short}}{{end}}{{end}}{{end}}{{if not .AllChildCommandsHaveGroup}}
+  {{- if eq (len .Groups) 0 }}
+    {{- /* No groups on subcommands */}}
 
-{{blue}}Additional Commands:{{reset}}{{range $cmds}}{{if (and (eq .GroupID "") (or .IsAvailableCommand (eq .Name "help")))}}
-{{cyan}}{{rpad .NameAndAliases .NamePadding }}{{reset}} {{.Short}}{{end}}{{end}}{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}
+{{ blue }}Available Commands:{{ reset }}
+    {{- range $cmds }}
+      {{- if or .IsAvailableCommand (eq .Name "help") }}
+  {{ cyan }}{{ rpad .Name .NamePadding }}{{ reset }} {{ .Short }}
+      {{- end }}
+    {{- end }}
 
-{{blue}}Flags:{{reset}}
-{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
+  {{- else }}
+    {{- range $group := .Groups }}
 
-{{blue}}Global Flags:{{reset}}
-{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasHelpSubCommands}}
+{{ green }}{{ $group.Title }}{{ reset }}
+      {{- range $cmds }}
+        {{- if and (eq .GroupID $group.ID) (or .IsAvailableCommand (eq .Name "help")) }}
+  {{ cyan }}{{ rpad .NameAndAliases .NamePadding }}{{ reset }} {{ .Short }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
 
-{{blue}}Additional help topics:{{reset}}{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
-{{rpad .CommandPath .CommandPathPadding}} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableSubCommands}}
+    {{- if not .AllChildCommandsHaveGroup }}
 
-Use "{{purple}}{{.CommandPath}} {{cyan}}[command] {{weird}}--help{{reset}}" for more information about a command.{{end}}
+{{ blue }}Additional Commands:{{ reset }}
+      {{- range $cmds }}
+        {{- if and (eq .GroupID "") (or .IsAvailableCommand (eq .Name "help")) }}
+  {{ cyan }}{{ rpad .NameAndAliases .NamePadding }}{{ reset }} {{ .Short }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+{{- if .HasAvailableLocalFlags }}
+
+{{ blue }}Flags:{{ reset }}
+{{ .LocalFlags.FlagUsages | trimTrailingWhitespaces }}
+{{- end }}
+
+{{- if .HasAvailableInheritedFlags }}
+
+{{ blue }}Global Flags:{{ reset }}
+{{ .InheritedFlags.FlagUsages | trimTrailingWhitespaces }}
+{{- end }}
+
+{{- if .HasHelpSubCommands }}
+
+{{ blue }}Additional help topics:{{ reset }}
+  {{- range .Commands }}
+    {{- if .IsAdditionalHelpTopicCommand }}
+  {{ rpad .CommandPath .CommandPathPadding }} {{ .Short }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+{{- if .HasAvailableSubCommands }}
+
+Use "{{ purple }}{{ .CommandPath }} {{ cyan }}[command] {{ weird }}--help{{ reset }}" for more information about a command.
+{{- end }}
