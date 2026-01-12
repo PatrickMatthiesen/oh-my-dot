@@ -30,3 +30,6 @@ build
 oh-my-dot
 # Added by goreleaser init:
 dist/
+
+# opencode
+.opencode/
