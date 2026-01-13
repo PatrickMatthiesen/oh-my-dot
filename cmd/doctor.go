@@ -275,16 +275,7 @@ func checkDirectoryStructure(repoPath, shellName string) []checkResult {
 			if err := os.MkdirAll(libDir, 0755); err != nil {
 				fileops.ColorPrintfn(fileops.Red, "  → Error creating lib directory: %v", err)
 			} else {
-				helpersContent := `#!/usr/bin/env sh
-# oh-my-dot shell framework - helper functions
-# Shared utilities for all shells
-
-# Helper function to check if a command exists
-omd_command_exists() {
-    command -v "$1" >/dev/null 2>&1
-}
-`
-				if err := os.WriteFile(helpersFile, []byte(helpersContent), 0644); err == nil {
+				if err := os.WriteFile(helpersFile, []byte(shell.HelpersFileContent), 0644); err == nil {
 					fileops.ColorPrintfn(fileops.Green, "  → Fixed: Created %s", helpersFile)
 					results[len(results)-1].status = "ok"
 				}
