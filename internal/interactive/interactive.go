@@ -385,7 +385,7 @@ func (m multiSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor < len(m.options)-1 {
 				m.cursor++
 			}
-		case " ":
+		case "space":
 			m.selected[m.cursor] = !m.selected[m.cursor]
 		case "enter":
 			return m, tea.Quit
@@ -417,6 +417,71 @@ func (m multiSelectModel) View() tea.View {
 	s += "\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(Use arrows to move, Space to select, Enter to confirm, Esc to cancel)")
 
 	return tea.NewView(s)
+}
+
+// MultiSelect is a convenience wrapper around PromptMultiSelect that returns selected values
+func MultiSelect(question string, options []string, defaultSelected func(string) bool) ([]string, error) {
+	// Mark default selections
+	m := multiSelectModel{
+		question: question,
+		options:  options,
+		selected: make(map[int]bool),
+		cursor:   0,
+	}
+
+	// Apply default selections
+	if defaultSelected != nil {
+		for i, opt := range options {
+			if defaultSelected(opt) {
+				m.selected[i] = true
+			}
+		}
+	}
+
+	p := tea.NewProgram(m)
+	result, err := p.Run()
+	if err != nil {
+		return nil, err
+	}
+
+	if finalModel, ok := result.(multiSelectModel); ok {
+		if finalModel.cancelled {
+			return nil, fmt.Errorf("cancelled")
+		}
+
+		selected := []string{}
+		for i := range finalModel.options {
+			if finalModel.selected[i] {
+				selected = append(selected, finalModel.options[i])
+			}
+		}
+		return selected, nil
+	}
+
+	return nil, fmt.Errorf("unexpected model type")
+}
+
+// Confirm is a convenience wrapper around PromptConfirm with default value support
+func Confirm(question string, defaultYes bool) (bool, error) {
+	m := confirmModel{
+		question: question,
+		selected: defaultYes,
+	}
+
+	p := tea.NewProgram(m)
+	result, err := p.Run()
+	if err != nil {
+		return false, err
+	}
+
+	if finalModel, ok := result.(confirmModel); ok {
+		if finalModel.cancelled {
+			return false, fmt.Errorf("cancelled")
+		}
+		return finalModel.selected, nil
+	}
+
+	return false, fmt.Errorf("unexpected model type")
 }
 
 // PromptFilePicker prompts the user with a file picker for multi-file selection
