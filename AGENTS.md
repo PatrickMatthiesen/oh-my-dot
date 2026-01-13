@@ -14,6 +14,7 @@ This file provides coding guidelines and commands for AI agents working on the o
 ## Build, Test, and Lint Commands
 
 ### Build
+
 ```bash
 # Development build with version info (recommended)
 bun run build.ts
@@ -32,6 +33,7 @@ go build -o build/oh-my-dot
 ```
 
 ### Test
+
 ```bash
 # Run all tests
 go test ./...
@@ -54,6 +56,7 @@ go test ./... -fuzz=Fuzz -fuzztime=10s
 ```
 
 ### Lint and Format
+
 ```bash
 # Format code (Note: Some files may not be formatted yet)
 gofmt -w .
@@ -72,7 +75,7 @@ go mod tidy
 
 ### Package Organization
 
-```
+```filetree
 oh-my-dot/
 ├── cmd/              # Cobra commands (feature.go, apply.go, etc.)
 ├── internal/         # Internal packages
@@ -100,15 +103,15 @@ oh-my-dot/
 package shell
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
+    "fmt"
+    "os"
+    "path/filepath"
 
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
+    "github.com/spf13/cobra"
+    "github.com/spf13/viper"
 
-	"github.com/PatrickMatthiesen/oh-my-dot/internal/manifest"
-	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
+    "github.com/PatrickMatthiesen/oh-my-dot/internal/manifest"
+    "github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 )
 ```
 
@@ -129,10 +132,10 @@ Always add comments for exported types with struct field descriptions:
 ```go
 // FeatureConfig represents a single feature configuration in enabled.json
 type FeatureConfig struct {
-	Name      string   `json:"name"`
-	Strategy  string   `json:"strategy,omitempty"`  // "eager", "defer", or "on-command"
-	OnCommand []string `json:"onCommand,omitempty"` // Commands that trigger on-command loading
-	Disabled  bool     `json:"disabled,omitempty"`  // If true, feature is disabled
+    Name      string   `json:"name"`
+    Strategy  string   `json:"strategy,omitempty"`  // "eager", "defer", or "on-command"
+    OnCommand []string `json:"onCommand,omitempty"` // Commands that trigger on-command loading
+    Disabled  bool     `json:"disabled,omitempty"`  // If true, feature is disabled
 }
 ```
 
@@ -143,12 +146,12 @@ type FeatureConfig struct {
 ```go
 // Good
 if err := manifest.ParseManifest(path); err != nil {
-	return fmt.Errorf("failed to parse manifest: %w", err)
+    return fmt.Errorf("failed to parse manifest: %w", err)
 }
 
 // Bad
 if err != nil {
-	return err
+    return err
 }
 ```
 
@@ -156,8 +159,8 @@ if err != nil {
 
 ```go
 if err != nil {
-	fileops.ColorPrintfn(fileops.Red, "Error: %v", err)
-	os.Exit(1)
+    fileops.ColorPrintfn(fileops.Red, "Error: %v", err)
+    os.Exit(1)
 }
 ```
 
@@ -170,7 +173,7 @@ Document all exported functions with comments:
 // It creates the shell directory if needed, updates the manifest, generates
 // the feature file template, and regenerates the init script.
 func AddFeatureToShell(repoPath, shellName, featureName string, strategy string, onCommand []string, disabled bool) error {
-	// Implementation
+    // Implementation
 }
 ```
 
@@ -180,23 +183,23 @@ Use table-driven tests with subtests:
 
 ```go
 func TestValidateFeatureName(t *testing.T) {
-	tests := []struct {
-		name      string
-		input     string
-		wantError bool
-	}{
-		{"valid simple name", "git-prompt", false},
-		{"empty name", "", true},
-	}
+    tests := []struct {
+        name      string
+        input     string
+        wantError bool
+    }{
+        {"valid simple name", "git-prompt", false},
+        {"empty name", "", true},
+    }
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateFeatureName(tt.input)
-			if (err != nil) != tt.wantError {
-				t.Errorf("ValidateFeatureName(%q) error = %v, wantError %v", tt.input, err, tt.wantError)
-			}
-		})
-	}
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            err := ValidateFeatureName(tt.input)
+            if (err != nil) != tt.wantError {
+                t.Errorf("ValidateFeatureName(%q) error = %v, wantError %v", tt.input, err, tt.wantError)
+            }
+        })
+    }
 }
 ```
 
@@ -205,16 +208,18 @@ func TestValidateFeatureName(t *testing.T) {
 ### Shell Framework Architecture
 
 The shell framework consists of:
+
 - **Manifest** (`enabled.json`): JSON config with features and strategies
 - **Init Scripts**: Generated per-shell scripts that load features
 - **Feature Files**: User-editable shell scripts in `omd-shells/<shell>/features/`
 - **Hooks**: Integration points in shell profile files
 
 **Init scripts are auto-generated** - regenerate them after any manifest changes:
+
 ```go
 // Always regenerate after modifying manifest
 if err := RegenerateInitScript(repoPath, shellName); err != nil {
-	return fmt.Errorf("failed to regenerate init script: %w", err)
+    return fmt.Errorf("failed to regenerate init script: %w", err)
 }
 ```
 
@@ -237,12 +242,15 @@ if err := RegenerateInitScript(repoPath, shellName); err != nil {
 ## Common Tasks
 
 ### Adding a New Feature to Catalog
+
 Edit `internal/catalog/catalog.go` and add to the `Catalog` map.
 
 ### Creating a New Command
+
 Add a new file in `cmd/` following the pattern of existing commands.
 
 ### Regenerating Init Scripts
+
 Init scripts are automatically regenerated when features are added/removed/enabled/disabled via `shell.RegenerateInitScript()`.
 
 ## CI/CD
