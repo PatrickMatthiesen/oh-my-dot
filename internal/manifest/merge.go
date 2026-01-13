@@ -3,8 +3,6 @@ package manifest
 import (
 	"fmt"
 	"os"
-	"runtime"
-	"syscall"
 )
 
 // LocalOverride represents metadata about local overrides
@@ -144,49 +142,10 @@ func ValidateLocalManifest(path string) error {
 	}
 
 	// Platform-specific security checks
-	if runtime.GOOS == "windows" {
-		return validateLocalManifestWindows(path, info)
-	}
-	return validateLocalManifestUnix(path, info)
+	return validateLocalManifestPlatform(path, info)
 }
 
-// validateLocalManifestUnix performs Unix-specific security checks
-func validateLocalManifestUnix(path string, info os.FileInfo) error {
-	// Get file ownership
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		// Can't get detailed file info, allow but warn
-		return nil
-	}
 
-	// Check ownership - must be owned by current user
-	currentUID := uint32(os.Getuid())
-	if stat.Uid != currentUID {
-		return fmt.Errorf("file not owned by current user (uid %d != %d)", stat.Uid, currentUID)
-	}
-
-	// Check permissions - must not be group or world writable
-	perm := info.Mode().Perm()
-	if perm&0022 != 0 { // Check group-write (020) or other-write (002) bits
-		return fmt.Errorf("file is group or world writable (permissions: %o)", perm)
-	}
-
-	return nil
-}
-
-// validateLocalManifestWindows performs Windows-specific security checks
-func validateLocalManifestWindows(path string, info os.FileInfo) error {
-	// Windows ACL checking is complex and requires syscall.
-	// For Phase 6 MVP, we'll do basic checks and log warnings.
-	// Full ACL implementation can be added later if needed.
-
-	// Basic check: ensure file is owned by current user
-	// This is a simplified check - full Windows ACL checking would require more code
-
-	// For now, just allow on Windows with a basic check
-	// TODO: Implement full Windows ACL checking
-	return nil
-}
 
 // ParseManifestWithLocal reads both base and local manifests, validates security,
 // and returns a merged manifest
