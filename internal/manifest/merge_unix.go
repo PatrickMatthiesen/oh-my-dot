@@ -1,33 +1,85 @@
-//go:build unix || linux || darwin || freebsd || openbsd || netbsd
+//go:build linux || darwin || freebsd || openbsd || netbsd
 
 package manifest
 
 import (
 	"fmt"
 	"os"
-	"syscall"
+	"path/filepath"
+
+	"golang.org/x/sys/unix"
 )
 
-// validateLocalManifestPlatform performs Unix-specific security checks
-func validateLocalManifestPlatform(path string, info os.FileInfo) error {
-	// Get file ownership
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		// Can't get detailed file info, allow but warn
-		return nil
+func openAndValidateConfig(path string) (*os.File, error) {
+	// Open without following symlinks (final path component).
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, fmt.Errorf("open config: %w", err)
 	}
 
-	// Check ownership - must be owned by current user
-	currentUID := uint32(os.Getuid())
-	if stat.Uid != currentUID {
-		return fmt.Errorf("file not owned by current user (uid %d != %d)", stat.Uid, currentUID)
+	f := os.NewFile(uintptr(fd), path)
+	if f == nil {
+		_ = unix.Close(fd)
+		return nil, fmt.Errorf("open config: os.NewFile failed")
 	}
 
-	// Check permissions - must not be group or world writable
-	perm := info.Mode().Perm()
-	if perm&0022 != 0 { // Check group-write (020) or other-write (002) bits
-		return fmt.Errorf("file is group or world writable (permissions: %o)", perm)
+	// Validate the opened file (TOCTOU resistant).
+	var st unix.Stat_t
+	if err := unix.Fstat(fd, &st); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("fstat config: %w", err)
 	}
 
-	return nil
+	if st.Mode&unix.S_IFMT != unix.S_IFREG {
+		f.Close()
+		return nil, fmt.Errorf("config must be a regular file")
+	}
+
+	uid := uint32(os.Getuid())
+	if st.Uid != uid {
+		f.Close()
+		return nil, fmt.Errorf(
+			"config not owned by current user (uid %d != %d)",
+			st.Uid,
+			uid,
+		)
+	}
+
+	perm := os.FileMode(st.Mode).Perm()
+	if perm&0022 != 0 {
+		f.Close()
+		return nil, fmt.Errorf("config is group/world writable (mode %o)", perm)
+	}
+
+	// Parent directory checks (prevents replace attacks).
+	dir := filepath.Dir(path)
+
+	var dst unix.Stat_t
+	if err := unix.Stat(dir, &dst); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("stat parent dir: %w", err)
+	}
+	if dst.Mode&unix.S_IFMT != unix.S_IFDIR {
+		f.Close()
+		return nil, fmt.Errorf("parent is not a directory: %s", dir)
+	}
+	if dst.Uid != uid {
+		f.Close()
+		return nil, fmt.Errorf(
+			"parent dir not owned by current user (dir uid %d != %d)",
+			dst.Uid,
+			uid,
+		)
+	}
+	dperm := os.FileMode(dst.Mode).Perm()
+	if dperm&0022 != 0 {
+		f.Close()
+		return nil, fmt.Errorf(
+			"parent dir is group/world writable (dir %s mode %o)",
+			dir,
+			dperm,
+		)
+	}
+
+	return f, nil
 }

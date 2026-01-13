@@ -127,22 +127,12 @@ func (m *MergedManifest) GetEnabledFeatures() []FeatureConfig {
 // ValidateLocalManifest checks if a local manifest file is safe to load
 // Returns nil if safe, error with reason if unsafe
 func ValidateLocalManifest(path string) error {
-	// Check if file exists
-	info, err := os.Lstat(path)
+	f, err := openAndValidateConfig(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil // File doesn't exist, that's fine
-		}
-		return fmt.Errorf("failed to stat file: %w", err)
+		return err
 	}
-
-	// Must be a regular file, not a symlink
-	if !info.Mode().IsRegular() {
-		return fmt.Errorf("file is not a regular file (possibly a symlink)")
-	}
-
-	// Platform-specific security checks
-	return validateLocalManifestPlatform(path, info)
+	f.Close()
+	return nil
 }
 
 
