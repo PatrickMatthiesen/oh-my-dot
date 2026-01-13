@@ -119,9 +119,19 @@ func AddFeatureToShell(repoPath, shellName, featureName string, strategy string,
 		return err
 	}
 
-	featureContent := generateFeatureTemplate(shellName, featureName, metadata)
-	if err := os.WriteFile(featurePath, []byte(featureContent), 0644); err != nil {
-		return fmt.Errorf("failed to create feature file: %w", err)
+	// Try to use catalog template first, fall back to generic template
+	var featureContent string
+	if catalog.HasFeatureTemplate(featureName, shellName) {
+		if err := catalog.WriteFeatureTemplate(repoPath, shellName, featureName); err != nil {
+			return fmt.Errorf("failed to write feature template: %w", err)
+		}
+		// Template written successfully, no need to write again
+	} else {
+		// No catalog template, use generic template
+		featureContent = generateFeatureTemplate(shellName, featureName, metadata)
+		if err := os.WriteFile(featurePath, []byte(featureContent), 0644); err != nil {
+			return fmt.Errorf("failed to create feature file: %w", err)
+		}
 	}
 
 	// Regenerate init script to include the new feature

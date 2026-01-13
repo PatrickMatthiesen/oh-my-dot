@@ -92,6 +92,14 @@ var Catalog = map[string]FeatureMetadata{
 		DefaultCommands: nil,
 		SupportedShells: []string{"bash", "zsh", "fish", "posix"},
 	},
+	"ssh-agent": {
+		Name:            "ssh-agent",
+		Description:     "Automatically start SSH agent and load keys",
+		Category:        "tool",
+		DefaultStrategy: "eager",
+		DefaultCommands: nil,
+		SupportedShells: []string{"bash", "zsh", "fish", "posix"},
+	},
 }
 
 // GetFeature retrieves feature metadata from the catalog
