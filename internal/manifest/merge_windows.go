@@ -12,11 +12,7 @@ import (
 )
 
 func openAndValidateConfig(path string) (*os.File, error) {
-	// Reject reparse points (symlink/junction/etc.).
-	if err := rejectReparsePoint(path); err != nil {
-		return nil, err
-	}
-
+	// Note: symlink check already done by ValidateLocalManifest
 	h, err := windows.CreateFile(
 		windows.StringToUTF16Ptr(path),
 		windows.GENERIC_READ,

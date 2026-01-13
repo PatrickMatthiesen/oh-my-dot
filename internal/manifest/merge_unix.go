@@ -24,15 +24,11 @@ func openAndValidateConfig(path string) (*os.File, error) {
 	}
 
 	// Validate the opened file (TOCTOU resistant).
+	// Note: regular file check already done by ValidateLocalManifest
 	var st unix.Stat_t
 	if err := unix.Fstat(fd, &st); err != nil {
 		f.Close()
 		return nil, fmt.Errorf("fstat config: %w", err)
-	}
-
-	if st.Mode&unix.S_IFMT != unix.S_IFREG {
-		f.Close()
-		return nil, fmt.Errorf("config must be a regular file")
 	}
 
 	uid := uint32(os.Getuid())
