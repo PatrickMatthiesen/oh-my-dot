@@ -48,32 +48,6 @@ func GenerateInitScript(repoPath, shellName string) (string, error) {
 	}
 }
 
-// categorizeFeatures organizes enabled features by their loading strategy
-func categorizeFeatures(m *manifest.FeatureManifest) FeaturesByStrategy {
-	features := FeaturesByStrategy{
-		OnCommand: make(map[string][]string),
-	}
-
-	for _, f := range m.GetEnabledFeatures() {
-		strategy := f.Strategy
-		if strategy == "" {
-			strategy = "eager" // Default to eager
-		}
-
-		switch strategy {
-		case "eager":
-			features.Eager = append(features.Eager, f.Name)
-		case "defer":
-			features.Defer = append(features.Defer, f.Name)
-		case "on-command":
-			if len(f.OnCommand) > 0 {
-				features.OnCommand[f.Name] = f.OnCommand
-			}
-		}
-	}
-
-	return features
-}
 
 // categorizeFeaturesMerged organizes enabled features from a merged manifest
 func categorizeFeaturesMerged(m *manifest.MergedManifest) FeaturesByStrategy {

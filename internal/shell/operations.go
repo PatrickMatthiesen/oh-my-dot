@@ -149,7 +149,7 @@ func generateFeatureTemplate(shellName, featureName string, metadata catalog.Fea
 	}
 
 	description := featureName
-	if metadata.Name != "" {
+	if metadata.Description != "" {
 		description = metadata.Description
 	}
 
