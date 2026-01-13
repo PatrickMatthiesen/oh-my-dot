@@ -100,6 +100,14 @@ var Catalog = map[string]FeatureMetadata{
 		DefaultCommands: nil,
 		SupportedShells: []string{"bash", "zsh", "fish", "posix"},
 	},
+	"oh-my-dot-completion": {
+		Name:            "oh-my-dot-completion",
+		Description:     "Shell completions for oh-my-dot commands",
+		Category:        "completion",
+		DefaultStrategy: "eager",
+		DefaultCommands: nil,
+		SupportedShells: []string{"bash", "zsh", "fish"},
+	},
 }
 
 // GetFeature retrieves feature metadata from the catalog
