@@ -1,4 +1,3 @@
-#!/usr/bin/env fish
 # Node Version Manager (NVM) Integration for Fish
 # Loads NVM for Node.js version management
 

@@ -1,4 +1,3 @@
-#!/usr/bin/env fish
 # Python Virtual Environment Helpers for Fish
 # Useful functions and aliases for working with Python virtual environments
 

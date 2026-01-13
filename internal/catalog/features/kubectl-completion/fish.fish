@@ -1,4 +1,3 @@
-#!/usr/bin/env fish
 # Kubernetes kubectl Command Completion for Fish
 # Enables kubectl shell completions for faster command-line usage
 

@@ -1,4 +1,3 @@
-#!/usr/bin/env sh
 # Node Version Manager (NVM) Integration
 # Loads NVM for Node.js version management
 

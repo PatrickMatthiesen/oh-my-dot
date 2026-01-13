@@ -1,4 +1,3 @@
-#!/usr/bin/env sh
 # Terraform Command Completion
 # Enables terraform shell completions for faster command-line usage
 

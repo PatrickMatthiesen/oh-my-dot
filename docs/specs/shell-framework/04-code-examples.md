@@ -114,7 +114,6 @@ OMD_<SHELL>_LOADED=1
 ### Complete Init Script Template (bash)
 
 ```bash
-#!/usr/bin/env bash
 # oh-my-dot shell framework - bash init script
 # Auto-generated - do not edit manually
 

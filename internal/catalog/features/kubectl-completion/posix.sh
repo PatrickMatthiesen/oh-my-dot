@@ -1,4 +1,3 @@
-#!/usr/bin/env sh
 # Kubernetes kubectl Command Completion
 # Enables kubectl shell completions for faster command-line usage
 

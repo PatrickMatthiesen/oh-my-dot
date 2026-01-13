@@ -1,4 +1,3 @@
-#!/usr/bin/env sh
 # Google Cloud CLI (gcloud) Command Completion
 # Enables gcloud shell completions for faster command-line usage
 

@@ -1,4 +1,3 @@
-#!/usr/bin/env fish
 # Docker Command Completion for Fish
 # Enables docker shell completions and aliases
 

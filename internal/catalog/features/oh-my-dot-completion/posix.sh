@@ -1,4 +1,3 @@
-#!/usr/bin/env sh
 # oh-my-dot Shell Completion
 # Enables command-line completion for oh-my-dot (omdot) commands
 

@@ -1,4 +1,3 @@
-#!/usr/bin/env fish
 # oh-my-dot Shell Completion for Fish
 # Enables command-line completion for oh-my-dot (omdot) commands
 

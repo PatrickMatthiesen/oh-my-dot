@@ -264,3 +264,7 @@ Init scripts are automatically regenerated when features are added/removed/enabl
 Specs are in `docs/specs/<feature>/`. Key shell framework spec is `docs/specs/shell-framework/README.md`.
 
 Always refer to specs when implementing new shell framework features.
+
+## Feature template
+
+When creating new shell features dont add shebangs (e.g. `#!/bin/bash`) at the top of feature files. The init scripts handle shell detection and sourcing appropriately.

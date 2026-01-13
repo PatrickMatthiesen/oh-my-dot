@@ -1,4 +1,3 @@
-#!/usr/bin/env sh
 # Directory Shortcuts - Quick navigation to common directories
 # Customize these shortcuts to your frequently used directories
 

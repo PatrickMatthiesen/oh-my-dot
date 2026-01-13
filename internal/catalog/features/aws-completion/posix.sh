@@ -1,4 +1,3 @@
-#!/usr/bin/env sh
 # AWS CLI Command Completion
 # Enables AWS CLI shell completions for faster command-line usage
 

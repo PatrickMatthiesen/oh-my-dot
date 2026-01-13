@@ -1,4 +1,3 @@
-#!/usr/bin/env fish
 # Google Cloud CLI (gcloud) Command Completion for Fish
 # Enables gcloud shell completions for faster command-line usage
 

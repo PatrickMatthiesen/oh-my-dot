@@ -1,4 +1,3 @@
-#!/usr/bin/env sh
 # Core Aliases - Essential command shortcuts
 # Cross-platform aliases for common commands
 

@@ -1,4 +1,3 @@
-#!/usr/bin/env sh
 # Python Virtual Environment Helpers
 # Useful functions and aliases for working with Python virtual environments
 

@@ -1,4 +1,3 @@
-#!/usr/bin/env fish
 # Terraform Command Completion for Fish
 # Enables terraform shell completions for faster command-line usage
 

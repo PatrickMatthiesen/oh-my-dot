@@ -1,4 +1,3 @@
-#!/usr/bin/env sh
 # Docker Command Completion
 # Enables docker shell completions for faster command-line usage
 

@@ -1,4 +1,3 @@
-#!/usr/bin/env fish
 # AWS CLI Command Completion for Fish
 # Enables AWS CLI shell completions for faster command-line usage
 

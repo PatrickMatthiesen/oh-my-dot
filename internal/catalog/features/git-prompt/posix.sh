@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 # Git Prompt - Show git branch and status in prompt
 # Displays current git branch and repository status in your shell prompt
 
