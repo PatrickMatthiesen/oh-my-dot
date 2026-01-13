@@ -9,6 +9,17 @@ import (
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/manifest"
 )
 
+// HelpersFileContent is the template content for the helpers.sh file
+const HelpersFileContent = `#!/usr/bin/env sh
+# oh-my-dot shell framework - helper functions
+# Shared utilities for all shells
+
+# Helper function to check if a command exists
+omd_command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+`
+
 // InitializeShellDirectory creates the directory structure for a shell
 func InitializeShellDirectory(repoPath, shellName string) error {
 	shellDir := GetShellDirectory(repoPath, shellName)
@@ -33,16 +44,7 @@ func InitializeShellDirectory(repoPath, shellName string) error {
 	// Create helpers.sh if it doesn't exist
 	helpersPath := filepath.Join(libDir, "helpers.sh")
 	if _, err := os.Stat(helpersPath); os.IsNotExist(err) {
-		helpersContent := `#!/usr/bin/env sh
-# oh-my-dot shell framework - helper functions
-# Shared utilities for all shells
-
-# Helper function to check if a command exists
-omd_command_exists() {
-    command -v "$1" >/dev/null 2>&1
-}
-`
-		if err := os.WriteFile(helpersPath, []byte(helpersContent), 0644); err != nil {
+		if err := os.WriteFile(helpersPath, []byte(HelpersFileContent), 0644); err != nil {
 			return fmt.Errorf("failed to create helpers.sh: %w", err)
 		}
 	}

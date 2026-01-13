@@ -232,27 +232,59 @@ func checkDirectoryStructure(repoPath, shellName string) []checkResult {
 		})
 	}
 
-	// Check helpers directory exists
-	helpersDir := filepath.Join(shellDir, "helpers")
-	if _, err := os.Stat(helpersDir); os.IsNotExist(err) {
+	// Check shared lib directory and helpers.sh exists
+	libDir := filepath.Join(repoPath, "omd-shells", "lib")
+	helpersFile := filepath.Join(libDir, "helpers.sh")
+	
+	// Check lib directory
+	if _, err := os.Stat(libDir); os.IsNotExist(err) {
 		results = append(results, checkResult{
-			name:    "Helpers directory",
+			name:    "Shared lib directory",
 			status:  "warning",
-			message: fmt.Sprintf("Directory missing: %s (optional but recommended)", helpersDir),
+			message: fmt.Sprintf("Directory missing: %s (optional but recommended)", libDir),
 			fixable: true,
 		})
-		printCheck("Helpers directory", "warning", "missing (optional but recommended)")
+		printCheck("Shared lib directory", "warning", "missing (optional but recommended)")
 
 		if flagFix {
-			if err := os.MkdirAll(helpersDir, 0755); err == nil {
-				fileops.ColorPrintfn(fileops.Green, "  → Fixed: Created %s", helpersDir)
+			if err := os.MkdirAll(libDir, 0755); err == nil {
+				fileops.ColorPrintfn(fileops.Green, "  → Fixed: Created %s", libDir)
 				results[len(results)-1].status = "ok"
 			}
 		}
 	} else {
-		printCheck("Helpers directory", "ok", "")
+		printCheck("Shared lib directory", "ok", "")
 		results = append(results, checkResult{
-			name:   "Helpers directory",
+			name:   "Shared lib directory",
+			status: "ok",
+		})
+	}
+	
+	// Check helpers.sh file
+	if _, err := os.Stat(helpersFile); os.IsNotExist(err) {
+		results = append(results, checkResult{
+			name:    "Helpers file",
+			status:  "warning",
+			message: fmt.Sprintf("File missing: %s (optional but recommended)", helpersFile),
+			fixable: true,
+		})
+		printCheck("Helpers file", "warning", "missing (optional but recommended)")
+
+		if flagFix {
+			// Create the lib directory first if it doesn't exist
+			if err := os.MkdirAll(libDir, 0755); err != nil {
+				fileops.ColorPrintfn(fileops.Red, "  → Error creating lib directory: %v", err)
+			} else {
+				if err := os.WriteFile(helpersFile, []byte(shell.HelpersFileContent), 0644); err == nil {
+					fileops.ColorPrintfn(fileops.Green, "  → Fixed: Created %s", helpersFile)
+					results[len(results)-1].status = "ok"
+				}
+			}
+		}
+	} else {
+		printCheck("Helpers file", "ok", "")
+		results = append(results, checkResult{
+			name:   "Helpers file",
 			status: "ok",
 		})
 	}
