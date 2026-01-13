@@ -15,6 +15,10 @@ func validateLocalManifestPlatform(path string, info os.FileInfo) error {
 	// Basic check: ensure file is owned by current user
 	// This is a simplified check - full Windows ACL checking would require more code
 
+	// Mark parameters as intentionally unused for now
+	_ = path
+	_ = info
+
 	// For now, just allow on Windows with a basic check
 	// TODO: Implement full Windows ACL checking
 	return nil
