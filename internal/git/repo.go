@@ -147,7 +147,7 @@ func RemoveFile(file string) error {
 	}
 
 	filesPath := filepath.Join(repoPath, "files")
-	
+
 	// Normalize the path: if it's absolute and within the repo, keep it as-is
 	// Otherwise, treat it as relative to filesPath
 	var fullPath string
@@ -346,7 +346,7 @@ func CheckRepoWritePermission() error {
 		return fmt.Errorf("no write permission on repository directory: %s", repoPath)
 	}
 	f.Close()
-	
+
 	// Clean up the test file
 	if err := os.Remove(testFile); err != nil {
 		// Log the error but don't fail - permission check already succeeded
@@ -383,4 +383,13 @@ func CheckRemotePushPermission() error {
 	}
 
 	return nil
+}
+
+// IsSSHAgentError checks if the error is related to missing SSH_AUTH_SOCK
+func IsSSHAgentError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errorMsg := err.Error()
+	return strings.Contains(errorMsg, "SSH_AUTH_SOCK") || strings.Contains(errorMsg, "SSH agent")
 }

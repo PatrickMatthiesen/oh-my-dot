@@ -26,17 +26,18 @@ var pushCommand = &cobra.Command{
 			os.Exit(1)
 		}
 
-		// Check remote push permissions
-		if err := git.CheckRemotePushPermission(); err != nil {
-			fileops.ColorPrintfn(fileops.Red, "Error: %s", err)
-			fileops.ColorPrintln("Cannot push to remote repository. Please check your credentials and network connection.", fileops.Red)
-			os.Exit(1)
-		}
+		// Check remote push permissions (exit on error since push requires access)
+		git.CheckRemoteAccessWithHelp(true)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		err := git.PushRepo()
 		if err != nil {
-			fileops.ColorPrintfn(fileops.Red, "Error pushing changes: %s", err)
+			if git.IsSSHAgentError(err) {
+				git.DisplaySSHAgentError(true)
+			} else {
+				fileops.ColorPrintfn(fileops.Red, "Error pushing changes: %s", err)
+				os.Exit(1)
+			}
 			return
 		}
 
