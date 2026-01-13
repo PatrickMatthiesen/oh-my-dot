@@ -150,9 +150,6 @@ var applyCommand = &cobra.Command{
 					}
 				}
 				// Summary
-				// if addedHooks > 0 {
-				// 	fileops.ColorPrintfn(fileops.Green, "  ✓ Hooks added for %d shells", addedHooks)
-				// }
 				if existingHooks > 0 && verbose {
 					fileops.ColorPrintfn(fileops.Green, "  ✓ %d shell hooks already present", existingHooks)
 				}

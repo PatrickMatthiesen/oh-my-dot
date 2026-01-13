@@ -322,7 +322,7 @@ fi
 				// Create wrappers for each command
 				for _, cmd := range commands {
 					allCommands := strings.Join(commands, " ")
-					sb.WriteString(fmt.Sprintf(`  %s() { %s; unfunction %s %s; %s "$@"; }
+					sb.WriteString(fmt.Sprintf(`  %s() { %s; unfunction %s %s; command %s "$@"; }
 `, cmd, loaderFunc, allCommands, loaderFunc, cmd))
 				}
 			}

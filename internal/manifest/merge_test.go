@@ -3,6 +3,7 @@ package manifest
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -305,7 +306,7 @@ func TestValidateLocalManifest_Symlink(t *testing.T) {
 
 func TestValidateLocalManifest_GroupWritable(t *testing.T) {
 	// Skip on Windows
-	if os.Getenv("GOOS") == "windows" {
+	if runtime.GOOS == "windows" {
 		t.Skip("Skipping Unix permission test on Windows")
 	}
 
@@ -332,7 +333,7 @@ func TestValidateLocalManifest_GroupWritable(t *testing.T) {
 
 func TestValidateLocalManifest_WorldWritable(t *testing.T) {
 	// Skip on Windows
-	if os.Getenv("GOOS") == "windows" {
+	if runtime.GOOS == "windows" {
 		t.Skip("Skipping Unix permission test on Windows")
 	}
 
@@ -473,7 +474,7 @@ func TestParseManifestWithLocal_InvalidLocal(t *testing.T) {
 
 func TestParseManifestWithLocal_UnsafeLocal(t *testing.T) {
 	// Skip on Windows
-	if os.Getenv("GOOS") == "windows" {
+	if runtime.GOOS == "windows" {
 		t.Skip("Skipping Unix permission test on Windows")
 	}
 
