@@ -332,17 +332,22 @@ func runInteractiveFeatureAdd(repoPath string) error {
 	}
 
 	// Build a map of already installed features across selected shells
+	// Optimize by parsing each shell's manifest only once
 	installedFeatures := make(map[string]bool)
 	for _, shellName := range selectedShells {
-		// Check all features in catalog against this shell
-		for _, f := range allFeatures {
-			if isFeatureInstalled(repoPath, shellName, f.Name) {
-				installedFeatures[f.Name] = true
-			}
+		manifestPath := shell.GetManifestPath(repoPath, shellName)
+		m, err := manifest.ParseManifest(manifestPath)
+		if err != nil {
+			// Shell not initialized yet, skip
+			continue
+		}
+		// Mark all features in this shell as installed
+		for _, f := range m.Features {
+			installedFeatures[f.Name] = true
 		}
 	}
 
-	// Create feature options with descriptions
+	// Create feature options with descriptions and label-to-feature map for O(1) lookup
 	type featureOption struct {
 		feature catalog.FeatureMetadata
 		label   string
@@ -350,11 +355,13 @@ func runInteractiveFeatureAdd(repoPath string) error {
 
 	options := make([]featureOption, len(allFeatures))
 	optionLabels := make([]string, len(allFeatures))
+	labelToFeatureName := make(map[string]string, len(allFeatures))
 
 	for i, f := range allFeatures {
 		label := fmt.Sprintf("%s - %s [%s]", f.Name, f.Description, f.Category)
 		options[i] = featureOption{feature: f, label: label}
 		optionLabels[i] = label
+		labelToFeatureName[label] = f.Name
 	}
 
 	// Prompt user to select features with already installed ones pre-selected
@@ -362,13 +369,11 @@ func runInteractiveFeatureAdd(repoPath string) error {
 		"Select features to add:",
 		optionLabels,
 		func(label string) bool {
-			// Extract feature name from label (before " - ")
-			for _, opt := range options {
-				if opt.label == label {
-					return installedFeatures[opt.feature.Name]
-				}
+			featureName, exists := labelToFeatureName[label]
+			if !exists {
+				return false
 			}
-			return false
+			return installedFeatures[featureName]
 		},
 	)
 	if err != nil {
