@@ -196,6 +196,17 @@ func sortFeaturesByCategory(features []catalog.FeatureMetadata) {
 	})
 }
 
+// isFeatureInstalled checks if a feature is installed in a specific shell
+func isFeatureInstalled(repoPath, shellName, featureName string) bool {
+	manifestPath := shell.GetManifestPath(repoPath, shellName)
+	m, err := manifest.ParseManifest(manifestPath)
+	if err != nil {
+		return false
+	}
+	_, err = m.GetFeature(featureName)
+	return err == nil
+}
+
 func runFeatureAdd(cmd *cobra.Command, args []string) error {
 	repoPath := viper.GetString("repo-path")
 
@@ -323,14 +334,11 @@ func runInteractiveFeatureAdd(repoPath string) error {
 	// Build a map of already installed features across selected shells
 	installedFeatures := make(map[string]bool)
 	for _, shellName := range selectedShells {
-		manifestPath := shell.GetManifestPath(repoPath, shellName)
-		m, err := manifest.ParseManifest(manifestPath)
-		if err != nil {
-			// Shell not initialized yet, skip
-			continue
-		}
-		for _, f := range m.Features {
-			installedFeatures[f.Name] = true
+		// Check all features in catalog against this shell
+		for _, f := range allFeatures {
+			if isFeatureInstalled(repoPath, shellName, f.Name) {
+				installedFeatures[f.Name] = true
+			}
 		}
 	}
 
@@ -399,15 +407,11 @@ func runInteractiveFeatureAdd(repoPath string) error {
 			}
 
 			// Check if feature is already installed in this shell
-			manifestPath := shell.GetManifestPath(repoPath, shellName)
-			m, err := manifest.ParseManifest(manifestPath)
-			if err == nil {
-				if _, err := m.GetFeature(feature.Name); err == nil {
-					// Feature already installed, skip
-					fileops.ColorPrintfn(fileops.Yellow, "Skipping %s in %s (already installed)", feature.Name, shellName)
-					skippedCount++
-					continue
-				}
+			if isFeatureInstalled(repoPath, shellName, feature.Name) {
+				// Feature already installed, skip
+				fileops.ColorPrintfn(fileops.Yellow, "Skipping %s in %s (already installed)", feature.Name, shellName)
+				skippedCount++
+				continue
 			}
 
 			fileops.ColorPrintfn(fileops.Cyan, "Adding %s to %s...", feature.Name, shellName)
