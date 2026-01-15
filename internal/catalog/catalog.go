@@ -24,7 +24,7 @@ var Catalog = map[string]FeatureMetadata{
 		Name:            "git-prompt",
 		Description:     "Git branch and status in shell prompt",
 		Category:        "prompt",
-		DefaultStrategy: "defer",
+		DefaultStrategy: "eager",
 		DefaultCommands: nil,
 		SupportedShells: []string{"bash", "zsh", "fish"},
 	},
@@ -99,6 +99,14 @@ var Catalog = map[string]FeatureMetadata{
 		DefaultStrategy: "eager",
 		DefaultCommands: nil,
 		SupportedShells: []string{"bash", "zsh", "fish", "posix"},
+	},
+	"oh-my-dot-completion": {
+		Name:            "oh-my-dot-completion",
+		Description:     "Shell completions for oh-my-dot commands",
+		Category:        "completion",
+		DefaultStrategy: "eager",
+		DefaultCommands: nil,
+		SupportedShells: []string{"bash", "zsh", "fish"},
 	},
 }
 

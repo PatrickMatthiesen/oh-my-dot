@@ -17,6 +17,8 @@ This file provides coding guidelines and commands for AI agents working on the o
 
 ```bash
 # Development build with version info (recommended)
+# puts binary in ./build/oh-my-dot and has a canary version
+# on linux the shell path needs to be updated when testing dev builds
 bun run build.ts
 
 # Development build to custom directory
@@ -229,6 +231,32 @@ if err := RegenerateInitScript(repoPath, shellName); err != nil {
 - **defer**: Background load for interactive shells (Phase 5 - TODO)
 - **on-command**: Lazy-load when command is invoked (Phase 5 - TODO)
 
+### Init Script Re-sourcing Behavior
+
+When `.bashrc` is re-sourced, the init script guard allows **eager features to re-run** to handle cases where `.bashrc` resets environment variables like `PS1`. This is important for features that modify the prompt or environment.
+
+**Eager features that don't need re-running must include their own guard:**
+
+```bash
+# Example: Expensive or state-dependent eager feature
+if [ "${OMD_FEATURE_MYFEATURE_LOADED:-}" = "1" ]; then
+  return 0
+fi
+export OMD_FEATURE_MYFEATURE_LOADED=1
+
+# Rest of feature implementation...
+```
+
+**Use feature-level guards for:**
+- Expensive operations (network calls, heavy computation)
+- State-dependent setup (starting daemons, checking system state)
+- One-time initialization that shouldn't repeat
+
+**Don't use feature-level guards for:**
+- Prompt modifications (PS1, RPROMPT) - need to re-apply on `.bashrc` re-source
+- Environment variable modifications (PATH, EDITOR) - should be re-applied
+- Function/alias definitions - harmless to redefine, but guard is optional
+
 ### Key Files to Understand
 
 - `internal/manifest/manifest.go` - Feature manifest parsing/validation
@@ -264,3 +292,7 @@ Init scripts are automatically regenerated when features are added/removed/enabl
 Specs are in `docs/specs/<feature>/`. Key shell framework spec is `docs/specs/shell-framework/README.md`.
 
 Always refer to specs when implementing new shell framework features.
+
+## Feature template
+
+When creating new shell features don't add shebangs (e.g. `#!/bin/bash`) at the top of feature files. The init scripts handle shell detection and sourcing appropriately.
