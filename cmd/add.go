@@ -61,9 +61,26 @@ var addCommand = &cobra.Command{
 				return
 			}
 
-			// Process each selected file
+			// Process each selected file and track results
+			successCount := 0
+			failCount := 0
 			for _, f := range files {
-				processAddFile(cmd, f, forceOverwrite)
+				if processAddFile(cmd, f, forceOverwrite) {
+					successCount++
+				} else {
+					failCount++
+				}
+			}
+
+			// Show summary if more than 1 file was processed
+			if len(files) > 1 {
+				fileops.ColorPrintfn(fileops.Green, "\nSummary: %d file(s) added successfully", successCount)
+				if failCount > 0 {
+					fileops.ColorPrintfn(fileops.Red, "         %d file(s) failed", failCount)
+				}
+			} else if successCount == 1 {
+				// For single file, show simple success message
+				fileops.ColorPrintfn(fileops.Green, "Added %s", files[0])
 			}
 			return
 		}
@@ -88,19 +105,23 @@ var addCommand = &cobra.Command{
 			return
 		}
 
-		processAddFile(cmd, file, forceOverwrite)
+		// Process single file
+		if processAddFile(cmd, file, forceOverwrite) {
+			fileops.ColorPrintfn(fileops.Green, "Added %s", file)
+		}
 	},
 }
 
 // processAddFile handles adding a single file with conflict resolution
-func processAddFile(cmd *cobra.Command, file string, forceOverwrite bool) {
+// Returns true if the file was added successfully, false otherwise
+func processAddFile(cmd *cobra.Command, file string, forceOverwrite bool) bool {
 	copy, _ := cmd.Flags().GetString("copy-to")
 	if copy != "" {
 		var err error
 		copy, err = filepath.Abs(copy)
 		if err != nil {
 			fileops.ColorPrintfn(fileops.Red, "Error%s when adding %s: %s", fileops.Reset, file, err)
-			return
+			return false
 		}
 
 		// Check if target file exists
@@ -115,7 +136,7 @@ func processAddFile(cmd *cobra.Command, file string, forceOverwrite bool) {
 				overwrite, err := interactive.PromptConfirm("File " + targetFile + " already exists. Overwrite?")
 				if err != nil || !overwrite {
 					fileops.ColorPrintln("Skipping "+file, fileops.Yellow)
-					return
+					return false
 				}
 			} else {
 				// Non-interactive mode: error on conflict
@@ -132,7 +153,7 @@ func processAddFile(cmd *cobra.Command, file string, forceOverwrite bool) {
 
 		if err != nil {
 			fileops.ColorPrintfn(fileops.Red, "Error%s when adding %s: %s", fileops.Reset, file, err)
-			return
+			return false
 		}
 		file = copy
 	}
@@ -144,7 +165,7 @@ func processAddFile(cmd *cobra.Command, file string, forceOverwrite bool) {
 		move, err = filepath.Abs(move)
 		if err != nil {
 			fileops.ColorPrintfn(fileops.Red, "Error%s when adding %s: %s", fileops.Reset, file, err)
-			return
+			return false
 		}
 
 		if fileops.IsDir(move) {
@@ -158,7 +179,7 @@ func processAddFile(cmd *cobra.Command, file string, forceOverwrite bool) {
 				overwrite, err := interactive.PromptConfirm("File " + move + " already exists. Overwrite?")
 				if err != nil || !overwrite {
 					fileops.ColorPrintln("Skipping "+file, fileops.Yellow)
-					return
+					return false
 				}
 			} else {
 				// Non-interactive mode: error on conflict
@@ -171,7 +192,7 @@ func processAddFile(cmd *cobra.Command, file string, forceOverwrite bool) {
 
 		if err != nil {
 			fileops.ColorPrintfn(fileops.Red, "Error%s when adding %s: %s", fileops.Reset, file, err)
-			return
+			return false
 		}
 
 		file = move
@@ -180,13 +201,13 @@ func processAddFile(cmd *cobra.Command, file string, forceOverwrite bool) {
 	err := git.LinkAndAddFile(file)
 	if err != nil {
 		fileops.ColorPrintfn(fileops.Red, "Error%s when adding %s: %s", fileops.Reset, file, err)
-		return
+		return false
 	}
 
 	absFilePath, _ := filepath.Abs(file)
 	err = symlink.AddLinking(filepath.Base(file), absFilePath)
 	if err != nil {
-		return
+		return false
 	}
 
 	noCommit, _ := cmd.Flags().GetBool("no-commit")
@@ -194,9 +215,9 @@ func processAddFile(cmd *cobra.Command, file string, forceOverwrite bool) {
 		err = git.Commit("Added " + file)
 		if err != nil {
 			fileops.ColorPrintfn(fileops.Red, "Error%s when adding and commiting %s: %s", fileops.Reset, file, err)
-			return
+			return false
 		}
 	}
 
-	fileops.ColorPrintfn(fileops.Green, "Added%s %s", fileops.Reset, file)
+	return true
 }
