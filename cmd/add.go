@@ -76,7 +76,9 @@ var addCommand = &cobra.Command{
 			// Show summary if more than 1 file was processed
 			if len(files) > 1 {
 				fmt.Println() // Add blank line before summary
-				fileops.ColorPrintfn(fileops.Green, "Summary: %d file(s) added successfully", successCount)
+				if successCount > 0 {
+					fileops.ColorPrintfn(fileops.Green, "Summary: %d file(s) added successfully", successCount)
+				}
 				if failCount > 0 {
 					fileops.ColorPrintfn(fileops.Red, "Summary: %d file(s) failed", failCount)
 				}
@@ -209,6 +211,7 @@ func processAddFile(cmd *cobra.Command, file string, forceOverwrite bool) bool {
 	absFilePath, _ := filepath.Abs(file)
 	err = symlink.AddLinking(filepath.Base(file), absFilePath)
 	if err != nil {
+		fileops.ColorPrintfn(fileops.Red, "Error%s when adding symlink for %s: %s", fileops.Reset, file, err)
 		return false
 	}
 
