@@ -18,11 +18,30 @@ parse_git_dirty() {
 git_prompt() {
     local branch=$(parse_git_branch)
     if [ -n "$branch" ]; then
+        # Choose appropriate non-printing markers for color codes based on shell
+        local red_start green_start color_end
+        if [ -n "$BASH_VERSION" ]; then
+            # Bash uses \001 and \002 to mark non-printing characters in PS1
+            red_start=$'\001\033[0;31m\002'
+            green_start=$'\001\033[0;32m\002'
+            color_end=$'\001\033[0m\002'
+        elif [ -n "$ZSH_VERSION" ]; then
+            # Zsh uses %{ %} to wrap non-printing sequences in the prompt
+            red_start=$'%{\033[0;31m%}'
+            green_start=$'%{\033[0;32m%}'
+            color_end=$'%{\033[0m%}'
+        else
+            # Fallback: plain ANSI escapes without non-printing markers
+            red_start=$'\033[0;31m'
+            green_start=$'\033[0;32m'
+            color_end=$'\033[0m'
+        fi
+
         local dirty=$(parse_git_dirty)
         if [ -n "$dirty" ]; then
-            printf " (\001\033[0;31m\002%s%s\001\033[0m\002)" "$branch" "$dirty"
+            printf " (%s%s%s%s)" "$red_start" "$branch" "$dirty" "$color_end"
         else
-            printf " (\001\033[0;32m\002%s\001\033[0m\002)" "$branch"
+            printf " (%s%s%s)" "$green_start" "$branch" "$color_end"
         fi
     fi
 }
@@ -44,5 +63,14 @@ if [ -n "$BASH_VERSION" ]; then
 elif [ -n "$ZSH_VERSION" ]; then
     # Zsh prompt - enable parameter expansion in prompts
     setopt PROMPT_SUBST
-    export PROMPT='%n@%h:%~$(git_prompt)%# '
+    # Preserve existing PROMPT where possible and only add git_prompt once
+    if [[ "$PROMPT" != *'$(git_prompt)'* ]]; then
+        if [ -z "$PROMPT" ]; then
+            # Default zsh prompt style with git_prompt
+            export PROMPT='%n@%h:%~$(git_prompt)%# '
+        else
+            # Append git_prompt to the existing prompt
+            export PROMPT="${PROMPT}\$(git_prompt)"
+        fi
+    fi
 fi

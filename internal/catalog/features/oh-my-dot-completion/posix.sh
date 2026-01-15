@@ -11,9 +11,13 @@ if command -v omdot >/dev/null 2>&1 || command -v oh-my-dot >/dev/null 2>&1; the
     
     if [ -n "$BASH_VERSION" ]; then
         # Bash completion
-        source <($OMD_CMD completion bash)
+        if omd_completion_output="$($OMD_CMD completion bash 2>/dev/null)"; then
+            source /dev/stdin <<<"$omd_completion_output"
+        fi
     elif [ -n "$ZSH_VERSION" ]; then
         # Zsh completion
-        source <($OMD_CMD completion zsh)
+        if omd_completion_output="$($OMD_CMD completion zsh 2>/dev/null)"; then
+            source /dev/stdin <<<"$omd_completion_output"
+        fi
     fi
 fi

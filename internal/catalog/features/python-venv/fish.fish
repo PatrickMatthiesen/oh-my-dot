@@ -46,7 +46,6 @@ alias pipl='pip list'
 
 # Python aliases
 alias py='python3'
-alias python='python3'
 alias ipy='ipython'
 
 # Django aliases (if using Django)

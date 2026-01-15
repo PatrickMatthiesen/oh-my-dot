@@ -25,7 +25,7 @@ if command -v terraform >/dev/null 2>&1; then
     alias tff='terraform fmt'
     alias tfs='terraform show'
     alias tfw='terraform workspace'
-    alias tfws='terraform workspace show'
+    alias tfwsh='terraform workspace show'
     alias tfwl='terraform workspace list'
     alias tfws='terraform workspace select'
     alias tfo='terraform output'

@@ -33,7 +33,7 @@ alias here='pwd'
 if command -v xdg-open >/dev/null 2>&1; then
     alias open='xdg-open'
 elif command -v open >/dev/null 2>&1; then
-    # macOS already has 'open'
+    # macOS: 'open' already exists; keep the built-in command and do nothing here
     :
 fi
 

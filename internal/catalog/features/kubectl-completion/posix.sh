@@ -6,12 +6,12 @@ if command -v kubectl >/dev/null 2>&1; then
     # Generate completions for bash/zsh
     if [ -n "$BASH_VERSION" ]; then
         # Bash completion
-        source <(kubectl completion bash)
+        source <(kubectl completion bash 2>/dev/null || true)
         # Enable alias completion
         complete -o default -F __start_kubectl k
     elif [ -n "$ZSH_VERSION" ]; then
         # Zsh completion
-        source <(kubectl completion zsh)
+        source <(kubectl completion zsh 2>/dev/null || true)
         # Enable alias completion
         compdef __start_kubectl k
     fi

@@ -6,7 +6,7 @@ if command -v terraform >/dev/null 2>&1
     # Terraform has built-in completion support
     # Fish completion is usually installed automatically with terraform
     # But we can ensure it's available
-    complete -c terraform -a '(terraform -help 2>&1 | grep -E "^\s+[a-z]+" | awk "{print \$1}")'
+    complete -c terraform -a '(terraform -help 2>&1 | grep -E "^\\s+[a-z]+" | awk "{print \\$1}")'
     
     # Common terraform aliases
     alias tf='terraform'
@@ -18,9 +18,9 @@ if command -v terraform >/dev/null 2>&1
     alias tff='terraform fmt'
     alias tfs='terraform show'
     alias tfw='terraform workspace'
-    alias tfws='terraform workspace show'
+    alias tfwsh='terraform workspace show'
     alias tfwl='terraform workspace list'
-    alias tfwselect='terraform workspace select'
+    alias tfws='terraform workspace select'
     alias tfo='terraform output'
     alias tfr='terraform refresh'
     alias tft='terraform taint'
