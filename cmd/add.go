@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -74,9 +75,10 @@ var addCommand = &cobra.Command{
 
 			// Show summary if more than 1 file was processed
 			if len(files) > 1 {
-				fileops.ColorPrintfn(fileops.Green, "\nSummary: %d file(s) added successfully", successCount)
+				fmt.Println() // Add blank line before summary
+				fileops.ColorPrintfn(fileops.Green, "Summary: %d file(s) added successfully", successCount)
 				if failCount > 0 {
-					fileops.ColorPrintfn(fileops.Red, "         %d file(s) failed", failCount)
+					fileops.ColorPrintfn(fileops.Red, "Summary: %d file(s) failed", failCount)
 				}
 			} else if successCount == 1 {
 				// For single file, show simple success message
