@@ -388,10 +388,18 @@ func runInteractiveFeatureAdd(repoPath string) error {
 	// Map selected labels back to features using O(n) instead of O(n*m)
 	var selectedFeatures []catalog.FeatureMetadata
 	for _, selectedLabel := range selectedLabels {
-		featureName := labelToFeatureName[selectedLabel]
+		featureName, exists := labelToFeatureName[selectedLabel]
+		if !exists {
+			// This should never happen, but defensive check
+			fileops.ColorPrintfn(fileops.Yellow, "Warning: Could not find feature for label: %s", selectedLabel)
+			continue
+		}
 		// Get feature from catalog using the name
 		if metadata, found := catalog.GetFeature(featureName); found {
 			selectedFeatures = append(selectedFeatures, metadata)
+		} else {
+			// This should never happen since we got labels from catalog.ListFeatures()
+			fileops.ColorPrintfn(fileops.Yellow, "Warning: Feature %s not found in catalog", featureName)
 		}
 	}
 
