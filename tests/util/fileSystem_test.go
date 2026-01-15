@@ -41,6 +41,53 @@ func Test_IsDir(t *testing.T) {
 	}
 }
 
+func Test_ExpandPath_TildePrefix(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "tilde only",
+			input:    "~",
+			expected: home,
+		},
+		{
+			name:     "tilde with forward slash",
+			input:    "~/Documents",
+			expected: filepath.Join(home, "Documents"),
+		},
+		{
+			name:     "tilde with nested path",
+			input:    "~/Documents/test.txt",
+			expected: filepath.Join(home, "Documents", "test.txt"),
+		},
+		{
+			name:     "non-tilde path",
+			input:    "/etc/config",
+			expected: "/etc/config",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := fileops.ExpandPath(tt.input)
+			if err != nil {
+				t.Fatalf("ExpandPath returned error: %v", err)
+			}
+
+			if result != tt.expected {
+				t.Errorf("Expected %s, got %s", tt.expected, result)
+			}
+		})
+	}
+}
+
 func Fuzz_ExpandPath_NonEmptyHomePath(f *testing.F) {
 	home, err := os.UserHomeDir()
 	testutil.TBErrorIfNotNil(f, err)
