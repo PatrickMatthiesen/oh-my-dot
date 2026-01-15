@@ -17,6 +17,8 @@ This file provides coding guidelines and commands for AI agents working on the o
 
 ```bash
 # Development build with version info (recommended)
+# puts binary in ./build/oh-my-dot and has a canary version
+# on linux the shell path needs to be updated when testing dev builds
 bun run build.ts
 
 # Development build to custom directory
