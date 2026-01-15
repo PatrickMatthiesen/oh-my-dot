@@ -219,7 +219,7 @@ func processAddFile(cmd *cobra.Command, file string, forceOverwrite bool) bool {
 	if !noCommit {
 		err = git.Commit("Added " + file)
 		if err != nil {
-			fileops.ColorPrintfn(fileops.Red, "Error%s when adding and commiting %s: %s", fileops.Reset, file, err)
+			fileops.ColorPrintfn(fileops.Red, "Error%s when adding and committing %s: %s", fileops.Reset, file, err)
 			return false
 		}
 	}
