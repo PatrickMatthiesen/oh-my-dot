@@ -123,9 +123,8 @@ fi
 		sb.WriteString("_omd_load_deferred_features() {\n")
 		sb.WriteString("  if [[ $- == *i* ]]; then\n")
 		for _, feature := range features.Defer {
-			sb.WriteString(fmt.Sprintf(`    local feature_file="$OMD_SHELL_ROOT/features/%s.sh"
-    [ -r "$feature_file" ] && { . "$feature_file"; } &
-`, feature))
+			sb.WriteString(fmt.Sprintf(`    ( [ -r "$OMD_SHELL_ROOT/features/%s.sh" ] && . "$OMD_SHELL_ROOT/features/%s.sh" ) &
+`, feature, feature))
 		}
 		sb.WriteString("  fi\n")
 		sb.WriteString("}\n\n")
@@ -255,9 +254,8 @@ fi
 		sb.WriteString("_omd_load_deferred_features() {\n")
 		sb.WriteString("  if [[ -o interactive ]]; then\n")
 		for _, feature := range features.Defer {
-			sb.WriteString(fmt.Sprintf(`    local feature_file="$OMD_SHELL_ROOT/features/%s.zsh"
-    [[ -r "$feature_file" ]] && . "$feature_file" &!
-`, feature))
+			sb.WriteString(fmt.Sprintf(`    ( [[ -r "$OMD_SHELL_ROOT/features/%s.zsh" ]] && . "$OMD_SHELL_ROOT/features/%s.zsh" ) &!
+`, feature, feature))
 		}
 		sb.WriteString("  fi\n")
 		sb.WriteString("}\n\n")
@@ -587,9 +585,8 @@ fi
 		sb.WriteString("case $- in\n")
 		sb.WriteString("  *i*)\n")
 		for _, feature := range features.Defer {
-			sb.WriteString(fmt.Sprintf(`    feature_file="$OMD_SHELL_ROOT/features/%s.sh"
-    [ -r "$feature_file" ] && { . "$feature_file"; } &
-`, feature))
+			sb.WriteString(fmt.Sprintf(`    ( [ -r "$OMD_SHELL_ROOT/features/%s.sh" ] && . "$OMD_SHELL_ROOT/features/%s.sh" ) &
+`, feature, feature))
 		}
 		sb.WriteString("    ;;\n")
 		sb.WriteString("esac\n\n")
