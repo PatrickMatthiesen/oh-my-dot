@@ -33,10 +33,10 @@ alias gco='git checkout'
 alias gb='git branch'
 alias gl='git log --oneline --graph --decorate'
 
-# Safety aliases
-alias rm='rm -i'
-alias cp='cp -i'
-alias mv='mv -i'
+# Safety aliases (Enable interactive prompts if needed)
+# alias rm='rm -i'
+# alias cp='cp -i'
+# alias mv='mv -i'
 
 # Directory listing
 alias lsd='ls -d */'

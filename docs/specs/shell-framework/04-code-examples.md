@@ -524,10 +524,10 @@ if ((Test-Path $localManifest) -and (Test-LocalManifestSecurity $localManifest))
 # Essential command aliases
 # Strategy: eager
 
-# Safety aliases
-alias rm='rm -i'
-alias cp='cp -i'
-alias mv='mv -i'
+# Safety aliases (Enable interactive prompts if needed)
+# alias rm='rm -i'
+# alias cp='cp -i'
+# alias mv='mv -i'
 
 # Directory navigation
 alias ..='cd ..'
