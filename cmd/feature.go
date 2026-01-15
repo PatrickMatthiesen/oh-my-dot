@@ -385,14 +385,13 @@ func runInteractiveFeatureAdd(repoPath string) error {
 		return nil
 	}
 
-	// Map selected labels back to features
+	// Map selected labels back to features using O(n) instead of O(n*m)
 	var selectedFeatures []catalog.FeatureMetadata
 	for _, selectedLabel := range selectedLabels {
-		for _, opt := range options {
-			if opt.label == selectedLabel {
-				selectedFeatures = append(selectedFeatures, opt.feature)
-				break
-			}
+		featureName := labelToFeatureName[selectedLabel]
+		// Get feature from catalog using the name
+		if metadata, found := catalog.GetFeature(featureName); found {
+			selectedFeatures = append(selectedFeatures, metadata)
 		}
 	}
 
