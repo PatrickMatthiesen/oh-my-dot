@@ -288,6 +288,52 @@ func runInteractiveFeatureAdd(repoPath string) error {
 	// Sort features by category first, then alphabetically by name
 	sortFeaturesByCategory(allFeatures)
 
+	// Detect current shell first to pre-select it
+	currentShell, _ := shell.DetectCurrentShell()
+
+	// Collect all supported shells from all features
+	shellSet := make(map[string]bool)
+	for _, f := range allFeatures {
+		for _, s := range f.SupportedShells {
+			shellSet[s] = true
+		}
+	}
+
+	// Convert to sorted list
+	var availableShells []string
+	for s := range shellSet {
+		availableShells = append(availableShells, s)
+	}
+
+	// Prompt for shell selection FIRST
+	selectedShells, err := interactive.MultiSelect(
+		"Select shells to add features to:",
+		availableShells,
+		func(s string) bool { return s == currentShell },
+	)
+	if err != nil {
+		return fmt.Errorf("shell selection cancelled: %w", err)
+	}
+
+	if len(selectedShells) == 0 {
+		fileops.ColorPrintln("No shells selected", fileops.Yellow)
+		return nil
+	}
+
+	// Build a map of already installed features across selected shells
+	installedFeatures := make(map[string]bool)
+	for _, shellName := range selectedShells {
+		manifestPath := shell.GetManifestPath(repoPath, shellName)
+		m, err := manifest.ParseManifest(manifestPath)
+		if err != nil {
+			// Shell not initialized yet, skip
+			continue
+		}
+		for _, f := range m.Features {
+			installedFeatures[f.Name] = true
+		}
+	}
+
 	// Create feature options with descriptions
 	type featureOption struct {
 		feature catalog.FeatureMetadata
@@ -303,11 +349,19 @@ func runInteractiveFeatureAdd(repoPath string) error {
 		optionLabels[i] = label
 	}
 
-	// Prompt user to select features
+	// Prompt user to select features with already installed ones pre-selected
 	selectedLabels, err := interactive.MultiSelect(
 		"Select features to add:",
 		optionLabels,
-		nil,
+		func(label string) bool {
+			// Extract feature name from label (before " - ")
+			for _, opt := range options {
+				if opt.label == label {
+					return installedFeatures[opt.feature.Name]
+				}
+			}
+			return false
+		},
 	)
 	if err != nil {
 		return fmt.Errorf("feature selection cancelled: %w", err)
@@ -329,38 +383,6 @@ func runInteractiveFeatureAdd(repoPath string) error {
 		}
 	}
 
-	// Detect current shell
-	currentShell, _ := shell.DetectCurrentShell()
-
-	// Collect all supported shells from selected features
-	shellSet := make(map[string]bool)
-	for _, f := range selectedFeatures {
-		for _, s := range f.SupportedShells {
-			shellSet[s] = true
-		}
-	}
-
-	// Convert to sorted list
-	var availableShells []string
-	for s := range shellSet {
-		availableShells = append(availableShells, s)
-	}
-
-	// Prompt for shell selection
-	selectedShells, err := interactive.MultiSelect(
-		"Select shells to add features to:",
-		availableShells,
-		func(s string) bool { return s == currentShell },
-	)
-	if err != nil {
-		return fmt.Errorf("shell selection cancelled: %w", err)
-	}
-
-	if len(selectedShells) == 0 {
-		fileops.ColorPrintln("No shells selected", fileops.Yellow)
-		return nil
-	}
-
 	// Add each feature to each selected shell (if supported)
 	addedCount := 0
 	skippedCount := 0
@@ -376,9 +398,21 @@ func runInteractiveFeatureAdd(repoPath string) error {
 				continue
 			}
 
+			// Check if feature is already installed in this shell
+			manifestPath := shell.GetManifestPath(repoPath, shellName)
+			m, err := manifest.ParseManifest(manifestPath)
+			if err == nil {
+				if _, err := m.GetFeature(feature.Name); err == nil {
+					// Feature already installed, skip
+					fileops.ColorPrintfn(fileops.Yellow, "Skipping %s in %s (already installed)", feature.Name, shellName)
+					skippedCount++
+					continue
+				}
+			}
+
 			fileops.ColorPrintfn(fileops.Cyan, "Adding %s to %s...", feature.Name, shellName)
 
-			err := shell.AddFeatureToShell(repoPath, shellName, feature.Name, flagStrategy, flagOnCommand, flagDisabled)
+			err = shell.AddFeatureToShell(repoPath, shellName, feature.Name, flagStrategy, flagOnCommand, flagDisabled)
 			if err != nil {
 				fileops.ColorPrintfn(fileops.Red, "  ✗ Failed: %s", err)
 				skippedCount++
