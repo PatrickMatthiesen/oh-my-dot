@@ -85,8 +85,13 @@ func generateBashInit(features FeaturesByStrategy) string {
 # oh-my-dot shell framework - bash init script
 # Auto-generated - do not edit manually
 
-# Guard against double-loading
+# Guard against double-loading functions (but allow eager re-loading)
 if [ "${OMD_BASH_LOADED:-}" = "1" ]; then
+  # If already loaded, just re-apply eager features that modify environment
+  # This handles the case where .bashrc is re-sourced and resets PS1
+  if [ -n "${_omd_load_eager_features:-}" ] && type -t _omd_load_eager_features >/dev/null 2>&1; then
+    _omd_load_eager_features
+  fi
   return 0
 fi
 OMD_BASH_LOADED=1
@@ -188,12 +193,10 @@ fi
 		sb.WriteString("_omd_load_deferred_features\n")
 	}
 
-	// Cleanup
-	sb.WriteString("\n# Cleanup\n")
+	// Cleanup (keep _omd_load_eager_features for re-sourcing)
+	sb.WriteString("\n# Cleanup (keep _omd_load_eager_features for re-sourcing)\n")
 	funcsToClean := []string{}
-	if len(features.Eager) > 0 {
-		funcsToClean = append(funcsToClean, "_omd_load_eager_features")
-	}
+	// Don't clean up eager features function - needed for re-sourcing .bashrc
 	if len(features.Defer) > 0 {
 		funcsToClean = append(funcsToClean, "_omd_load_deferred_features")
 	}

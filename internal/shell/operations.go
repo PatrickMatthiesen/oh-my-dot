@@ -226,6 +226,35 @@ func CleanupShellDirectory(repoPath, shellName string) error {
 	return os.RemoveAll(shellDir)
 }
 
+// EnableFeatureWithOptions enables a disabled feature and optionally updates its configuration
+func EnableFeatureWithOptions(repoPath, shellName, featureName, strategy string, onCommand []string) error {
+	manifestPath := GetManifestPath(repoPath, shellName)
+	m, err := manifest.ParseManifest(manifestPath)
+	if err != nil {
+		return fmt.Errorf("failed to parse manifest: %w", err)
+	}
+
+	err = m.UpdateFeature(featureName, func(f *manifest.FeatureConfig) {
+		f.Disabled = false
+		if strategy != "" {
+			f.Strategy = strategy
+		}
+		if len(onCommand) > 0 {
+			f.OnCommand = onCommand
+		}
+	})
+	if err != nil {
+		return err
+	}
+
+	if err := manifest.WriteManifest(manifestPath, m); err != nil {
+		return err
+	}
+
+	// Regenerate init script to include the enabled feature
+	return RegenerateInitScript(repoPath, shellName)
+}
+
 // EnableFeature enables a disabled feature
 func EnableFeature(repoPath, shellName, featureName string) error {
 	manifestPath := GetManifestPath(repoPath, shellName)

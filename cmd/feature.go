@@ -846,8 +846,15 @@ func runFeatureEnable(cmd *cobra.Command, args []string) error {
 	}
 
 	for _, shellName := range targetShells {
-		if err := shell.EnableFeature(repoPath, shellName, featureName); err != nil {
-			return fmt.Errorf("failed to enable feature in %s: %w", shellName, err)
+		// Use EnableFeatureWithOptions if strategy or onCommand flags are provided
+		if flagStrategy != "" || len(flagOnCommand) > 0 {
+			if err := shell.EnableFeatureWithOptions(repoPath, shellName, featureName, flagStrategy, flagOnCommand); err != nil {
+				return fmt.Errorf("failed to enable feature in %s: %w", shellName, err)
+			}
+		} else {
+			if err := shell.EnableFeature(repoPath, shellName, featureName); err != nil {
+				return fmt.Errorf("failed to enable feature in %s: %w", shellName, err)
+			}
 		}
 		fileops.ColorPrintfn(fileops.Green, "Enabled %s in %s", featureName, shellName)
 	}

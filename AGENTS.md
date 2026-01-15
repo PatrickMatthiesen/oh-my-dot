@@ -231,6 +231,32 @@ if err := RegenerateInitScript(repoPath, shellName); err != nil {
 - **defer**: Background load for interactive shells (Phase 5 - TODO)
 - **on-command**: Lazy-load when command is invoked (Phase 5 - TODO)
 
+### Init Script Re-sourcing Behavior
+
+When `.bashrc` is re-sourced, the init script guard allows **eager features to re-run** to handle cases where `.bashrc` resets environment variables like `PS1`. This is important for features that modify the prompt or environment.
+
+**Eager features that don't need re-running must include their own guard:**
+
+```bash
+# Example: Expensive or state-dependent eager feature
+if [ "${OMD_FEATURE_MYFEATURE_LOADED:-}" = "1" ]; then
+  return 0
+fi
+export OMD_FEATURE_MYFEATURE_LOADED=1
+
+# Rest of feature implementation...
+```
+
+**Use feature-level guards for:**
+- Expensive operations (network calls, heavy computation)
+- State-dependent setup (starting daemons, checking system state)
+- One-time initialization that shouldn't repeat
+
+**Don't use feature-level guards for:**
+- Prompt modifications (PS1, RPROMPT) - need to re-apply on `.bashrc` re-source
+- Environment variable modifications (PATH, EDITOR) - should be re-applied
+- Function/alias definitions - harmless to redefine, but guard is optional
+
 ### Key Files to Understand
 
 - `internal/manifest/manifest.go` - Feature manifest parsing/validation

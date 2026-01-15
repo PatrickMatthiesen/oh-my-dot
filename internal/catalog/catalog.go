@@ -24,7 +24,7 @@ var Catalog = map[string]FeatureMetadata{
 		Name:            "git-prompt",
 		Description:     "Git branch and status in shell prompt",
 		Category:        "prompt",
-		DefaultStrategy: "defer",
+		DefaultStrategy: "eager",
 		DefaultCommands: nil,
 		SupportedShells: []string{"bash", "zsh", "fish"},
 	},

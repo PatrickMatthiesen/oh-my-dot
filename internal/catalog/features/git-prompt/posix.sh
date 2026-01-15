@@ -20,9 +20,9 @@ git_prompt() {
     if [ -n "$branch" ]; then
         local dirty=$(parse_git_dirty)
         if [ -n "$dirty" ]; then
-            echo " (\033[0;31m$branch$dirty\033[0m)"
+            printf " (\001\033[0;31m\002%s%s\001\033[0m\002)" "$branch" "$dirty"
         else
-            echo " (\033[0;32m$branch\033[0m)"
+            printf " (\001\033[0;32m\002%s\001\033[0m\002)" "$branch"
         fi
     fi
 }
@@ -30,8 +30,17 @@ git_prompt() {
 # Add git info to PS1
 # Customize this to match your preferred prompt style
 if [ -n "$BASH_VERSION" ]; then
-    # Bash prompt
-    export PS1='\u@\h:\w$(git_prompt)\$ '
+    # Bash prompt - preserve existing PS1 and add git_prompt
+    # Only modify PS1 if it doesn't already contain git_prompt
+    if [[ "$PS1" != *'$(git_prompt)'* ]]; then
+        # Insert git_prompt before the final $ or # prompt character
+        if [[ "$PS1" =~ (.*)(\\[$\#])([[:space:]]*)$ ]]; then
+            export PS1="${BASH_REMATCH[1]}\$(git_prompt)${BASH_REMATCH[2]}${BASH_REMATCH[3]}"
+        else
+            # Fallback: just append to the end
+            export PS1="${PS1}\$(git_prompt)"
+        fi
+    fi
 elif [ -n "$ZSH_VERSION" ]; then
     # Zsh prompt - enable parameter expansion in prompts
     setopt PROMPT_SUBST
