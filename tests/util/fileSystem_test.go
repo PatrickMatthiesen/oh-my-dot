@@ -6,8 +6,8 @@ import (
 
 	"testing"
 
-	"github.com/PatrickMatthiesen/oh-my-dot/tests/testutil"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
+	"github.com/PatrickMatthiesen/oh-my-dot/tests/testutil"
 	"github.com/spf13/viper"
 )
 
