@@ -68,11 +68,10 @@ func Test_BuildLinkPath_UsesPosixFormat(t *testing.T) {
 		t.Errorf("Result contains backslashes: %s", result)
 	}
 
-	// For paths with subdirectories, result should use forward slashes
-	if strings.Contains(testPath, string(filepath.Separator)+"Documents"+string(filepath.Separator)) {
-		if !strings.Contains(result, "/Documents/") {
-			t.Errorf("Expected POSIX format with forward slashes, got: %s", result)
-		}
+	// Result should contain forward slashes (POSIX format)
+	expected := "~/Documents/test.txt"
+	if result != expected {
+		t.Errorf("Expected %s, got %s", expected, result)
 	}
 }
 
