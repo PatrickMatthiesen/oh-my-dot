@@ -55,18 +55,26 @@ var applyCommand = &cobra.Command{
 				continue
 			}
 
-			if fileops.IsFile(link) {
+			// Expand normalized path (e.g., ~/... to /home/user/...)
+			expandedLink, err := fileops.ExpandPath(link)
+			if err != nil {
+				missingFiles++
+				fileops.ColorPrintfn(fileops.Red, "  Error expanding path %s: %s", link, err)
+				continue
+			}
+
+			if fileops.IsFile(expandedLink) {
 				if verbose {
-					fileops.ColorPrintfn(fileops.Reset, "  Skipping %s: link already exists", link)
+					fileops.ColorPrintfn(fileops.Reset, "  Skipping %s: link already exists", expandedLink)
 				}
 				linkedFiles++
 				continue
 			}
 
-			err = os.Link(file, link)
+			err = os.Link(file, expandedLink)
 			if err != nil {
 				missingFiles++
-				fileops.ColorPrintfn(fileops.Red, "  Error creating hard link %s -> %s: %s", link, file, err)
+				fileops.ColorPrintfn(fileops.Red, "  Error creating hard link %s -> %s: %s", expandedLink, file, err)
 				continue
 			}
 			linkedFiles++
