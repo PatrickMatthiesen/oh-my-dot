@@ -196,6 +196,17 @@ func sortFeaturesByCategory(features []catalog.FeatureMetadata) {
 	})
 }
 
+// isFeatureInstalled checks if a feature is installed in a specific shell
+func isFeatureInstalled(repoPath, shellName, featureName string) bool {
+	manifestPath := shell.GetManifestPath(repoPath, shellName)
+	m, err := manifest.ParseManifest(manifestPath)
+	if err != nil {
+		return false
+	}
+	_, err = m.GetFeature(featureName)
+	return err == nil
+}
+
 func runFeatureAdd(cmd *cobra.Command, args []string) error {
 	repoPath := viper.GetString("repo-path")
 
@@ -288,53 +299,12 @@ func runInteractiveFeatureAdd(repoPath string) error {
 	// Sort features by category first, then alphabetically by name
 	sortFeaturesByCategory(allFeatures)
 
-	// Create feature options with descriptions
-	type featureOption struct {
-		feature catalog.FeatureMetadata
-		label   string
-	}
-
-	options := make([]featureOption, len(allFeatures))
-	optionLabels := make([]string, len(allFeatures))
-
-	for i, f := range allFeatures {
-		label := fmt.Sprintf("%s - %s [%s]", f.Name, f.Description, f.Category)
-		options[i] = featureOption{feature: f, label: label}
-		optionLabels[i] = label
-	}
-
-	// Prompt user to select features
-	selectedLabels, err := interactive.MultiSelect(
-		"Select features to add:",
-		optionLabels,
-		nil,
-	)
-	if err != nil {
-		return fmt.Errorf("feature selection cancelled: %w", err)
-	}
-
-	if len(selectedLabels) == 0 {
-		fileops.ColorPrintln("No features selected", fileops.Yellow)
-		return nil
-	}
-
-	// Map selected labels back to features
-	var selectedFeatures []catalog.FeatureMetadata
-	for _, selectedLabel := range selectedLabels {
-		for _, opt := range options {
-			if opt.label == selectedLabel {
-				selectedFeatures = append(selectedFeatures, opt.feature)
-				break
-			}
-		}
-	}
-
-	// Detect current shell
+	// Detect current shell first to pre-select it
 	currentShell, _ := shell.DetectCurrentShell()
 
-	// Collect all supported shells from selected features
+	// Collect all supported shells from all features
 	shellSet := make(map[string]bool)
-	for _, f := range selectedFeatures {
+	for _, f := range allFeatures {
 		for _, s := range f.SupportedShells {
 			shellSet[s] = true
 		}
@@ -346,7 +316,7 @@ func runInteractiveFeatureAdd(repoPath string) error {
 		availableShells = append(availableShells, s)
 	}
 
-	// Prompt for shell selection
+	// Prompt for shell selection FIRST
 	selectedShells, err := interactive.MultiSelect(
 		"Select shells to add features to:",
 		availableShells,
@@ -359,6 +329,78 @@ func runInteractiveFeatureAdd(repoPath string) error {
 	if len(selectedShells) == 0 {
 		fileops.ColorPrintln("No shells selected", fileops.Yellow)
 		return nil
+	}
+
+	// Build a map of already installed features across selected shells
+	// Optimize by parsing each shell's manifest only once
+	installedFeatures := make(map[string]bool)
+	for _, shellName := range selectedShells {
+		manifestPath := shell.GetManifestPath(repoPath, shellName)
+		m, err := manifest.ParseManifest(manifestPath)
+		if err != nil {
+			// Shell not initialized yet, skip
+			continue
+		}
+		// Mark all features in this shell as installed
+		for _, f := range m.Features {
+			installedFeatures[f.Name] = true
+		}
+	}
+
+	// Create feature options with descriptions and label-to-feature map for O(1) lookup
+	type featureOption struct {
+		feature catalog.FeatureMetadata
+		label   string
+	}
+
+	options := make([]featureOption, len(allFeatures))
+	optionLabels := make([]string, len(allFeatures))
+	labelToFeatureName := make(map[string]string, len(allFeatures))
+
+	for i, f := range allFeatures {
+		label := fmt.Sprintf("%s - %s [%s]", f.Name, f.Description, f.Category)
+		options[i] = featureOption{feature: f, label: label}
+		optionLabels[i] = label
+		labelToFeatureName[label] = f.Name
+	}
+
+	// Prompt user to select features with already installed ones pre-selected
+	selectedLabels, err := interactive.MultiSelect(
+		"Select features to add:",
+		optionLabels,
+		func(label string) bool {
+			featureName, exists := labelToFeatureName[label]
+			if !exists {
+				return false
+			}
+			return installedFeatures[featureName]
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("feature selection cancelled: %w", err)
+	}
+
+	if len(selectedLabels) == 0 {
+		fileops.ColorPrintln("No features selected", fileops.Yellow)
+		return nil
+	}
+
+	// Map selected labels back to features using O(n) instead of O(n*m)
+	var selectedFeatures []catalog.FeatureMetadata
+	for _, selectedLabel := range selectedLabels {
+		featureName, exists := labelToFeatureName[selectedLabel]
+		if !exists {
+			// This should never happen, but defensive check
+			fileops.ColorPrintfn(fileops.Yellow, "Warning: Could not find feature for label: %s", selectedLabel)
+			continue
+		}
+		// Get feature from catalog using the name
+		if metadata, found := catalog.GetFeature(featureName); found {
+			selectedFeatures = append(selectedFeatures, metadata)
+		} else {
+			// This should never happen since we got labels from catalog.ListFeatures()
+			fileops.ColorPrintfn(fileops.Yellow, "Warning: Feature %s not found in catalog", featureName)
+		}
 	}
 
 	// Add each feature to each selected shell (if supported)
@@ -376,9 +418,17 @@ func runInteractiveFeatureAdd(repoPath string) error {
 				continue
 			}
 
+			// Check if feature is already installed in this shell
+			if isFeatureInstalled(repoPath, shellName, feature.Name) {
+				// Feature already installed, skip
+				fileops.ColorPrintfn(fileops.Yellow, "Skipping %s in %s (already installed)", feature.Name, shellName)
+				skippedCount++
+				continue
+			}
+
 			fileops.ColorPrintfn(fileops.Cyan, "Adding %s to %s...", feature.Name, shellName)
 
-			err := shell.AddFeatureToShell(repoPath, shellName, feature.Name, flagStrategy, flagOnCommand, flagDisabled)
+			err = shell.AddFeatureToShell(repoPath, shellName, feature.Name, flagStrategy, flagOnCommand, flagDisabled)
 			if err != nil {
 				fileops.ColorPrintfn(fileops.Red, "  ✗ Failed: %s", err)
 				skippedCount++
