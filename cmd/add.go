@@ -212,7 +212,7 @@ func processAddFile(cmd *cobra.Command, file string, forceOverwrite bool) bool {
 	normalizedPath, err := symlink.BuildLinkPath(absFilePath)
 	if err != nil {
 		fileops.ColorPrintfn(fileops.Red, "Error%s normalizing path for %s: %s", fileops.Reset, file, err)
-		return
+		return false
 	}
 	err = symlink.AddLinking(filepath.Base(file), normalizedPath)
 	if err != nil {
