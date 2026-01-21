@@ -17,6 +17,10 @@ func TestHasFeatureTemplate(t *testing.T) {
 		{"ssh-agent fish", "ssh-agent", "fish", true},
 		{"ssh-agent posix", "ssh-agent", "posix", true},
 		{"ssh-agent sh (fallback to posix)", "ssh-agent", "sh", true},
+		{"homebrew-path bash (fallback to posix)", "homebrew-path", "bash", true},
+		{"homebrew-path zsh (fallback to posix)", "homebrew-path", "zsh", true},
+		{"homebrew-path fish", "homebrew-path", "fish", true},
+		{"homebrew-path posix", "homebrew-path", "posix", true},
 		{"non-existent feature", "non-existent", "bash", false},
 		{"ssh-agent powershell (no fallback)", "ssh-agent", "powershell", false},
 	}
@@ -59,6 +63,27 @@ func TestGetFeatureTemplate(t *testing.T) {
 			shellName:   "fish",
 			wantError:   false,
 			contains:    "SSH_AUTH_SOCK",
+		},
+		{
+			name:        "homebrew-path bash (fallback to posix)",
+			featureName: "homebrew-path",
+			shellName:   "bash",
+			wantError:   false,
+			contains:    "linuxbrew",
+		},
+		{
+			name:        "homebrew-path zsh (fallback to posix)",
+			featureName: "homebrew-path",
+			shellName:   "zsh",
+			wantError:   false,
+			contains:    "linuxbrew",
+		},
+		{
+			name:        "homebrew-path fish",
+			featureName: "homebrew-path",
+			shellName:   "fish",
+			wantError:   false,
+			contains:    "linuxbrew",
 		},
 		{
 			name:        "non-existent feature",

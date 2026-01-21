@@ -108,6 +108,14 @@ var Catalog = map[string]FeatureMetadata{
 		DefaultCommands: nil,
 		SupportedShells: []string{"bash", "zsh", "fish"},
 	},
+	"homebrew-path": {
+		Name:            "homebrew-path",
+		Description:     "Sets up Homebrew PATH on Linux for package management",
+		Category:        "environment",
+		DefaultStrategy: "eager",
+		DefaultCommands: nil,
+		SupportedShells: []string{"bash", "zsh", "fish", "posix"},
+	},
 }
 
 // GetFeature retrieves feature metadata from the catalog
