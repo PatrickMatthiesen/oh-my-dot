@@ -1,13 +1,19 @@
 # Homebrew PATH Setup for Linux
 # Sets up Homebrew's bin directory in PATH for package management
 
+# Homebrew paths
+HOMEBREW_PREFIX="/home/linuxbrew/.linuxbrew"
+HOMEBREW_BIN="$HOMEBREW_PREFIX/bin"
+
 # Check if Homebrew is installed in the standard Linux location
-if [ -d "/home/linuxbrew/.linuxbrew" ]; then
+if [ -d "$HOMEBREW_PREFIX" ]; then
     # Add Homebrew to PATH if not already present
-    if ! echo "$PATH" | grep -q "/home/linuxbrew/.linuxbrew/bin"; then
-        export PATH="/home/linuxbrew/.linuxbrew/bin:$PATH"
-    fi
+    # Use case statement for exact directory matching
+    case ":$PATH:" in
+        *":$HOMEBREW_BIN:"*) ;;
+        *) export PATH="$HOMEBREW_BIN:$PATH" ;;
+    esac
     
     # Set up Homebrew environment
-    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+    eval "$("$HOMEBREW_BIN/brew" shellenv)"
 fi
