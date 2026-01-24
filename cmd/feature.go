@@ -323,6 +323,10 @@ func runInteractiveFeatureAdd(repoPath string) error {
 		func(s string) bool { return s == currentShell },
 	)
 	if err != nil {
+		if err.Error() == "cancelled" {
+			fileops.ColorPrintln("Cancelled", fileops.Yellow)
+			return nil
+		}
 		return fmt.Errorf("shell selection cancelled: %w", err)
 	}
 
@@ -377,6 +381,10 @@ func runInteractiveFeatureAdd(repoPath string) error {
 		},
 	)
 	if err != nil {
+		if err.Error() == "cancelled" {
+			fileops.ColorPrintln("Cancelled", fileops.Yellow)
+			return nil
+		}
 		return fmt.Errorf("feature selection cancelled: %w", err)
 	}
 
