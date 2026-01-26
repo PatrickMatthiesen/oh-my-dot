@@ -207,6 +207,25 @@ func isFeatureInstalled(repoPath, shellName, featureName string) bool {
 	return err == nil
 }
 
+// filterFeaturesByShells returns features that support at least one of the provided shells
+func filterFeaturesByShells(features []catalog.FeatureMetadata, shells []string) []catalog.FeatureMetadata {
+	if len(shells) == 0 {
+		return features
+	}
+
+	filtered := []catalog.FeatureMetadata{}
+	for _, feature := range features {
+		// Check if feature supports any of the selected shells
+		for _, shell := range shells {
+			if feature.SupportsShell(shell) {
+				filtered = append(filtered, feature)
+				break
+			}
+		}
+	}
+	return filtered
+}
+
 func runFeatureAdd(cmd *cobra.Command, args []string) error {
 	repoPath := viper.GetString("repo-path")
 
@@ -310,11 +329,23 @@ func runInteractiveFeatureAdd(repoPath string) error {
 		}
 	}
 
-	// Convert to sorted list
+	// Convert to sorted list with detected shell first
 	var availableShells []string
-	for s := range shellSet {
-		availableShells = append(availableShells, s)
+	
+	// Add detected shell first if it exists
+	if currentShell != "" && shellSet[currentShell] {
+		availableShells = append(availableShells, currentShell)
 	}
+	
+	// Add remaining shells in sorted order
+	var remainingShells []string
+	for s := range shellSet {
+		if s != currentShell {
+			remainingShells = append(remainingShells, s)
+		}
+	}
+	sort.Strings(remainingShells)
+	availableShells = append(availableShells, remainingShells...)
 
 	// Prompt for shell selection FIRST
 	selectedShells, err := interactive.MultiSelect(
@@ -332,6 +363,14 @@ func runInteractiveFeatureAdd(repoPath string) error {
 
 	if len(selectedShells) == 0 {
 		fileops.ColorPrintln("No shells selected", fileops.Yellow)
+		return nil
+	}
+
+	// Filter features to only show those compatible with selected shells
+	compatibleFeatures := filterFeaturesByShells(allFeatures, selectedShells)
+	
+	if len(compatibleFeatures) == 0 {
+		fileops.ColorPrintln("No features available for selected shells", fileops.Yellow)
 		return nil
 	}
 
@@ -357,11 +396,11 @@ func runInteractiveFeatureAdd(repoPath string) error {
 		label   string
 	}
 
-	options := make([]featureOption, len(allFeatures))
-	optionLabels := make([]string, len(allFeatures))
-	labelToFeatureName := make(map[string]string, len(allFeatures))
+	options := make([]featureOption, len(compatibleFeatures))
+	optionLabels := make([]string, len(compatibleFeatures))
+	labelToFeatureName := make(map[string]string, len(compatibleFeatures))
 
-	for i, f := range allFeatures {
+	for i, f := range compatibleFeatures {
 		label := fmt.Sprintf("%s - %s [%s]", f.Name, f.Description, f.Category)
 		options[i] = featureOption{feature: f, label: label}
 		optionLabels[i] = label
@@ -652,14 +691,33 @@ func runInteractiveFeatureRemove(repoPath string) error {
 		return nil
 	}
 
-	// Collect all features across all shells
+	// Prompt user to select shells to remove features from FIRST
+	selectedShells, err := interactive.MultiSelect(
+		"Select shells to remove features from:",
+		allShells,
+		nil,
+	)
+	if err != nil {
+		if err.Error() == "cancelled" {
+			fileops.ColorPrintln("Cancelled", fileops.Yellow)
+			return nil
+		}
+		return fmt.Errorf("shell selection cancelled: %w", err)
+	}
+
+	if len(selectedShells) == 0 {
+		fileops.ColorPrintln("No shells selected", fileops.Yellow)
+		return nil
+	}
+
+	// Collect features installed in selected shells
 	type featureInfo struct {
 		name   string
 		shells []string
 	}
 	featureMap := make(map[string][]string)
 
-	for _, shellName := range allShells {
+	for _, shellName := range selectedShells {
 		manifestPath := shell.GetManifestPath(repoPath, shellName)
 		localManifestPath := shell.GetLocalManifestPath(repoPath, shellName)
 		merged, err := manifest.ParseManifestWithLocal(manifestPath, localManifestPath)
@@ -673,7 +731,7 @@ func runInteractiveFeatureRemove(repoPath string) error {
 	}
 
 	if len(featureMap) == 0 {
-		fileops.ColorPrintln("No features found", fileops.Yellow)
+		fileops.ColorPrintln("No features found in selected shells", fileops.Yellow)
 		return nil
 	}
 
@@ -699,6 +757,10 @@ func runInteractiveFeatureRemove(repoPath string) error {
 		nil,
 	)
 	if err != nil {
+		if err.Error() == "cancelled" {
+			fileops.ColorPrintln("Cancelled", fileops.Yellow)
+			return nil
+		}
 		return fmt.Errorf("feature selection cancelled: %w", err)
 	}
 
@@ -715,35 +777,13 @@ func runInteractiveFeatureRemove(repoPath string) error {
 		selectedFeatures = append(selectedFeatures, name)
 	}
 
-	// For each selected feature, determine which shells to remove from
+	// Remove each selected feature from its shells
 	removedCount := 0
 	for _, featureName := range selectedFeatures {
 		shellsWithFeature := featureMap[featureName]
 
-		var targetShells []string
-		if len(shellsWithFeature) == 1 {
-			// Only one shell, remove from it
-			targetShells = shellsWithFeature
-		} else {
-			// Multiple shells, prompt which to remove from
-			targetShells, err = interactive.MultiSelect(
-				fmt.Sprintf("Remove '%s' from which shells?", featureName),
-				shellsWithFeature,
-				nil,
-			)
-			if err != nil {
-				fileops.ColorPrintfn(fileops.Yellow, "Skipping %s", featureName)
-				continue
-			}
-
-			if len(targetShells) == 0 {
-				fileops.ColorPrintfn(fileops.Yellow, "Skipping %s (no shells selected)", featureName)
-				continue
-			}
-		}
-
-		// Remove from selected shells
-		for _, shellName := range targetShells {
+		// Remove from all shells where this feature exists (within selected shells)
+		for _, shellName := range shellsWithFeature {
 			fileops.ColorPrintfn(fileops.Cyan, "Removing %s from %s...", featureName, shellName)
 
 			err := shell.RemoveFeatureFromShell(repoPath, shellName, featureName)

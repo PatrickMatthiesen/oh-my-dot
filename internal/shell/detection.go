@@ -4,11 +4,21 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
 // DetectCurrentShell attempts to detect the current shell
 func DetectCurrentShell() (string, error) {
+	// PowerShell detection (Windows-specific)
+	// PowerShell doesn't set $SHELL, but may set PowerShell-specific environment variables
+	if runtime.GOOS == "windows" {
+		// POWERSHELL_DISTRIBUTION_CHANNEL is set by PowerShell but not by cmd.exe
+		if os.Getenv("POWERSHELL_DISTRIBUTION_CHANNEL") != "" {
+			return "powershell", nil
+		}
+	}
+
 	// Try $SHELL environment variable first
 	shellPath := os.Getenv("SHELL")
 	if shellPath != "" {

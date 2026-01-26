@@ -116,6 +116,30 @@ var Catalog = map[string]FeatureMetadata{
 		DefaultCommands: nil,
 		SupportedShells: []string{"bash", "zsh", "fish", "posix"},
 	},
+	"powershell-prompt": {
+		Name:            "powershell-prompt",
+		Description:     "Custom PowerShell prompt with git status",
+		Category:        "prompt",
+		DefaultStrategy: "eager",
+		DefaultCommands: nil,
+		SupportedShells: []string{"powershell"},
+	},
+	"powershell-aliases": {
+		Name:            "powershell-aliases",
+		Description:     "Common PowerShell aliases and shortcuts",
+		Category:        "alias",
+		DefaultStrategy: "eager",
+		DefaultCommands: nil,
+		SupportedShells: []string{"powershell"},
+	},
+	"posh-git": {
+		Name:            "posh-git",
+		Description:     "Git prompt and tab completion for PowerShell",
+		Category:        "tool",
+		DefaultStrategy: "eager",
+		DefaultCommands: nil,
+		SupportedShells: []string{"powershell"},
+	},
 }
 
 // GetFeature retrieves feature metadata from the catalog

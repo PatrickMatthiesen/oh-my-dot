@@ -21,6 +21,9 @@ func TestHasFeatureTemplate(t *testing.T) {
 		{"homebrew-path zsh (fallback to posix)", "homebrew-path", "zsh", true},
 		{"homebrew-path fish", "homebrew-path", "fish", true},
 		{"homebrew-path posix", "homebrew-path", "posix", true},
+		{"powershell-prompt powershell", "powershell-prompt", "powershell", true},
+		{"powershell-aliases powershell", "powershell-aliases", "powershell", true},
+		{"posh-git powershell", "posh-git", "powershell", true},
 		{"non-existent feature", "non-existent", "bash", false},
 		{"ssh-agent powershell (no fallback)", "ssh-agent", "powershell", false},
 	}
@@ -98,6 +101,27 @@ func TestGetFeatureTemplate(t *testing.T) {
 			shellName:   "powershell",
 			wantError:   true,
 			contains:    "",
+		},
+		{
+			name:        "powershell-prompt powershell",
+			featureName: "powershell-prompt",
+			shellName:   "powershell",
+			wantError:   false,
+			contains:    "Get-GitBranch",
+		},
+		{
+			name:        "powershell-aliases powershell",
+			featureName: "powershell-aliases",
+			shellName:   "powershell",
+			wantError:   false,
+			contains:    "Set-Alias",
+		},
+		{
+			name:        "posh-git powershell",
+			featureName: "posh-git",
+			shellName:   "powershell",
+			wantError:   false,
+			contains:    "Import-Module posh-git",
 		},
 	}
 

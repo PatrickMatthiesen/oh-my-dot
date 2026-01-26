@@ -119,12 +119,14 @@ The shell framework allows you to manage shell configurations as modular feature
 oh-my-dot feature add -i
 ```
 
-Browse the catalog and select features to add.
+Browse the catalog and select features to add. The interactive mode automatically detects your current shell, places it at the top of the shell selection list, and pre-selects it for your convenience.
+
+**Supported Shells:** bash, zsh, fish, PowerShell, and POSIX sh
 
 #### Direct Addition
 
 ```sh
-# Add to current shell
+# Add to current shell (auto-detected)
 oh-my-dot feature add git-prompt
 
 # Add to specific shell
@@ -133,6 +135,8 @@ oh-my-dot feature add kubectl-completion --shell bash
 # Add to all supported shells
 oh-my-dot feature add core-aliases --all
 ```
+
+When no `--shell` flag is provided, oh-my-dot tries to detects your current shell and adds the feature to it.
 
 ### Loading Strategies
 
@@ -240,6 +244,27 @@ The doctor checks:
 - Profile hooks installation
 - Local override security
 - Init script syntax
+
+### PowerShell Support
+
+Oh-my-dot fully supports PowerShell (both Windows PowerShell 5.1 and PowerShell Core 7+):
+
+**Auto-Detection:** When running `feature add -i` in PowerShell, your current shell is automatically detected and pre-selected.
+
+**PowerShell-Specific Features:**
+
+- `powershell-prompt` - Custom prompt with git status
+- `powershell-aliases` - Common PowerShell aliases and shortcuts
+- `posh-git` - Git integration for PowerShell
+
+**Profile Integration:**
+
+```powershell
+# PowerShell profile ($PROFILE)
+. "$HOME\dotfiles\omd-shells\powershell\init.ps1"
+```
+
+The init script supports all loading strategies (eager, defer, on-command) with PowerShell-native syntax.
 
 ## Directory Structure
 
