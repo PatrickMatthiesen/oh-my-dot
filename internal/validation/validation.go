@@ -341,6 +341,10 @@ func SanitizeString(input string) string {
 	input = strings.ReplaceAll(input, "\x00", "")
 
 	// Escape backslash first to prevent double-escaping
+	// Important: This must be done before escaping other characters because
+	// we use backslash as the escape character. If we escaped other characters
+	// first, their escape backslashes would be escaped again, resulting in
+	// incorrect output (e.g., \$ would become \\$ instead of \$).
 	input = strings.ReplaceAll(input, "\\", "\\\\")
 
 	// Escape other shell metacharacters (excluding backslash which was already handled)
