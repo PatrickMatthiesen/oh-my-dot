@@ -133,12 +133,15 @@ func validateInt(opt catalog.OptionMetadata, value any) error {
 func validateBool(opt catalog.OptionMetadata, value any) error {
 	switch v := value.(type) {
 	case bool:
-		return nil
+		_ = v
 	case string:
 		lower := strings.ToLower(strings.TrimSpace(v))
 		validValues := []string{"true", "false", "1", "0", "yes", "no", "y", "n"}
 		for _, valid := range validValues {
 			if lower == valid {
+				if opt.Validator != nil {
+					return opt.Validator(value)
+				}
 				return nil
 			}
 		}
@@ -146,6 +149,12 @@ func validateBool(opt catalog.OptionMetadata, value any) error {
 	default:
 		return fmt.Errorf("expected boolean, got %T", value)
 	}
+
+	if opt.Validator != nil {
+		return opt.Validator(value)
+	}
+
+	return nil
 }
 
 // validateEnum validates enum input against allowed values
@@ -184,39 +193,28 @@ func validateFile(opt catalog.OptionMetadata, value any) error {
 		pathStr = filepath.Join(homeDir, pathStr[1:])
 	}
 
+	if hasPathTraversal(pathStr) {
+		return fmt.Errorf("path traversal detected")
+	}
+
 	// Clean the path first (resolves .., ., removes duplicate separators)
 	cleanPath := filepath.Clean(pathStr)
-
-	// Check for path traversal BEFORE converting to absolute path
-	// This catches attempts like "../../../etc/passwd"
-	if strings.Contains(cleanPath, "..") {
-		return fmt.Errorf("path traversal detected")
-	}
-
-	// Additional check: ensure relative paths don't try to escape upward
-	if !filepath.IsAbs(cleanPath) && strings.HasPrefix(cleanPath, "..") {
-		return fmt.Errorf("path traversal detected")
-	}
 
 	// Now safe to convert to absolute path
 	absPath, err := filepath.Abs(cleanPath)
 	if err != nil {
 		return fmt.Errorf("invalid path: %w", err)
 	}
+	effectivePath := absPath
 
 	// Verify path exists if required
 	if opt.PathMustExist {
-		info, err := os.Stat(absPath)
+		info, err := os.Lstat(absPath)
 		if err != nil {
 			if os.IsNotExist(err) {
 				return fmt.Errorf("file does not exist: %s", absPath)
 			}
 			return fmt.Errorf("cannot access path: %w", err)
-		}
-
-		// Ensure it's a file if FileOnly is set
-		if opt.FileOnly && info.IsDir() {
-			return fmt.Errorf("path is a directory, expected a file: %s", absPath)
 		}
 
 		// Check if file is a symlink and resolve it
@@ -235,16 +233,17 @@ func validateFile(opt catalog.OptionMetadata, value any) error {
 			if opt.FileOnly && targetInfo.IsDir() {
 				return fmt.Errorf("symlink target is a directory, expected a file: %s", target)
 			}
+
+			effectivePath = target
+		} else if opt.FileOnly && info.IsDir() {
+			return fmt.Errorf("path is a directory, expected a file: %s", absPath)
 		}
 	}
 
 	// Security check: optionally restrict paths to home directory
 	if viper.GetBool("restrict-paths-to-home") {
-		homeDir, err := os.UserHomeDir()
-		if err == nil {
-			if !strings.HasPrefix(absPath, homeDir) {
-				return fmt.Errorf("path must be within home directory (restrict-paths-to-home is enabled): %s", absPath)
-			}
+		if err := validatePathWithinHome(effectivePath); err != nil {
+			return err
 		}
 	}
 
@@ -272,29 +271,23 @@ func validatePath(opt catalog.OptionMetadata, value any) error {
 		pathStr = filepath.Join(homeDir, pathStr[1:])
 	}
 
+	if hasPathTraversal(pathStr) {
+		return fmt.Errorf("path traversal detected")
+	}
+
 	// Clean the path first (resolves .., ., removes duplicate separators)
 	cleanPath := filepath.Clean(pathStr)
-
-	// Check for path traversal BEFORE converting to absolute path
-	// This catches attempts like "../../../etc/passwd"
-	if strings.Contains(cleanPath, "..") {
-		return fmt.Errorf("path traversal detected")
-	}
-
-	// Additional check: ensure relative paths don't try to escape upward
-	if !filepath.IsAbs(cleanPath) && strings.HasPrefix(cleanPath, "..") {
-		return fmt.Errorf("path traversal detected")
-	}
 
 	// Now safe to convert to absolute path
 	absPath, err := filepath.Abs(cleanPath)
 	if err != nil {
 		return fmt.Errorf("invalid path: %w", err)
 	}
+	effectivePath := absPath
 
 	// Verify path exists if required
 	if opt.PathMustExist {
-		info, err := os.Stat(absPath)
+		info, err := os.Lstat(absPath)
 		if err != nil {
 			if os.IsNotExist(err) {
 				return fmt.Errorf("path does not exist: %s", absPath)
@@ -314,16 +307,15 @@ func validatePath(opt catalog.OptionMetadata, value any) error {
 			if err != nil {
 				return fmt.Errorf("symlink target invalid: %w", err)
 			}
+
+			effectivePath = target
 		}
 	}
 
 	// Security check: optionally restrict paths to home directory
 	if viper.GetBool("restrict-paths-to-home") {
-		homeDir, err := os.UserHomeDir()
-		if err == nil {
-			if !strings.HasPrefix(absPath, homeDir) {
-				return fmt.Errorf("path must be within home directory (restrict-paths-to-home is enabled): %s", absPath)
-			}
+		if err := validatePathWithinHome(effectivePath); err != nil {
+			return err
 		}
 	}
 
@@ -392,4 +384,46 @@ func ExpandPath(pathStr string) (string, error) {
 	}
 
 	return absPath, nil
+}
+
+func hasPathTraversal(pathStr string) bool {
+	normalized := strings.ReplaceAll(pathStr, "\\", "/")
+	segments := strings.Split(normalized, "/")
+
+	for _, segment := range segments {
+		if segment == ".." {
+			return true
+		}
+	}
+
+	return false
+}
+
+func validatePathWithinHome(path string) error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to determine user home directory: %w", err)
+	}
+
+	if !isWithinBasePath(path, homeDir) {
+		return fmt.Errorf("path must be within home directory (restrict-paths-to-home is enabled): %s", path)
+	}
+
+	return nil
+}
+
+func isWithinBasePath(path, base string) bool {
+	cleanPath := filepath.Clean(path)
+	cleanBase := filepath.Clean(base)
+
+	rel, err := filepath.Rel(cleanBase, cleanPath)
+	if err != nil {
+		return false
+	}
+
+	if rel == "." {
+		return true
+	}
+
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

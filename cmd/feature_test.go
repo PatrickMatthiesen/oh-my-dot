@@ -8,11 +8,11 @@ import (
 
 func TestFilterFeaturesByShells(t *testing.T) {
 	tests := []struct {
-		name           string
-		features       []catalog.FeatureMetadata
-		shells         []string
-		expectedCount  int
-		expectedNames  []string
+		name          string
+		features      []catalog.FeatureMetadata
+		shells        []string
+		expectedCount int
+		expectedNames []string
 	}{
 		{
 			name: "filter bash features",
@@ -79,5 +79,27 @@ func TestFilterFeaturesByShells(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestParseRawOptionPairs(t *testing.T) {
+	values, err := parseRawOptionPairs([]string{"foo=bar", "x=1"})
+	if err != nil {
+		t.Fatalf("parseRawOptionPairs() error = %v", err)
+	}
+
+	if values["foo"] != "bar" {
+		t.Fatalf("foo = %v, want bar", values["foo"])
+	}
+
+	if values["x"] != "1" {
+		t.Fatalf("x = %v, want 1", values["x"])
+	}
+}
+
+func TestParseRawOptionPairsInvalid(t *testing.T) {
+	_, err := parseRawOptionPairs([]string{"missing-equals"})
+	if err == nil {
+		t.Fatal("expected error for invalid option format")
 	}
 }

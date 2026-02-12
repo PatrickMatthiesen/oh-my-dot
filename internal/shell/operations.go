@@ -9,6 +9,8 @@ import (
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/manifest"
 )
 
+const ohMyPoshThemeFileName = "oh-my-posh.omp.json"
+
 // HelpersFileContent is the template content for the helpers.sh file
 const HelpersFileContent = `#!/usr/bin/env sh
 # oh-my-dot shell framework - helper functions
@@ -120,10 +122,10 @@ func AddFeatureToShell(repoPath, shellName, featureName string, strategy string,
 		return err
 	}
 
-	// Try to use catalog template first, fall back to generic template
+	// Try catalog template first, then generic template
 	var featureContent string
 	if catalog.HasFeatureTemplate(featureName, shellName) {
-		if err := catalog.WriteFeatureTemplate(repoPath, shellName, featureName); err != nil {
+		if err := catalog.WriteFeatureTemplate(repoPath, shellName, featureName, options); err != nil {
 			return fmt.Errorf("failed to write feature template: %w", err)
 		}
 		// Template written successfully, no need to write again
@@ -211,6 +213,13 @@ func RemoveFeatureFromShell(repoPath, shellName, featureName string) error {
 
 	if err := os.Remove(featurePath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to delete feature file: %w", err)
+	}
+
+	if featureName == "oh-my-posh" {
+		themePath := filepath.Join(GetFeaturesDirectory(repoPath, shellName), ohMyPoshThemeFileName)
+		if err := os.Remove(themePath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to delete oh-my-posh theme file: %w", err)
+		}
 	}
 
 	// Regenerate init script to remove the feature

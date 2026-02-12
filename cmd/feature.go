@@ -124,6 +124,7 @@ var (
 	flagAll         bool
 	flagStrategy    string
 	flagOnCommand   []string
+	flagOption      []string
 	flagDisabled    bool
 	flagForce       bool
 	flagInteractive bool
@@ -144,6 +145,7 @@ func init() {
 	featureAddCmd.Flags().BoolVar(&flagAll, "all", false, "Add to all supported shells")
 	featureAddCmd.Flags().StringVar(&flagStrategy, "strategy", "", "Override load strategy (eager, defer, on-command)")
 	featureAddCmd.Flags().StringSliceVar(&flagOnCommand, "on-command", nil, "Set trigger commands for on-command strategy")
+	featureAddCmd.Flags().StringSliceVar(&flagOption, "option", nil, "Set feature option (key=value); repeatable")
 	featureAddCmd.Flags().BoolVar(&flagDisabled, "disabled", false, "Add feature but keep it disabled")
 
 	featureRemoveCmd.Flags().StringSliceVar(&flagShell, "shell", nil, "Target specific shell(s)")
@@ -287,14 +289,32 @@ func runFeatureAdd(cmd *cobra.Command, args []string) error {
 
 	// Prompt for options if the feature has them and we're in interactive mode
 	var optionValues map[string]any
-	if inCatalog && len(metadata.Options) > 0 && isInteractive() {
-		var err error
-		optionValues, err = options.PromptForOptions(metadata)
+	if inCatalog && len(metadata.Options) > 0 {
+		overrides, err := options.ParseOptionOverrides(metadata, flagOption)
 		if err != nil {
-			return fmt.Errorf("failed to collect feature options: %w", err)
+			return fmt.Errorf("failed to parse --option values: %w", err)
+		}
+
+		if isInteractive() {
+			optionValues, err = options.PromptForOptionsWithOverrides(metadata, overrides)
+			if err != nil {
+				return fmt.Errorf("failed to collect feature options: %w", err)
+			}
+		} else {
+			optionValues, err = options.ResolveOptionsForNonInteractiveWithOverrides(metadata, overrides)
+			if err != nil {
+				return fmt.Errorf("failed to resolve feature options in non-interactive mode: %w", err)
+			}
+
+			if len(optionValues) > 0 {
+				fileops.ColorPrintln("Using default values for feature options (non-interactive mode)", fileops.Cyan)
+			}
 		}
 	} else {
-		optionValues = make(map[string]any)
+		optionValues, err = parseRawOptionPairs(flagOption)
+		if err != nil {
+			return fmt.Errorf("failed to parse --option values: %w", err)
+		}
 	}
 
 	// Add feature to each target shell
@@ -315,6 +335,21 @@ func runFeatureAdd(cmd *cobra.Command, args []string) error {
 	fileops.ColorPrintln("Run 'omdot push' to commit and push changes", fileops.Cyan)
 
 	return nil
+}
+
+func parseRawOptionPairs(rawOptions []string) (map[string]any, error) {
+	values := make(map[string]any)
+	for _, raw := range rawOptions {
+		parts := strings.SplitN(raw, "=", 2)
+		if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" {
+			return nil, fmt.Errorf("invalid --option format '%s' (expected key=value)", raw)
+		}
+
+		key := strings.TrimSpace(parts[0])
+		values[key] = parts[1]
+	}
+
+	return values, nil
 }
 
 func runInteractiveFeatureAdd(repoPath string) error {

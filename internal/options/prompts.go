@@ -11,8 +11,55 @@ import (
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/validation"
 )
 
+// ParseOptionOverrides parses and validates --option key=value pairs against metadata.
+func ParseOptionOverrides(metadata catalog.FeatureMetadata, rawOptions []string) (map[string]any, error) {
+	overrides := make(map[string]any)
+	if len(rawOptions) == 0 {
+		return overrides, nil
+	}
+
+	optionByName := make(map[string]catalog.OptionMetadata, len(metadata.Options))
+	for _, opt := range metadata.Options {
+		optionByName[opt.Name] = opt
+	}
+
+	for _, raw := range rawOptions {
+		parts := strings.SplitN(raw, "=", 2)
+		if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" {
+			return nil, fmt.Errorf("invalid --option format '%s' (expected key=value)", raw)
+		}
+
+		key := strings.TrimSpace(parts[0])
+		valueStr := parts[1]
+
+		opt, exists := optionByName[key]
+		if !exists {
+			return nil, fmt.Errorf("unknown option '%s' for feature '%s'", key, metadata.Name)
+		}
+
+		parsedValue, err := parseOptionValue(opt, valueStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid value for option '%s': %w", key, err)
+		}
+
+		if err := validation.ValidateOption(opt, parsedValue); err != nil {
+			return nil, fmt.Errorf("invalid value for option '%s': %w", key, err)
+		}
+
+		overrides[key] = parsedValue
+	}
+
+	return overrides, nil
+}
+
 // PromptForOptions collects user input for feature options interactively
 func PromptForOptions(metadata catalog.FeatureMetadata) (map[string]any, error) {
+	return PromptForOptionsWithOverrides(metadata, nil)
+}
+
+// PromptForOptionsWithOverrides collects user input for feature options interactively,
+// using any provided overrides as fixed values.
+func PromptForOptionsWithOverrides(metadata catalog.FeatureMetadata, overrides map[string]any) (map[string]any, error) {
 	// If no options defined, return empty map
 	if len(metadata.Options) == 0 {
 		return map[string]any{}, nil
@@ -21,8 +68,15 @@ func PromptForOptions(metadata catalog.FeatureMetadata) (map[string]any, error) 
 	fileops.ColorPrintfn(fileops.Cyan, "\n⚙️  Feature Configuration\n")
 
 	values := make(map[string]any)
+	for key, value := range overrides {
+		values[key] = value
+	}
 
 	for _, opt := range metadata.Options {
+		if _, hasOverride := values[opt.Name]; hasOverride {
+			continue
+		}
+
 		// For optional options, ask if user wants to configure
 		if !opt.Required {
 			question := fmt.Sprintf("Configure %s?", opt.DisplayName)
@@ -68,6 +122,77 @@ func PromptForOptions(metadata catalog.FeatureMetadata) (map[string]any, error) 
 	}
 
 	return values, nil
+}
+
+// ResolveOptionsForNonInteractive resolves feature options without prompting.
+// Required options must have valid defaults in non-interactive mode.
+func ResolveOptionsForNonInteractive(metadata catalog.FeatureMetadata) (map[string]any, error) {
+	return ResolveOptionsForNonInteractiveWithOverrides(metadata, nil)
+}
+
+// ResolveOptionsForNonInteractiveWithOverrides resolves feature options without prompting.
+// Required options must have valid defaults or explicit overrides in non-interactive mode.
+func ResolveOptionsForNonInteractiveWithOverrides(metadata catalog.FeatureMetadata, overrides map[string]any) (map[string]any, error) {
+	values := make(map[string]any)
+	for key, value := range overrides {
+		values[key] = value
+	}
+
+	for _, opt := range metadata.Options {
+		if _, hasOverride := values[opt.Name]; hasOverride {
+			continue
+		}
+
+		value, hasValue, err := resolveOptionDefault(opt)
+		if err != nil {
+			return nil, err
+		}
+
+		if hasValue {
+			values[opt.Name] = value
+		}
+	}
+
+	return values, nil
+}
+
+func parseOptionValue(opt catalog.OptionMetadata, valueStr string) (any, error) {
+	switch opt.Type {
+	case catalog.OptionTypeString, catalog.OptionTypeEnum:
+		return valueStr, nil
+	case catalog.OptionTypeInt:
+		value, err := strconv.Atoi(valueStr)
+		if err != nil {
+			return nil, fmt.Errorf("expected integer")
+		}
+		return value, nil
+	case catalog.OptionTypeBool:
+		value, err := validation.ParseBool(valueStr)
+		if err != nil {
+			return nil, err
+		}
+		return value, nil
+	case catalog.OptionTypeFile, catalog.OptionTypePath:
+		return validation.ExpandPath(valueStr)
+	default:
+		return nil, fmt.Errorf("unsupported option type: %s", opt.Type)
+	}
+}
+
+func resolveOptionDefault(opt catalog.OptionMetadata) (any, bool, error) {
+	if opt.Default == nil {
+		if opt.Required {
+			return nil, false, fmt.Errorf("required option '%s' has no default and cannot be resolved in non-interactive mode", opt.DisplayName)
+		}
+
+		return nil, false, nil
+	}
+
+	if err := validation.ValidateOption(opt, opt.Default); err != nil {
+		return nil, false, fmt.Errorf("invalid default value for option '%s': %w", opt.DisplayName, err)
+	}
+
+	return opt.Default, true, nil
 }
 
 // promptForOption prompts for a single option based on its type

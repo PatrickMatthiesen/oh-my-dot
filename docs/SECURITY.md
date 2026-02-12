@@ -31,18 +31,7 @@ However, organizations or security-conscious users can optionally restrict all f
 
 #### Enabling Home Directory Restriction
 
-Set the `restrict-paths-to-home` configuration option to `true`:
-
-```bash
-# View current setting
-oh-my-dot config get restrict-paths-to-home
-
-# Enable restriction (only allow paths within home directory)
-oh-my-dot config set restrict-paths-to-home true
-
-# Disable restriction (allow system-wide paths) - this is the default
-oh-my-dot config set restrict-paths-to-home false
-```
+Set `restrict-paths-to-home` to `true` in your configuration file.
 
 #### Configuration File
 
@@ -52,6 +41,12 @@ The setting is stored in `~/.oh-my-dot/config.json`:
 {
   "restrict-paths-to-home": true
 }
+```
+
+You can inspect current configuration values with:
+
+```bash
+oh-my-dot config
 ```
 
 #### Behavior

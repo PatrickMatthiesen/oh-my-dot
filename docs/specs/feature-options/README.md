@@ -457,18 +457,21 @@ For file/path options:
 For CI/CD and automation:
 
 ```bash
-# Skip interactive prompts, use defaults
-omdot feature add oh-my-posh --no-interactive
+# In non-TTY environments, prompts are skipped automatically
+omdot feature add oh-my-posh
 
-# Provide options via flags (future enhancement)
+# Required options without defaults fail fast
+omdot feature add oh-my-posh
+
+# Provide explicit values via flags
 omdot feature add oh-my-posh \
   --option theme=agnoster \
   --option config_file=~/.poshthemes/custom.json
 ```
 
-## Command-Line Flag Override (Future Enhancement)
+## Command-Line Flag Override
 
-Allow specifying options via CLI flags:
+Specify options via CLI flags:
 
 ```go
 featureAddCmd.Flags().StringSlice("option", nil, "Set feature option (key=value)")
@@ -635,7 +638,7 @@ Example:
 **Answer**: Create separate `path` type for directories/mixed, keep `file` strictly for files.
 
 ### Q2: Path sanitization: allow only within home directory?
-**Answer**: By default yes, but allow feature authors to specify trusted base directories.
+**Answer**: By default no (to support standard workflows), with optional enforcement via `restrict-paths-to-home`.
 
 ### Q3: Should validation rules be configurable per feature?
 **Answer**: Yes, via custom Validator functions in OptionMetadata.

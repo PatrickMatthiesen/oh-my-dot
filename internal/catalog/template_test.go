@@ -24,6 +24,10 @@ func TestHasFeatureTemplate(t *testing.T) {
 		{"powershell-prompt powershell", "powershell-prompt", "powershell", true},
 		{"powershell-aliases powershell", "powershell-aliases", "powershell", true},
 		{"posh-git powershell", "posh-git", "powershell", true},
+		{"oh-my-posh bash", "oh-my-posh", "bash", true},
+		{"oh-my-posh zsh", "oh-my-posh", "zsh", true},
+		{"oh-my-posh fish", "oh-my-posh", "fish", true},
+		{"oh-my-posh powershell", "oh-my-posh", "powershell", true},
 		{"non-existent feature", "non-existent", "bash", false},
 		{"ssh-agent powershell (no fallback)", "ssh-agent", "powershell", false},
 	}
@@ -163,4 +167,46 @@ func TestGetShellExtension(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRenderFeatureTemplate(t *testing.T) {
+	t.Run("renders with oh-my-posh defaults", func(t *testing.T) {
+		content := `url={{ .ThemeURL }} config={{ .ConfigFile }} fallback={{ .DefaultConfigPath }}`
+
+		rendered, err := RenderFeatureTemplate(content, "oh-my-posh", "bash", nil)
+		if err != nil {
+			t.Fatalf("RenderFeatureTemplate() error = %v", err)
+		}
+
+		if !strings.Contains(rendered, "jandedobbeleer.omp.json") {
+			t.Fatalf("expected default theme URL in rendered content, got %q", rendered)
+		}
+		if !strings.Contains(rendered, "$OMD_SHELL_ROOT/features/oh-my-posh.omp.json") {
+			t.Fatalf("expected default config path in rendered content, got %q", rendered)
+		}
+	})
+
+	t.Run("renders with option overrides", func(t *testing.T) {
+		content := `url={{ .ThemeURL }} config={{ .ConfigFile }} auto={{ .AutoUpgrade }} custom={{ option "theme" }}`
+		options := map[string]any{
+			"theme":        "catppuccin",
+			"config_file":  "/tmp/custom.omp.json",
+			"auto_upgrade": true,
+		}
+
+		rendered, err := RenderFeatureTemplate(content, "oh-my-posh", "bash", options)
+		if err != nil {
+			t.Fatalf("RenderFeatureTemplate() error = %v", err)
+		}
+
+		if !strings.Contains(rendered, "catppuccin.omp.json") {
+			t.Fatalf("expected overridden theme URL in rendered content, got %q", rendered)
+		}
+		if !strings.Contains(rendered, "/tmp/custom.omp.json") {
+			t.Fatalf("expected overridden config file in rendered content, got %q", rendered)
+		}
+		if !strings.Contains(rendered, "auto=true") {
+			t.Fatalf("expected auto upgrade boolean in rendered content, got %q", rendered)
+		}
+	})
 }

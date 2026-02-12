@@ -1,10 +1,14 @@
 package catalog
 
 import (
+	"bytes"
 	"embed"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"strings"
+	"text/template"
 )
 
 //go:embed features/**/*
@@ -61,10 +65,15 @@ func HasFeatureTemplate(featureName, shellName string) bool {
 }
 
 // WriteFeatureTemplate writes a feature template to the user's repository
-func WriteFeatureTemplate(repoPath, shellName, featureName string) error {
+func WriteFeatureTemplate(repoPath, shellName, featureName string, optionValues map[string]any) error {
 	content, err := GetFeatureTemplate(featureName, shellName)
 	if err != nil {
 		return err
+	}
+
+	renderedContent, err := RenderFeatureTemplate(content, featureName, shellName, optionValues)
+	if err != nil {
+		return fmt.Errorf("failed to render feature template: %w", err)
 	}
 
 	ext := GetShellExtension(shellName)
@@ -76,11 +85,97 @@ func WriteFeatureTemplate(repoPath, shellName, featureName string) error {
 	}
 
 	// Write template
-	if err := os.WriteFile(featurePath, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(featurePath, []byte(renderedContent), 0644); err != nil {
 		return fmt.Errorf("failed to write feature template: %w", err)
 	}
 
 	return nil
+}
+
+// RenderFeatureTemplate renders a feature template with shell/option context.
+func RenderFeatureTemplate(content, featureName, shellName string, optionValues map[string]any) (string, error) {
+	context := buildTemplateContext(featureName, shellName, optionValues)
+
+	templateFuncs := template.FuncMap{
+		"hasOption": func(key string) bool {
+			_, ok := context.Options[key]
+			return ok
+		},
+		"option": func(key string) any {
+			return context.Options[key]
+		},
+	}
+
+	tmpl, err := template.New(featureName).Funcs(templateFuncs).Option("missingkey=zero").Parse(content)
+	if err != nil {
+		return "", err
+	}
+
+	var rendered bytes.Buffer
+	if err := tmpl.Execute(&rendered, context); err != nil {
+		return "", err
+	}
+
+	return rendered.String(), nil
+}
+
+type featureTemplateContext struct {
+	FeatureName       string
+	ShellName         string
+	Options           map[string]any
+	Theme             string
+	ThemeURL          string
+	ConfigFile        string
+	DefaultConfigPath string
+	AutoUpgrade       bool
+}
+
+func buildTemplateContext(featureName, shellName string, optionValues map[string]any) featureTemplateContext {
+	context := featureTemplateContext{
+		FeatureName: featureName,
+		ShellName:   shellName,
+		Options:     map[string]any{},
+	}
+
+	maps.Copy(context.Options, optionValues)
+
+	if featureName == "oh-my-posh" {
+		context.Theme = getOptionString(optionValues, "theme", "jandedobbeleer")
+		context.ThemeURL = fmt.Sprintf("https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/%s.omp.json", context.Theme)
+		context.ConfigFile = getOptionString(optionValues, "config_file", "")
+		context.DefaultConfigPath = "$OMD_SHELL_ROOT/features/oh-my-posh.omp.json"
+		context.AutoUpgrade = getOptionBool(optionValues, "auto_upgrade", false)
+	}
+
+	return context
+}
+
+func getOptionString(optionValues map[string]any, key, defaultValue string) string {
+	rawValue, ok := optionValues[key]
+	if !ok || rawValue == nil {
+		return defaultValue
+	}
+
+	value, ok := rawValue.(string)
+	if !ok || strings.TrimSpace(value) == "" {
+		return defaultValue
+	}
+
+	return value
+}
+
+func getOptionBool(optionValues map[string]any, key string, defaultValue bool) bool {
+	rawValue, ok := optionValues[key]
+	if !ok || rawValue == nil {
+		return defaultValue
+	}
+
+	value, ok := rawValue.(bool)
+	if !ok {
+		return defaultValue
+	}
+
+	return value
 }
 
 // GetShellExtension returns the file extension for a given shell

@@ -193,16 +193,27 @@ Adding ssh-agent to bash...
 
 ## Non-Interactive Mode
 
-If you're using oh-my-dot in scripts or CI/CD pipelines, feature options will use their default values when running in non-interactive mode:
+If you're using oh-my-dot in scripts or CI/CD pipelines (non-TTY), feature options are resolved without prompts:
+
+- Optional options use defaults when available
+- Required options use defaults when available
+- Required options without defaults fail fast with an error
 
 ```bash
 # In CI or non-TTY environment
-$ omdot feature add oh-my-posh --no-interactive
+$ omdot feature add oh-my-posh
 
 Adding oh-my-posh to bash...
-Using default values for all options
-✓ Feature added
+Error: failed to resolve feature options in non-interactive mode: required option 'Theme' has no default and cannot be resolved in non-interactive mode
 ```
+
+Use `--option key=value` to provide explicit values (repeat the flag for multiple options):
+
+```bash
+omdot feature add oh-my-posh --option theme=agnoster
+```
+
+This also works in interactive mode, where provided options are pre-filled and skipped.
 
 ## Security Considerations
 
@@ -216,7 +227,8 @@ All user input is sanitized to prevent:
 
 ### Safe Defaults
 
-- File paths are restricted to your home directory by default
+- File/path options are unrestricted by default to support standard system-path workflows
+- Home-only path enforcement is available via `restrict-paths-to-home`
 - Dangerous characters in strings are escaped or rejected
 - Path existence and permissions are validated
 
@@ -226,22 +238,15 @@ All user input is sanitized to prevent:
 
 If you see a validation error, check:
 
-- For file paths: ensure the file exists and is within your home directory
+- For file paths: ensure the path exists when required and, if home restriction is enabled, is within your home directory
 - For integers: ensure the value is within the min/max range
 - For enums: select a value from the provided list
 
 ### Skipping Interactive Prompts
 
-To skip all prompts and use defaults:
+Prompts are skipped automatically in non-TTY environments:
 
 ```bash
-omdot feature add oh-my-posh --no-interactive
-```
-
-Or set the environment variable:
-
-```bash
-export OMDOT_NON_INTERACTIVE=1
 omdot feature add oh-my-posh
 ```
 

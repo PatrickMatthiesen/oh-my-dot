@@ -804,6 +804,63 @@ func TestRestrictPathsToHomeForValidatePath(t *testing.T) {
 	}
 }
 
+func TestRestrictPathsToHomeBlocksPrefixBypass(t *testing.T) {
+	originalValue := viper.GetBool("restrict-paths-to-home")
+	defer viper.Set("restrict-paths-to-home", originalValue)
+
+	viper.Set("restrict-paths-to-home", true)
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("Failed to get home directory: %v", err)
+	}
+
+	bypassPath := homeDir + "_outside"
+
+	opt := catalog.OptionMetadata{Type: catalog.OptionTypeFile, PathMustExist: false}
+	err = validateFile(opt, bypassPath)
+	if err == nil {
+		t.Fatal("expected prefix bypass path to be rejected")
+	}
+
+	if !contains(err.Error(), "restrict-paths-to-home is enabled") {
+		t.Fatalf("expected restrict-paths-to-home error, got: %v", err)
+	}
+}
+
+func TestRestrictPathsToHomeBlocksSymlinkTargetOutsideHome(t *testing.T) {
+	originalValue := viper.GetBool("restrict-paths-to-home")
+	defer viper.Set("restrict-paths-to-home", originalValue)
+
+	viper.Set("restrict-paths-to-home", true)
+
+	var targetPath string
+	if runtime.GOOS == "windows" {
+		targetPath = `C:\Windows\System32\drivers\etc\hosts`
+	} else {
+		targetPath = "/etc/hosts"
+	}
+
+	if _, err := os.Stat(targetPath); err != nil {
+		t.Skipf("target path for symlink test not available: %v", err)
+	}
+
+	linkPath := filepath.Join(t.TempDir(), "outside-link")
+	if err := os.Symlink(targetPath, linkPath); err != nil {
+		t.Skipf("symlink creation not supported in this environment: %v", err)
+	}
+
+	opt := catalog.OptionMetadata{Type: catalog.OptionTypeFile, PathMustExist: true, FileOnly: true}
+	err := validateFile(opt, linkPath)
+	if err == nil {
+		t.Fatal("expected symlink target outside home to be rejected")
+	}
+
+	if !contains(err.Error(), "restrict-paths-to-home is enabled") {
+		t.Fatalf("expected restrict-paths-to-home error, got: %v", err)
+	}
+}
+
 // Helper function to check if string contains substring
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(substr) == 0 || (len(s) > 0 && len(substr) > 0 && indexOfSubstring(s, substr) >= 0))

@@ -101,7 +101,7 @@ Added `oh-my-posh` to the catalog with three configurable options:
 - All inputs validated and sanitized
 - Shell injection prevention
 - Path traversal protection
-- Restricted to home directory by default
+- Optional home directory restriction via `restrict-paths-to-home`
 - No dangerous patterns allowed
 
 ### User-Friendly
@@ -214,14 +214,13 @@ Test coverage includes:
 
 The implementation is designed to support:
 
-1. **CLI Flag Overrides**: `--option key=value` for non-interactive configuration
-2. **Dynamic Enum Values**: Load enum options from filesystem/API
-3. **Conditional Options**: Show/hide options based on other values
-4. **Option Groups**: Organize related options
-5. **Option Presets**: Save and reuse option sets
-6. **Template Variables**: Full Go template support in feature files
-7. **Validation Feedback**: Inline validation during input
-8. **Import/Export**: Share configurations via YAML/JSON
+1. **Dynamic Enum Values**: Load enum options from filesystem/API
+2. **Conditional Options**: Show/hide options based on other values
+3. **Option Groups**: Organize related options
+4. **Option Presets**: Save and reuse option sets
+5. **Template Variables**: Full Go template support in feature files
+6. **Validation Feedback**: Inline validation during input
+7. **Import/Export**: Share configurations via YAML/JSON
 
 ## Files Changed/Created
 
