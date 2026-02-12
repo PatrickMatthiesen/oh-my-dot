@@ -67,7 +67,7 @@ func InitializeShellDirectory(repoPath, shellName string) error {
 }
 
 // AddFeatureToShell adds a feature to a specific shell
-func AddFeatureToShell(repoPath, shellName, featureName string, strategy string, onCommand []string, disabled bool) error {
+func AddFeatureToShell(repoPath, shellName, featureName string, strategy string, onCommand []string, disabled bool, options map[string]any) error {
 	// Check if shell directory exists, if not initialize it
 	if !ShellDirectoryExists(repoPath, shellName) {
 		if err := InitializeShellDirectory(repoPath, shellName); err != nil {
@@ -101,6 +101,7 @@ func AddFeatureToShell(repoPath, shellName, featureName string, strategy string,
 		Strategy:  strategy,
 		OnCommand: onCommand,
 		Disabled:  disabled,
+		Options:   options,
 	}
 
 	// Add to manifest
@@ -128,7 +129,7 @@ func AddFeatureToShell(repoPath, shellName, featureName string, strategy string,
 		// Template written successfully, no need to write again
 	} else {
 		// No catalog template, use generic template
-		featureContent = generateFeatureTemplate(shellName, featureName, metadata)
+		featureContent = generateFeatureTemplate(shellName, featureName, metadata, options)
 		if err := os.WriteFile(featurePath, []byte(featureContent), 0644); err != nil {
 			return fmt.Errorf("failed to create feature file: %w", err)
 		}
@@ -143,7 +144,7 @@ func AddFeatureToShell(repoPath, shellName, featureName string, strategy string,
 }
 
 // generateFeatureTemplate creates a template feature file
-func generateFeatureTemplate(shellName, featureName string, metadata catalog.FeatureMetadata) string {
+func generateFeatureTemplate(shellName, featureName string, metadata catalog.FeatureMetadata, options map[string]any) string {
 	var shebang string
 	switch shellName {
 	case "bash":
@@ -163,13 +164,24 @@ func generateFeatureTemplate(shellName, featureName string, metadata catalog.Fea
 		description = metadata.Description
 	}
 
-	return fmt.Sprintf(`%s
+	template := fmt.Sprintf(`%s
 # oh-my-dot feature: %s
 # %s
 # 
 # Add your shell configuration below
 
 `, shebang, featureName, description)
+
+	// Add option comments if provided
+	if len(options) > 0 {
+		template += "# Configured options:\n"
+		for key, value := range options {
+			template += fmt.Sprintf("#   %s: %v\n", key, value)
+		}
+		template += "\n"
+	}
+
+	return template
 }
 
 // RemoveFeatureFromShell removes a feature from a shell

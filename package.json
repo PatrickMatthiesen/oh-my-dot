@@ -1,7 +1,7 @@
 {
   "scripts": {
     "build": "bun run build.ts",
-    "test": "go test ./tests/..."
+    "test": "go test ./..."
   },
   "name": "oh-my-dot",
   "module": "build.ts",

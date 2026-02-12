@@ -1,13 +1,46 @@
 package catalog
 
+// OptionType represents the type of a feature option
+type OptionType string
+
+const (
+	OptionTypeString OptionType = "string"
+	OptionTypeInt    OptionType = "int"
+	OptionTypeBool   OptionType = "bool"
+	OptionTypeEnum   OptionType = "enum"
+	OptionTypeFile   OptionType = "file"
+	OptionTypePath   OptionType = "path"
+)
+
+// OptionMetadata defines a configurable option for a feature
+type OptionMetadata struct {
+	Name        string      // Internal identifier (e.g., "theme_name")
+	DisplayName string      // Human-readable label (e.g., "Theme Name")
+	Description string      // Help text for the user
+	Type        OptionType  // Data type
+	Required    bool        // Whether this option is mandatory
+	Default     any // Default value (used if user skips optional field)
+
+	// Type-specific constraints
+	EnumValues    []string // Valid values for enum type
+	IntMin        *int     // Minimum value for int type
+	IntMax        *int     // Maximum value for int type
+	PathMustExist bool     // For file/path: must the path already exist?
+	FileOnly      bool     // For path: restrict to files only (no directories)
+
+	// Validation
+	Validator func(any) error // Custom validation function
+}
+
 // FeatureMetadata contains metadata about a feature from the catalog
 type FeatureMetadata struct {
-	Name            string   // Feature identifier (e.g., "git-prompt")
-	Description     string   // Human-readable description
-	Category        string   // Category (e.g., "prompt", "completion", "alias")
-	DefaultStrategy string   // Default load strategy ("eager", "defer", "on-command")
-	DefaultCommands []string // Default trigger commands for on-command features
-	SupportedShells []string // Shells that support this feature
+	Name            string           // Feature identifier (e.g., "git-prompt")
+	Description     string           // Human-readable description
+	Category        string           // Category (e.g., "prompt", "completion", "alias")
+	DefaultStrategy string           // Default load strategy ("eager", "defer", "on-command")
+	DefaultCommands []string         // Default trigger commands for on-command features
+	SupportedShells []string         // Shells that support this feature
+	Options         []OptionMetadata // Configurable options for this feature
 }
 
 // Catalog is the global feature catalog
@@ -139,6 +172,50 @@ var Catalog = map[string]FeatureMetadata{
 		DefaultStrategy: "eager",
 		DefaultCommands: nil,
 		SupportedShells: []string{"powershell"},
+	},
+	"oh-my-posh": {
+		Name:            "oh-my-posh",
+		Description:     "Oh My Posh prompt engine with customizable themes",
+		Category:        "prompt",
+		DefaultStrategy: "eager",
+		DefaultCommands: nil,
+		SupportedShells: []string{"bash", "zsh", "fish", "powershell"},
+		Options: []OptionMetadata{
+			{
+				Name:        "theme",
+				DisplayName: "Theme",
+				Description: "Oh My Posh theme to use",
+				Type:        OptionTypeEnum,
+				Required:    true,
+				EnumValues: []string{
+					"agnoster",
+					"paradox",
+					"powerlevel10k_rainbow",
+					"robbyrussell",
+					"jandedobbeleer",
+					"atomic",
+					"dracula",
+					"pure",
+				},
+			},
+			{
+				Name:          "config_file",
+				DisplayName:   "Config File",
+				Description:   "Path to custom Oh My Posh configuration file (optional)",
+				Type:          OptionTypeFile,
+				Required:      false,
+				PathMustExist: true,
+				FileOnly:      true,
+			},
+			{
+				Name:        "auto_upgrade",
+				DisplayName: "Auto Upgrade",
+				Description: "Automatically check for updates on shell start",
+				Type:        OptionTypeBool,
+				Required:    false,
+				Default:     false,
+			},
+		},
 	},
 }
 

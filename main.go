@@ -20,6 +20,7 @@ func main() {
 
 	viper.SetDefault("dot-home", configFile)
 	viper.SetDefault("repo-path", filepath.Join(home, "dotfiles"))
+	viper.SetDefault("restrict-paths-to-home", false) // Allow system-wide paths by default
 	// TODO: Set a viper config variable for the files folder in the repo-path, and update the strings in the util/repo.go file to use this variable
 
 	viper.SetConfigFile(configFile)

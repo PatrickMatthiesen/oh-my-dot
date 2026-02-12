@@ -407,6 +407,15 @@ ssh-add ~/.ssh/id_rsa
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
+## Security
+
+Oh-my-dot includes security features to protect against path traversal and other vulnerabilities. See [docs/SECURITY.md](docs/SECURITY.md) for details on:
+- Path traversal protection
+- Configurable home directory restrictions
+- Input validation
+
+To report security vulnerabilities, please use [GitHub Security Advisories](https://github.com/PatrickMatthiesen/oh-my-dot/security/advisories).
+
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.

@@ -14,7 +14,7 @@ func DetectCurrentShell() (string, error) {
 	// PowerShell doesn't set $SHELL, but may set PowerShell-specific environment variables
 	if runtime.GOOS == "windows" {
 		// POWERSHELL_DISTRIBUTION_CHANNEL is set by PowerShell but not by cmd.exe
-		if os.Getenv("POWERSHELL_DISTRIBUTION_CHANNEL") != "" {
+		if os.Getenv("PSModulePath") != "" || os.Getenv("POWERSHELL_DISTRIBUTION_CHANNEL") != ""  {
 			return "powershell", nil
 		}
 	}
