@@ -61,13 +61,14 @@ Enhanced `omdot feature add` to:
 - Support both interactive and non-interactive modes
 - Handle features without options gracefully
 
-### 5. Template Generation (internal/shell/operations.go)
+### 5. Template Generation (`internal/catalog/template.go`, `internal/shell/operations.go`)
 
 Updated feature file generation to:
 
 - Accept option values as parameter
-- Include configured options as comments in generated files
-- Support future template variable substitution
+- Prefer catalog-backed, per-shell templates from `internal/catalog/features/<feature>/`
+- Render templates with runtime context via `RenderFeatureTemplate(...)`
+- Fall back to generic generated files (with option comments) when no catalog template exists
 
 ### 6. Tests (internal/validation/validation_test.go)
 
@@ -123,7 +124,7 @@ Added `oh-my-posh` to the catalog with three configurable options:
 ### Extensible
 
 - Easy to add new option types
-- Template variable substitution ready
+- Template variable substitution implemented for catalog templates
 - Custom validation functions supported
 - Shell-specific overrides possible
 

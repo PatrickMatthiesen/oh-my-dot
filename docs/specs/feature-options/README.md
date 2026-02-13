@@ -377,39 +377,47 @@ Feature files can use option values through template variables:
 
 ### Template Syntax
 
-Use Go template syntax in feature files:
+Use Go template syntax in catalog feature files (for example, `internal/catalog/features/oh-my-posh/bash.sh`):
 
 ```bash
-#!/usr/bin/env bash
-# oh-my-dot feature: oh-my-posh
-# Oh My Posh prompt theme
+if ! command -v oh-my-posh >/dev/null 2>&1; then
+  return 0
+fi
 
-{{if .Options.oh_my_posh_theme}}
-export POSH_THEME="{{.Options.oh_my_posh_theme}}"
-{{end}}
+OMD_OMP_CONFIG="{{ if .ConfigFile }}{{ .ConfigFile }}{{ else }}{{ .DefaultConfigPath }}{{ end }}"
 
-{{if .Options.config_file}}
-eval "$(oh-my-posh init bash --config {{.Options.config_file}})"
-{{else}}
+if [ -f "$OMD_OMP_CONFIG" ]; then
+  eval "$(oh-my-posh init bash --config \"$OMD_OMP_CONFIG\")"
+{{ else }}
 eval "$(oh-my-posh init bash)"
-{{end}}
+{{ end }}
 ```
+
+Common template context values:
+
+- `.Options` (map of resolved option values)
+- `.Theme`, `.ThemeURL`, `.ConfigFile`, `.DefaultConfigPath`, `.AutoUpgrade` (feature-specific convenience fields)
+- `option "name"` helper function for direct option access
 
 ### Template Rendering
 
 ```go
 // RenderFeatureTemplate renders a feature template with option values
-func RenderFeatureTemplate(templatePath string, config manifest.FeatureConfig) (string, error) {
-    tmpl, err := template.ParseFiles(templatePath)
+func RenderFeatureTemplate(content, featureName, shellName string, optionValues map[string]any) (string, error) {
+    context := buildTemplateContext(featureName, shellName, optionValues)
+
+    tmpl, err := template.New(featureName).Funcs(template.FuncMap{
+        "option": func(key string) any { return context.Options[key] },
+    }).Option("missingkey=zero").Parse(content)
     if err != nil {
         return "", err
     }
-    
+
     var buf bytes.Buffer
-    if err := tmpl.Execute(&buf, config); err != nil {
+    if err := tmpl.Execute(&buf, context); err != nil {
         return "", err
     }
-    
+
     return buf.String(), nil
 }
 ```
@@ -529,21 +537,18 @@ Parse format: `--option key=value`
 ### Generated Feature File
 
 ```bash
-#!/usr/bin/env bash
-# oh-my-dot feature: oh-my-posh
-# Oh My Posh prompt engine
-
-# Configuration
-export POSH_THEME="agnoster"
-
-# Auto-upgrade check
-if [ "$POSH_AUTO_UPGRADE" = "true" ]; then
-  oh-my-posh upgrade &>/dev/null &
+if ! command -v oh-my-posh >/dev/null 2>&1; then
+    return 0
 fi
 
-# Initialize Oh My Posh
-if [ -f "~/.config/oh-my-posh/config.json" ]; then
-  eval "$(oh-my-posh init bash --config ~/.config/oh-my-posh/config.json)"
+OMD_OMP_CONFIG="$OMD_SHELL_ROOT/features/oh-my-posh.omp.json"
+
+if [ ! -f "$OMD_OMP_CONFIG" ]; then
+    curl -fsSL "https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/agnoster.omp.json" -o "$OMD_OMP_CONFIG" 2>/dev/null
+fi
+
+if [ -f "$OMD_OMP_CONFIG" ]; then
+    eval "$(oh-my-posh init bash --config \"$OMD_OMP_CONFIG\")"
 else
   eval "$(oh-my-posh init bash)"
 fi
