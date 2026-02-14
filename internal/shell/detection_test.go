@@ -11,20 +11,22 @@ func TestDetectCurrentShell(t *testing.T) {
 	originalShell := os.Getenv("SHELL")
 	original0 := os.Getenv("0")
 	originalPSModulePath := os.Getenv("PSModulePath")
-	
+	originalPowerShellChannel := os.Getenv("POWERSHELL_DISTRIBUTION_CHANNEL")
+
 	// Restore environment after test
 	defer func() {
 		os.Setenv("SHELL", originalShell)
 		os.Setenv("0", original0)
 		os.Setenv("PSModulePath", originalPSModulePath)
+		os.Setenv("POWERSHELL_DISTRIBUTION_CHANNEL", originalPowerShellChannel)
 	}()
 
 	tests := []struct {
-		name           string
-		setupEnv       func()
-		expectedShell  string
-		shouldError    bool
-		skipOnOS       string // Skip test on specific OS
+		name          string
+		setupEnv      func()
+		expectedShell string
+		shouldError   bool
+		skipOnOS      string // Skip test on specific OS
 	}{
 		{
 			name: "detect bash from SHELL",
@@ -32,6 +34,7 @@ func TestDetectCurrentShell(t *testing.T) {
 				os.Setenv("SHELL", "/bin/bash")
 				os.Setenv("0", "")
 				os.Setenv("PSModulePath", "")
+				os.Setenv("POWERSHELL_DISTRIBUTION_CHANNEL", "")
 			},
 			expectedShell: "bash",
 			shouldError:   false,
@@ -42,6 +45,7 @@ func TestDetectCurrentShell(t *testing.T) {
 				os.Setenv("SHELL", "/usr/local/bin/zsh")
 				os.Setenv("0", "")
 				os.Setenv("PSModulePath", "")
+				os.Setenv("POWERSHELL_DISTRIBUTION_CHANNEL", "")
 			},
 			expectedShell: "zsh",
 			shouldError:   false,
@@ -52,6 +56,7 @@ func TestDetectCurrentShell(t *testing.T) {
 				os.Setenv("SHELL", "/usr/bin/fish")
 				os.Setenv("0", "")
 				os.Setenv("PSModulePath", "")
+				os.Setenv("POWERSHELL_DISTRIBUTION_CHANNEL", "")
 			},
 			expectedShell: "fish",
 			shouldError:   false,
@@ -62,6 +67,7 @@ func TestDetectCurrentShell(t *testing.T) {
 				os.Setenv("SHELL", "")
 				os.Setenv("0", "")
 				os.Setenv("PSModulePath", "C:\\Program Files\\PowerShell\\Modules")
+				os.Setenv("POWERSHELL_DISTRIBUTION_CHANNEL", "")
 			},
 			expectedShell: "powershell",
 			shouldError:   false,
@@ -73,6 +79,7 @@ func TestDetectCurrentShell(t *testing.T) {
 				os.Setenv("SHELL", "")
 				os.Setenv("0", "/bin/bash")
 				os.Setenv("PSModulePath", "")
+				os.Setenv("POWERSHELL_DISTRIBUTION_CHANNEL", "")
 			},
 			expectedShell: "bash",
 			shouldError:   false,
@@ -83,6 +90,7 @@ func TestDetectCurrentShell(t *testing.T) {
 				os.Setenv("SHELL", "/usr/bin/pwsh")
 				os.Setenv("0", "")
 				os.Setenv("PSModulePath", "")
+				os.Setenv("POWERSHELL_DISTRIBUTION_CHANNEL", "")
 			},
 			expectedShell: "powershell",
 			shouldError:   false,
@@ -93,6 +101,7 @@ func TestDetectCurrentShell(t *testing.T) {
 				os.Setenv("SHELL", "/bin/sh")
 				os.Setenv("0", "")
 				os.Setenv("PSModulePath", "")
+				os.Setenv("POWERSHELL_DISTRIBUTION_CHANNEL", "")
 			},
 			expectedShell: "posix",
 			shouldError:   false,
@@ -103,6 +112,7 @@ func TestDetectCurrentShell(t *testing.T) {
 				os.Setenv("SHELL", "")
 				os.Setenv("0", "")
 				os.Setenv("PSModulePath", "")
+				os.Setenv("POWERSHELL_DISTRIBUTION_CHANNEL", "")
 			},
 			expectedShell: "",
 			shouldError:   true,
@@ -113,6 +123,7 @@ func TestDetectCurrentShell(t *testing.T) {
 				os.Setenv("SHELL", "/bin/unsupported-shell")
 				os.Setenv("0", "")
 				os.Setenv("PSModulePath", "")
+				os.Setenv("POWERSHELL_DISTRIBUTION_CHANNEL", "")
 			},
 			expectedShell: "",
 			shouldError:   true,
@@ -142,7 +153,7 @@ func TestDetectCurrentShell(t *testing.T) {
 					t.Errorf("Unexpected error: %v", err)
 				}
 				if shell != tt.expectedShell {
-					t.Errorf("Expected shell %q, got %q", tt.expectedShell, shell)
+					t.Errorf("Expected shell %q, got %q. For SHELL='%s', 0='%s', PSModulePath='%s', POWERSHELL_DISTRIBUTION_CHANNEL='%s'", tt.expectedShell, shell, os.Getenv("SHELL"), os.Getenv("0"), os.Getenv("PSModulePath"), os.Getenv("POWERSHELL_DISTRIBUTION_CHANNEL"))
 				}
 			}
 		})

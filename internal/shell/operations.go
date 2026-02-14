@@ -9,6 +9,8 @@ import (
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/manifest"
 )
 
+const ohMyPoshThemeFileName = "oh-my-posh.omp.json"
+
 // HelpersFileContent is the template content for the helpers.sh file
 const HelpersFileContent = `#!/usr/bin/env sh
 # oh-my-dot shell framework - helper functions
@@ -67,7 +69,7 @@ func InitializeShellDirectory(repoPath, shellName string) error {
 }
 
 // AddFeatureToShell adds a feature to a specific shell
-func AddFeatureToShell(repoPath, shellName, featureName string, strategy string, onCommand []string, disabled bool) error {
+func AddFeatureToShell(repoPath, shellName, featureName string, strategy string, onCommand []string, disabled bool, options map[string]any) error {
 	// Check if shell directory exists, if not initialize it
 	if !ShellDirectoryExists(repoPath, shellName) {
 		if err := InitializeShellDirectory(repoPath, shellName); err != nil {
@@ -101,6 +103,7 @@ func AddFeatureToShell(repoPath, shellName, featureName string, strategy string,
 		Strategy:  strategy,
 		OnCommand: onCommand,
 		Disabled:  disabled,
+		Options:   options,
 	}
 
 	// Add to manifest
@@ -119,16 +122,16 @@ func AddFeatureToShell(repoPath, shellName, featureName string, strategy string,
 		return err
 	}
 
-	// Try to use catalog template first, fall back to generic template
+	// Try catalog template first, then generic template
 	var featureContent string
 	if catalog.HasFeatureTemplate(featureName, shellName) {
-		if err := catalog.WriteFeatureTemplate(repoPath, shellName, featureName); err != nil {
+		if err := catalog.WriteFeatureTemplate(repoPath, shellName, featureName, options); err != nil {
 			return fmt.Errorf("failed to write feature template: %w", err)
 		}
 		// Template written successfully, no need to write again
 	} else {
 		// No catalog template, use generic template
-		featureContent = generateFeatureTemplate(shellName, featureName, metadata)
+		featureContent = generateFeatureTemplate(shellName, featureName, metadata, options)
 		if err := os.WriteFile(featurePath, []byte(featureContent), 0644); err != nil {
 			return fmt.Errorf("failed to create feature file: %w", err)
 		}
@@ -143,7 +146,7 @@ func AddFeatureToShell(repoPath, shellName, featureName string, strategy string,
 }
 
 // generateFeatureTemplate creates a template feature file
-func generateFeatureTemplate(shellName, featureName string, metadata catalog.FeatureMetadata) string {
+func generateFeatureTemplate(shellName, featureName string, metadata catalog.FeatureMetadata, options map[string]any) string {
 	var shebang string
 	switch shellName {
 	case "bash":
@@ -163,13 +166,24 @@ func generateFeatureTemplate(shellName, featureName string, metadata catalog.Fea
 		description = metadata.Description
 	}
 
-	return fmt.Sprintf(`%s
+	template := fmt.Sprintf(`%s
 # oh-my-dot feature: %s
 # %s
 # 
 # Add your shell configuration below
 
 `, shebang, featureName, description)
+
+	// Add option comments if provided
+	if len(options) > 0 {
+		template += "# Configured options:\n"
+		for key, value := range options {
+			template += fmt.Sprintf("#   %s: %v\n", key, value)
+		}
+		template += "\n"
+	}
+
+	return template
 }
 
 // RemoveFeatureFromShell removes a feature from a shell
@@ -199,6 +213,13 @@ func RemoveFeatureFromShell(repoPath, shellName, featureName string) error {
 
 	if err := os.Remove(featurePath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to delete feature file: %w", err)
+	}
+
+	if featureName == "oh-my-posh" {
+		themePath := filepath.Join(GetFeaturesDirectory(repoPath, shellName), ohMyPoshThemeFileName)
+		if err := os.Remove(themePath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to delete oh-my-posh theme file: %w", err)
+		}
 	}
 
 	// Regenerate init script to remove the feature

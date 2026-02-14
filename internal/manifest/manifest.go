@@ -9,10 +9,11 @@ import (
 
 // FeatureConfig represents a single feature configuration in enabled.json
 type FeatureConfig struct {
-	Name      string   `json:"name"`
-	Strategy  string   `json:"strategy,omitempty"`  // "eager", "defer", or "on-command"
-	OnCommand []string `json:"onCommand,omitempty"` // Commands that trigger on-command loading
-	Disabled  bool     `json:"disabled,omitempty"`  // If true, feature is disabled
+	Name      string         `json:"name"`
+	Strategy  string         `json:"strategy,omitempty"`  // "eager", "defer", or "on-command"
+	OnCommand []string       `json:"onCommand,omitempty"` // Commands that trigger on-command loading
+	Disabled  bool           `json:"disabled,omitempty"`  // If true, feature is disabled
+	Options   map[string]any `json:"options,omitempty"`   // User-provided option values
 }
 
 // FeatureManifest represents the enabled.json file structure

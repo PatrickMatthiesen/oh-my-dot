@@ -10,6 +10,7 @@ import (
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/interactive"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/manifest"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/options"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/shell"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -123,6 +124,7 @@ var (
 	flagAll         bool
 	flagStrategy    string
 	flagOnCommand   []string
+	flagOption      []string
 	flagDisabled    bool
 	flagForce       bool
 	flagInteractive bool
@@ -143,6 +145,7 @@ func init() {
 	featureAddCmd.Flags().BoolVar(&flagAll, "all", false, "Add to all supported shells")
 	featureAddCmd.Flags().StringVar(&flagStrategy, "strategy", "", "Override load strategy (eager, defer, on-command)")
 	featureAddCmd.Flags().StringSliceVar(&flagOnCommand, "on-command", nil, "Set trigger commands for on-command strategy")
+	featureAddCmd.Flags().StringSliceVar(&flagOption, "option", nil, "Set feature option (key=value); repeatable")
 	featureAddCmd.Flags().BoolVar(&flagDisabled, "disabled", false, "Add feature but keep it disabled")
 
 	featureRemoveCmd.Flags().StringSliceVar(&flagShell, "shell", nil, "Target specific shell(s)")
@@ -284,11 +287,41 @@ func runFeatureAdd(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Prompt for options if the feature has them and we're in interactive mode
+	var optionValues map[string]any
+	if inCatalog && len(metadata.Options) > 0 {
+		overrides, err := options.ParseOptionOverrides(metadata, flagOption)
+		if err != nil {
+			return fmt.Errorf("failed to parse --option values: %w", err)
+		}
+
+		if isInteractive() {
+			optionValues, err = options.PromptForOptionsWithOverrides(metadata, overrides)
+			if err != nil {
+				return fmt.Errorf("failed to collect feature options: %w", err)
+			}
+		} else {
+			optionValues, err = options.ResolveOptionsForNonInteractiveWithOverrides(metadata, overrides)
+			if err != nil {
+				return fmt.Errorf("failed to resolve feature options in non-interactive mode: %w", err)
+			}
+
+			if len(optionValues) > 0 {
+				fileops.ColorPrintln("Using default values for feature options (non-interactive mode)", fileops.Cyan)
+			}
+		}
+	} else {
+		optionValues, err = parseRawOptionPairs(flagOption)
+		if err != nil {
+			return fmt.Errorf("failed to parse --option values: %w", err)
+		}
+	}
+
 	// Add feature to each target shell
 	for _, shellName := range targetShells {
 		fileops.ColorPrintfn(fileops.Cyan, "Adding %s to %s...", featureName, shellName)
 
-		err := shell.AddFeatureToShell(repoPath, shellName, featureName, flagStrategy, flagOnCommand, flagDisabled)
+		err := shell.AddFeatureToShell(repoPath, shellName, featureName, flagStrategy, flagOnCommand, flagDisabled, optionValues)
 		if err != nil {
 			return fmt.Errorf("failed to add feature to %s: %w", shellName, err)
 		}
@@ -302,6 +335,21 @@ func runFeatureAdd(cmd *cobra.Command, args []string) error {
 	fileops.ColorPrintln("Run 'omdot push' to commit and push changes", fileops.Cyan)
 
 	return nil
+}
+
+func parseRawOptionPairs(rawOptions []string) (map[string]any, error) {
+	values := make(map[string]any)
+	for _, raw := range rawOptions {
+		parts := strings.SplitN(raw, "=", 2)
+		if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" {
+			return nil, fmt.Errorf("invalid --option format '%s' (expected key=value)", raw)
+		}
+
+		key := strings.TrimSpace(parts[0])
+		values[key] = parts[1]
+	}
+
+	return values, nil
 }
 
 func runInteractiveFeatureAdd(repoPath string) error {
@@ -331,12 +379,12 @@ func runInteractiveFeatureAdd(repoPath string) error {
 
 	// Convert to sorted list with detected shell first
 	var availableShells []string
-	
+
 	// Add detected shell first if it exists
 	if currentShell != "" && shellSet[currentShell] {
 		availableShells = append(availableShells, currentShell)
 	}
-	
+
 	// Add remaining shells in sorted order
 	var remainingShells []string
 	for s := range shellSet {
@@ -368,7 +416,7 @@ func runInteractiveFeatureAdd(repoPath string) error {
 
 	// Filter features to only show those compatible with selected shells
 	compatibleFeatures := filterFeaturesByShells(allFeatures, selectedShells)
-	
+
 	if len(compatibleFeatures) == 0 {
 		fileops.ColorPrintln("No features available for selected shells", fileops.Yellow)
 		return nil
@@ -396,13 +444,13 @@ func runInteractiveFeatureAdd(repoPath string) error {
 		label   string
 	}
 
-	options := make([]featureOption, len(compatibleFeatures))
+	featureOptions := make([]featureOption, len(compatibleFeatures))
 	optionLabels := make([]string, len(compatibleFeatures))
 	labelToFeatureName := make(map[string]string, len(compatibleFeatures))
 
 	for i, f := range compatibleFeatures {
 		label := fmt.Sprintf("%s - %s [%s]", f.Name, f.Description, f.Category)
-		options[i] = featureOption{feature: f, label: label}
+		featureOptions[i] = featureOption{feature: f, label: label}
 		optionLabels[i] = label
 		labelToFeatureName[label] = f.Name
 	}
@@ -455,6 +503,21 @@ func runInteractiveFeatureAdd(repoPath string) error {
 	skippedCount := 0
 
 	for _, feature := range selectedFeatures {
+		// Prompt for options if the feature has them
+		var optionValues map[string]any
+		if len(feature.Options) > 0 {
+			fileops.ColorPrintfn(fileops.Cyan, "\nConfiguring %s:", feature.Name)
+			var err error
+			optionValues, err = options.PromptForOptions(feature)
+			if err != nil {
+				fileops.ColorPrintfn(fileops.Red, "  ✗ Failed to collect options: %s", err)
+				skippedCount++
+				continue
+			}
+		} else {
+			optionValues = make(map[string]any)
+		}
+
 		for _, shellName := range selectedShells {
 			// Check if feature supports this shell
 			if !feature.SupportsShell(shellName) {
@@ -475,7 +538,7 @@ func runInteractiveFeatureAdd(repoPath string) error {
 
 			fileops.ColorPrintfn(fileops.Cyan, "Adding %s to %s...", feature.Name, shellName)
 
-			err = shell.AddFeatureToShell(repoPath, shellName, feature.Name, flagStrategy, flagOnCommand, flagDisabled)
+			err = shell.AddFeatureToShell(repoPath, shellName, feature.Name, flagStrategy, flagOnCommand, flagDisabled, optionValues)
 			if err != nil {
 				fileops.ColorPrintfn(fileops.Red, "  ✗ Failed: %s", err)
 				skippedCount++
