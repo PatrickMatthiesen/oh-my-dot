@@ -29,8 +29,8 @@ Checks performed:
   - Init script syntax
 
 Examples:
-  omdot doctor              # Check all shells
-  omdot doctor --shell bash # Check specific shell only`,
+  oh-my-dot doctor              # Check all shells
+  oh-my-dot doctor --shell bash # Check specific shell only`,
 	GroupID: "dotfiles",
 	RunE:    runDoctor,
 }
@@ -55,6 +55,7 @@ type checkResult struct {
 
 func runDoctor(cmd *cobra.Command, args []string) error {
 	repoPath := viper.GetString("repo-path")
+	alias := assumedAlias()
 
 	fileops.ColorPrintln("\noh-my-dot Shell Framework Doctor", fileops.Cyan)
 	fileops.ColorPrintln("=================================\n", fileops.Cyan)
@@ -76,7 +77,7 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 
 	if len(shellsToCheck) == 0 {
 		fileops.ColorPrintln("No shell features configured", fileops.Yellow)
-		fileops.ColorPrintln("Run 'omdot feature add' to add features", fileops.Cyan)
+		fileops.ColorPrintfn(fileops.Cyan, "Run '%s feature add' to add features", alias)
 		return nil
 	}
 
@@ -138,11 +139,11 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	if totalFixable > 0 && !flagFix {
 		fmt.Println()
 		if fixableErrorCount > 0 && fixableWarningCount > 0 {
-			fileops.ColorPrintfn(fileops.Cyan, "Tip: Run 'omdot doctor --fix' to automatically fix %d error(s) and %d warning(s)", fixableErrorCount, fixableWarningCount)
+			fileops.ColorPrintfn(fileops.Cyan, "Tip: Run '%s doctor --fix' to automatically fix %d error(s) and %d warning(s)", alias, fixableErrorCount, fixableWarningCount)
 		} else if fixableErrorCount > 0 {
-			fileops.ColorPrintfn(fileops.Cyan, "Tip: Run 'omdot doctor --fix' to automatically fix %d error(s)", fixableErrorCount)
+			fileops.ColorPrintfn(fileops.Cyan, "Tip: Run '%s doctor --fix' to automatically fix %d error(s)", alias, fixableErrorCount)
 		} else {
-			fileops.ColorPrintfn(fileops.Cyan, "Tip: Run 'omdot doctor --fix' to automatically fix %d warning(s)", fixableWarningCount)
+			fileops.ColorPrintfn(fileops.Cyan, "Tip: Run '%s doctor --fix' to automatically fix %d warning(s)", alias, fixableWarningCount)
 		}
 	} else if warningCount > 0 && fixableWarningCount == 0 {
 		// Warnings that can't be fixed - explain they're optional
@@ -235,7 +236,7 @@ func checkDirectoryStructure(repoPath, shellName string) []checkResult {
 	// Check shared lib directory and helpers.sh exists
 	libDir := filepath.Join(repoPath, "omd-shells", "lib")
 	helpersFile := filepath.Join(libDir, "helpers.sh")
-	
+
 	// Check lib directory
 	if _, err := os.Stat(libDir); os.IsNotExist(err) {
 		results = append(results, checkResult{
@@ -259,7 +260,7 @@ func checkDirectoryStructure(repoPath, shellName string) []checkResult {
 			status: "ok",
 		})
 	}
-	
+
 	// Check helpers.sh file
 	if _, err := os.Stat(helpersFile); os.IsNotExist(err) {
 		results = append(results, checkResult{

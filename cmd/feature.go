@@ -38,10 +38,10 @@ The command will intelligently select which shell(s) to add the feature to based
 - Interactive prompts (if multiple options available)
 
 Examples:
-  omdot feature add -i                    # Browse catalog interactively
-  omdot feature add git-prompt
-  omdot feature add kubectl-completion --shell bash
-  omdot feature add core-aliases --all`,
+  oh-my-dot feature add -i                    # Browse catalog interactively
+  oh-my-dot feature add git-prompt
+  oh-my-dot feature add kubectl-completion --shell bash
+  oh-my-dot feature add core-aliases --all`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runFeatureAdd,
 }
@@ -58,10 +58,10 @@ Interactive mode (-i): Browse and select features to remove
 Non-interactive: Specify feature name directly
 
 Examples:
-  omdot feature remove -i                     # Browse features interactively
-  omdot feature remove git-prompt
-  omdot feature remove kubectl-completion --shell bash
-  omdot feature remove core-aliases --all`,
+  oh-my-dot feature remove -i                     # Browse features interactively
+  oh-my-dot feature remove git-prompt
+  oh-my-dot feature remove kubectl-completion --shell bash
+  oh-my-dot feature remove core-aliases --all`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runFeatureRemove,
 }
@@ -72,8 +72,8 @@ var featureListCmd = &cobra.Command{
 	Long: `List all enabled shell features, optionally filtered by shell.
 
 Examples:
-  omdot feature list
-  omdot feature list --shell bash`,
+  oh-my-dot feature list
+  oh-my-dot feature list --shell bash`,
 	Args: cobra.NoArgs,
 	RunE: runFeatureList,
 }
@@ -84,8 +84,8 @@ var featureEnableCmd = &cobra.Command{
 	Long: `Enable a previously disabled feature without re-adding it.
 
 Examples:
-  omdot feature enable git-prompt
-  omdot feature enable kubectl-completion --shell bash`,
+  oh-my-dot feature enable git-prompt
+  oh-my-dot feature enable kubectl-completion --shell bash`,
 	Args: cobra.ExactArgs(1),
 	RunE: runFeatureEnable,
 }
@@ -97,8 +97,8 @@ var featureDisableCmd = &cobra.Command{
 This allows you to temporarily turn off a feature.
 
 Examples:
-  omdot feature disable git-prompt
-  omdot feature disable kubectl-completion --shell bash`,
+  oh-my-dot feature disable git-prompt
+  oh-my-dot feature disable kubectl-completion --shell bash`,
 	Args: cobra.ExactArgs(1),
 	RunE: runFeatureDisable,
 }
@@ -113,8 +113,8 @@ var featureInfoCmd = &cobra.Command{
 - Current configuration (if installed)
 
 Examples:
-  omdot feature info git-prompt
-  omdot feature info kubectl-completion`,
+  oh-my-dot feature info git-prompt
+  oh-my-dot feature info kubectl-completion`,
 	Args: cobra.ExactArgs(1),
 	RunE: runFeatureInfo,
 }
@@ -231,6 +231,7 @@ func filterFeaturesByShells(features []catalog.FeatureMetadata, shells []string)
 
 func runFeatureAdd(cmd *cobra.Command, args []string) error {
 	repoPath := viper.GetString("repo-path")
+	alias := assumedAlias()
 
 	// Interactive mode: browse catalog
 	if flagInteractive {
@@ -331,8 +332,8 @@ func runFeatureAdd(cmd *cobra.Command, args []string) error {
 
 	fmt.Println()
 	fileops.ColorPrintln("Changes staged for commit.", fileops.Green)
-	fileops.ColorPrintln("Run 'omdot apply' to activate the feature(s)", fileops.Cyan)
-	fileops.ColorPrintln("Run 'omdot push' to commit and push changes", fileops.Cyan)
+	fileops.ColorPrintfn(fileops.Cyan, "Run '%s apply' to activate the feature(s)", alias)
+	fileops.ColorPrintfn(fileops.Cyan, "Run '%s push' to commit and push changes", alias)
 
 	return nil
 }
@@ -353,6 +354,8 @@ func parseRawOptionPairs(rawOptions []string) (map[string]any, error) {
 }
 
 func runInteractiveFeatureAdd(repoPath string) error {
+	alias := assumedAlias()
+
 	if !isInteractive() {
 		return fmt.Errorf("cannot run interactive mode in non-interactive environment")
 	}
@@ -561,8 +564,8 @@ func runInteractiveFeatureAdd(repoPath string) error {
 	if addedCount > 0 {
 		fmt.Println()
 		fileops.ColorPrintln("Changes staged for commit.", fileops.Green)
-		fileops.ColorPrintln("Run 'omdot apply' to activate the feature(s)", fileops.Cyan)
-		fileops.ColorPrintln("Run 'omdot push' to commit and push changes", fileops.Cyan)
+		fileops.ColorPrintfn(fileops.Cyan, "Run '%s apply' to activate the feature(s)", alias)
+		fileops.ColorPrintfn(fileops.Cyan, "Run '%s push' to commit and push changes", alias)
 	}
 
 	return nil
@@ -598,7 +601,7 @@ func selectShells(metadata catalog.FeatureMetadata) ([]string, error) {
 	if currentShellSupported && len(supportedShells) > 1 {
 		// Interactive mode: prompt user
 		if !isInteractive() {
-			return nil, fmt.Errorf("cannot prompt for shell selection in non-interactive mode\nPlease specify target shell(s):\n  --shell bash          Add to specific shell\n  --all                 Add to all supported shells\n\nExample: omdot feature add %s --shell bash", metadata.Name)
+			return nil, fmt.Errorf("cannot prompt for shell selection in non-interactive mode\nPlease specify target shell(s):\n  --shell bash          Add to specific shell\n  --all                 Add to all supported shells\n\nExample: %s feature add %s --shell bash", assumedAlias(), metadata.Name)
 		}
 
 		// Show interactive prompt
@@ -623,6 +626,7 @@ func selectShells(metadata catalog.FeatureMetadata) ([]string, error) {
 
 func runFeatureRemove(cmd *cobra.Command, args []string) error {
 	repoPath := viper.GetString("repo-path")
+	alias := assumedAlias()
 
 	// Interactive mode: browse features
 	if flagInteractive {
@@ -631,7 +635,7 @@ func runFeatureRemove(cmd *cobra.Command, args []string) error {
 
 	// Non-interactive mode: require feature name
 	if len(args) == 0 {
-		return fmt.Errorf("feature name required (or use -i for interactive mode)\n\nExamples:\n  omdot feature remove git-prompt\n  omdot feature remove -i                    # Browse features interactively\n  omdot feature remove git-prompt --all      # Remove from all shells")
+		return fmt.Errorf("feature name required (or use -i for interactive mode)\n\nExamples:\n  %s feature remove git-prompt\n  %s feature remove -i                    # Browse features interactively\n  %s feature remove git-prompt --all      # Remove from all shells", alias, alias, alias)
 	}
 
 	featureName := args[0]
@@ -733,12 +737,14 @@ func runFeatureRemove(cmd *cobra.Command, args []string) error {
 
 	fmt.Println()
 	fileops.ColorPrintln("Changes staged for commit.", fileops.Green)
-	fileops.ColorPrintln("Run 'omdot apply' to sync changes", fileops.Cyan)
+	fileops.ColorPrintfn(fileops.Cyan, "Run '%s apply' to sync changes", alias)
 
 	return nil
 }
 
 func runInteractiveFeatureRemove(repoPath string) error {
+	alias := assumedAlias()
+
 	if !isInteractive() {
 		return fmt.Errorf("cannot run interactive mode in non-interactive environment")
 	}
@@ -889,7 +895,7 @@ func runInteractiveFeatureRemove(repoPath string) error {
 		fileops.ColorPrintfn(fileops.Green, "Successfully removed %d feature(s)", removedCount)
 		fmt.Println()
 		fileops.ColorPrintln("Changes staged for commit.", fileops.Green)
-		fileops.ColorPrintln("Run 'omdot apply' to sync changes", fileops.Cyan)
+		fileops.ColorPrintfn(fileops.Cyan, "Run '%s apply' to sync changes", alias)
 	} else {
 		fileops.ColorPrintln("No features were removed", fileops.Yellow)
 	}
@@ -899,6 +905,7 @@ func runInteractiveFeatureRemove(repoPath string) error {
 
 func runFeatureList(cmd *cobra.Command, args []string) error {
 	repoPath := viper.GetString("repo-path")
+	alias := assumedAlias()
 
 	// Get shells to list
 	var targetShells []string
@@ -914,8 +921,8 @@ func runFeatureList(cmd *cobra.Command, args []string) error {
 
 	if len(targetShells) == 0 {
 		fileops.ColorPrintln("No shell features configured", fileops.Yellow)
-		fileops.ColorPrintln("Use 'omdot feature add <feature>' to add features", fileops.Cyan)
-		fileops.ColorPrintln("Use 'omdot feature add -i' to browse the catalog", fileops.Cyan)
+		fileops.ColorPrintfn(fileops.Cyan, "Use '%s feature add <feature>' to add features", alias)
+		fileops.ColorPrintfn(fileops.Cyan, "Use '%s feature add -i' to browse the catalog", alias)
 		return nil
 	}
 
@@ -1020,7 +1027,7 @@ func runFeatureEnable(cmd *cobra.Command, args []string) error {
 		fileops.ColorPrintfn(fileops.Green, "Enabled %s in %s", featureName, shellName)
 	}
 
-	fileops.ColorPrintln("\nRun 'omdot apply' to activate changes", fileops.Cyan)
+	fileops.ColorPrintfn(fileops.Cyan, "\nRun '%s apply' to activate changes", assumedAlias())
 	return nil
 }
 
@@ -1053,7 +1060,7 @@ func runFeatureDisable(cmd *cobra.Command, args []string) error {
 		fileops.ColorPrintfn(fileops.Yellow, "Disabled %s in %s", featureName, shellName)
 	}
 
-	fileops.ColorPrintln("\nRun 'omdot apply' to sync changes", fileops.Cyan)
+	fileops.ColorPrintfn(fileops.Cyan, "\nRun '%s apply' to sync changes", assumedAlias())
 	return nil
 }
 

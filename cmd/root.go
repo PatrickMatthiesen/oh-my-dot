@@ -50,6 +50,37 @@ oh-my-dot uses git to manage your dotfiles, so you can easily push and pull your
 	},
 }
 
+func detectInvokedName() string {
+	invokedAs := filepath.Base(os.Args[0])
+
+	// Sanitize the invoked name to prevent control characters or special sequences
+	// This protects against malicious symlinks with control characters
+	invokedAs = strings.Map(func(r rune) rune {
+		// Only allow letters, digits, hyphen, underscore, and dot
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' || r == '.' {
+			return r
+		}
+		return -1 // Drop other characters
+	}, invokedAs)
+
+	// Strip executable file extensions like .exe, .bat, .cmd on Windows
+	invokedAs = strings.TrimSuffix(invokedAs, filepath.Ext(invokedAs))
+
+	// Fallback to "oh-my-dot" if the sanitized name is empty
+	if invokedAs == "" {
+		invokedAs = "oh-my-dot"
+	}
+
+	return invokedAs
+}
+
+func assumedAlias() string {
+	if alias := rootCmd.Name(); alias != "" {
+		return alias
+	}
+	return detectInvokedName()
+}
+
 func Execute(funcs ...func(*cobra.Command)) error {
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
@@ -60,30 +91,10 @@ func Execute(funcs ...func(*cobra.Command)) error {
 		// CreateConfigFile()
 	}
 
-	// Get the actual invoked command name from os.Args[0]
-	// This allows users to use aliases (symlinks, shortcuts, etc.) and see them in help
-	invokedAs := filepath.Base(os.Args[0])
-	
-	// Sanitize the invoked name to prevent control characters or special sequences
-	// This protects against malicious symlinks with control characters
-	invokedAs = strings.Map(func(r rune) rune {
-		// Only allow letters, digits, hyphen, underscore, and dot
-		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' || r == '.' {
-			return r
-		}
-		return -1 // Drop other characters
-	}, invokedAs)
-	
-	// strip dotfile extensions like .exe, .bat, .cmd on Windows
-	invokedAs = strings.TrimSuffix(invokedAs, filepath.Ext(invokedAs))
+	invokedAs := detectInvokedName()
 
-	// Fallback to "oh-my-dot" if the sanitized name is empty
-	if invokedAs == "" {
-		invokedAs = "oh-my-dot"
-	}
-	
 	rootCmd.Use = invokedAs
-	
+
 	// Update the root command example dynamically
 	// Try to find the init command and create an example, fallback to a generic example if not found
 	if initCmd, _, err := rootCmd.Find([]string{"init"}); err == nil {
@@ -91,7 +102,7 @@ func Execute(funcs ...func(*cobra.Command)) error {
 	} else {
 		rootCmd.Example = invokedAs + " help [command]"
 	}
-	
+
 	// Update examples in all subcommands to use the invoked name
 	// Skip if we're already using the default name to avoid unnecessary work
 	if invokedAs != "oh-my-dot" {
@@ -103,6 +114,10 @@ func Execute(funcs ...func(*cobra.Command)) error {
 				// This ensures we only replace the command name, not parts of other text
 				cmd.Example = strings.ReplaceAll(cmd.Example, "oh-my-dot ", invokedAs+" ")
 				cmd.Example = strings.ReplaceAll(cmd.Example, "oh-my-dot\n", invokedAs+"\n")
+			}
+			if cmd.Long != "" {
+				cmd.Long = strings.ReplaceAll(cmd.Long, "oh-my-dot ", invokedAs+" ")
+				cmd.Long = strings.ReplaceAll(cmd.Long, "oh-my-dot\n", invokedAs+"\n")
 			}
 			for _, subCmd := range cmd.Commands() {
 				updateExamples(subCmd)
@@ -152,7 +167,6 @@ func Execute(funcs ...func(*cobra.Command)) error {
 
 	return rootCmd.Execute()
 }
-
 
 var templateColorMap = &template.FuncMap{
 	"color":  fileops.SColorPrint,
