@@ -142,7 +142,7 @@ func TestDetectCurrentShell(t *testing.T) {
 					t.Errorf("Unexpected error: %v", err)
 				}
 				if shell != tt.expectedShell {
-					t.Errorf("Expected shell %q, got %q", tt.expectedShell, shell)
+					t.Errorf("Expected shell %q, got %q. For SHELL='%s', 0='%s', PSModulePath='%s'", tt.expectedShell, shell, os.Getenv("SHELL"), os.Getenv("0"), os.Getenv("PSModulePath"))
 				}
 			}
 		})
