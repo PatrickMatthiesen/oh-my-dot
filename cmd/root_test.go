@@ -44,13 +44,21 @@ func TestDetectInvokedName(t *testing.T) {
 }
 
 func TestAssumedAlias(t *testing.T) {
+	originalArgs := os.Args
 	originalUse := rootCmd.Use
 	t.Cleanup(func() {
+		os.Args = originalArgs
 		rootCmd.Use = originalUse
 	})
 
 	rootCmd.Use = "omdot"
 	if got := assumedAlias(); got != "omdot" {
 		t.Fatalf("assumedAlias() = %q, want %q", got, "omdot")
+	}
+
+	rootCmd.Use = ""
+	os.Args = []string{"/tmp/myalias.exe"}
+	if got := assumedAlias(); got != "myalias" {
+		t.Fatalf("assumedAlias() fallback = %q, want %q", got, "myalias")
 	}
 }

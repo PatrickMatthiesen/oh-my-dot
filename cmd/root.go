@@ -63,7 +63,7 @@ func detectInvokedName() string {
 		return -1 // Drop other characters
 	}, invokedAs)
 
-	// strip dotfile extensions like .exe, .bat, .cmd on Windows
+	// Strip executable file extensions like .exe, .bat, .cmd on Windows
 	invokedAs = strings.TrimSuffix(invokedAs, filepath.Ext(invokedAs))
 
 	// Fallback to "oh-my-dot" if the sanitized name is empty
