@@ -231,6 +231,7 @@ func filterFeaturesByShells(features []catalog.FeatureMetadata, shells []string)
 
 func runFeatureAdd(cmd *cobra.Command, args []string) error {
 	repoPath := viper.GetString("repo-path")
+	alias := assumedAlias()
 
 	// Interactive mode: browse catalog
 	if flagInteractive {
@@ -331,8 +332,8 @@ func runFeatureAdd(cmd *cobra.Command, args []string) error {
 
 	fmt.Println()
 	fileops.ColorPrintln("Changes staged for commit.", fileops.Green)
-	fileops.ColorPrintfn(fileops.Cyan, "Run '%s apply' to activate the feature(s)", assumedAlias())
-	fileops.ColorPrintfn(fileops.Cyan, "Run '%s push' to commit and push changes", assumedAlias())
+	fileops.ColorPrintfn(fileops.Cyan, "Run '%s apply' to activate the feature(s)", alias)
+	fileops.ColorPrintfn(fileops.Cyan, "Run '%s push' to commit and push changes", alias)
 
 	return nil
 }
@@ -353,6 +354,8 @@ func parseRawOptionPairs(rawOptions []string) (map[string]any, error) {
 }
 
 func runInteractiveFeatureAdd(repoPath string) error {
+	alias := assumedAlias()
+
 	if !isInteractive() {
 		return fmt.Errorf("cannot run interactive mode in non-interactive environment")
 	}
@@ -561,8 +564,8 @@ func runInteractiveFeatureAdd(repoPath string) error {
 	if addedCount > 0 {
 		fmt.Println()
 		fileops.ColorPrintln("Changes staged for commit.", fileops.Green)
-		fileops.ColorPrintfn(fileops.Cyan, "Run '%s apply' to activate the feature(s)", assumedAlias())
-		fileops.ColorPrintfn(fileops.Cyan, "Run '%s push' to commit and push changes", assumedAlias())
+		fileops.ColorPrintfn(fileops.Cyan, "Run '%s apply' to activate the feature(s)", alias)
+		fileops.ColorPrintfn(fileops.Cyan, "Run '%s push' to commit and push changes", alias)
 	}
 
 	return nil
@@ -623,6 +626,7 @@ func selectShells(metadata catalog.FeatureMetadata) ([]string, error) {
 
 func runFeatureRemove(cmd *cobra.Command, args []string) error {
 	repoPath := viper.GetString("repo-path")
+	alias := assumedAlias()
 
 	// Interactive mode: browse features
 	if flagInteractive {
@@ -631,7 +635,7 @@ func runFeatureRemove(cmd *cobra.Command, args []string) error {
 
 	// Non-interactive mode: require feature name
 	if len(args) == 0 {
-		return fmt.Errorf("feature name required (or use -i for interactive mode)\n\nExamples:\n  %s feature remove git-prompt\n  %s feature remove -i                    # Browse features interactively\n  %s feature remove git-prompt --all      # Remove from all shells", assumedAlias(), assumedAlias(), assumedAlias())
+		return fmt.Errorf("feature name required (or use -i for interactive mode)\n\nExamples:\n  %s feature remove git-prompt\n  %s feature remove -i                    # Browse features interactively\n  %s feature remove git-prompt --all      # Remove from all shells", alias, alias, alias)
 	}
 
 	featureName := args[0]
@@ -733,12 +737,14 @@ func runFeatureRemove(cmd *cobra.Command, args []string) error {
 
 	fmt.Println()
 	fileops.ColorPrintln("Changes staged for commit.", fileops.Green)
-	fileops.ColorPrintfn(fileops.Cyan, "Run '%s apply' to sync changes", assumedAlias())
+	fileops.ColorPrintfn(fileops.Cyan, "Run '%s apply' to sync changes", alias)
 
 	return nil
 }
 
 func runInteractiveFeatureRemove(repoPath string) error {
+	alias := assumedAlias()
+
 	if !isInteractive() {
 		return fmt.Errorf("cannot run interactive mode in non-interactive environment")
 	}
@@ -889,7 +895,7 @@ func runInteractiveFeatureRemove(repoPath string) error {
 		fileops.ColorPrintfn(fileops.Green, "Successfully removed %d feature(s)", removedCount)
 		fmt.Println()
 		fileops.ColorPrintln("Changes staged for commit.", fileops.Green)
-		fileops.ColorPrintfn(fileops.Cyan, "Run '%s apply' to sync changes", assumedAlias())
+		fileops.ColorPrintfn(fileops.Cyan, "Run '%s apply' to sync changes", alias)
 	} else {
 		fileops.ColorPrintln("No features were removed", fileops.Yellow)
 	}
@@ -899,6 +905,7 @@ func runInteractiveFeatureRemove(repoPath string) error {
 
 func runFeatureList(cmd *cobra.Command, args []string) error {
 	repoPath := viper.GetString("repo-path")
+	alias := assumedAlias()
 
 	// Get shells to list
 	var targetShells []string
@@ -914,8 +921,8 @@ func runFeatureList(cmd *cobra.Command, args []string) error {
 
 	if len(targetShells) == 0 {
 		fileops.ColorPrintln("No shell features configured", fileops.Yellow)
-		fileops.ColorPrintfn(fileops.Cyan, "Use '%s feature add <feature>' to add features", assumedAlias())
-		fileops.ColorPrintfn(fileops.Cyan, "Use '%s feature add -i' to browse the catalog", assumedAlias())
+		fileops.ColorPrintfn(fileops.Cyan, "Use '%s feature add <feature>' to add features", alias)
+		fileops.ColorPrintfn(fileops.Cyan, "Use '%s feature add -i' to browse the catalog", alias)
 		return nil
 	}
 

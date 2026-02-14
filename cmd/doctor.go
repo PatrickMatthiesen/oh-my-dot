@@ -55,6 +55,7 @@ type checkResult struct {
 
 func runDoctor(cmd *cobra.Command, args []string) error {
 	repoPath := viper.GetString("repo-path")
+	alias := assumedAlias()
 
 	fileops.ColorPrintln("\noh-my-dot Shell Framework Doctor", fileops.Cyan)
 	fileops.ColorPrintln("=================================\n", fileops.Cyan)
@@ -76,7 +77,7 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 
 	if len(shellsToCheck) == 0 {
 		fileops.ColorPrintln("No shell features configured", fileops.Yellow)
-		fileops.ColorPrintfn(fileops.Cyan, "Run '%s feature add' to add features", assumedAlias())
+		fileops.ColorPrintfn(fileops.Cyan, "Run '%s feature add' to add features", alias)
 		return nil
 	}
 
@@ -138,11 +139,11 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	if totalFixable > 0 && !flagFix {
 		fmt.Println()
 		if fixableErrorCount > 0 && fixableWarningCount > 0 {
-			fileops.ColorPrintfn(fileops.Cyan, "Tip: Run '%s doctor --fix' to automatically fix %d error(s) and %d warning(s)", assumedAlias(), fixableErrorCount, fixableWarningCount)
+			fileops.ColorPrintfn(fileops.Cyan, "Tip: Run '%s doctor --fix' to automatically fix %d error(s) and %d warning(s)", alias, fixableErrorCount, fixableWarningCount)
 		} else if fixableErrorCount > 0 {
-			fileops.ColorPrintfn(fileops.Cyan, "Tip: Run '%s doctor --fix' to automatically fix %d error(s)", assumedAlias(), fixableErrorCount)
+			fileops.ColorPrintfn(fileops.Cyan, "Tip: Run '%s doctor --fix' to automatically fix %d error(s)", alias, fixableErrorCount)
 		} else {
-			fileops.ColorPrintfn(fileops.Cyan, "Tip: Run '%s doctor --fix' to automatically fix %d warning(s)", assumedAlias(), fixableWarningCount)
+			fileops.ColorPrintfn(fileops.Cyan, "Tip: Run '%s doctor --fix' to automatically fix %d warning(s)", alias, fixableWarningCount)
 		}
 	} else if warningCount > 0 && fixableWarningCount == 0 {
 		// Warnings that can't be fixed - explain they're optional
