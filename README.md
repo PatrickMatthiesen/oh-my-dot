@@ -323,6 +323,24 @@ remote: github.com/username/dotfiles
 - `oh-my-dot completion <shell>` - Generate shell completion
 - `oh-my-dot version` - Show version information
 
+### Automatic Remote Update Checks
+
+oh-my-dot performs a lightweight remote sync check (no full fetch) on:
+
+- `oh-my-dot add`
+- `oh-my-dot remove`
+- `oh-my-dot apply`
+- `oh-my-dot push`
+- `oh-my-dot doctor`
+
+When updates are detected, oh-my-dot shows a non-blocking notice and suggests `oh-my-dot pull`.
+
+Sync state messages:
+
+- **Remote ahead**: prompts you to run `oh-my-dot pull`
+- **Diverged**: warns that pull may require conflict resolution
+- **Local ahead**: suggests running `oh-my-dot push`
+
 ### Global Flags
 
 - `-i, --interactive` - Force interactive mode
@@ -410,6 +428,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## Security
 
 Oh-my-dot includes security features to protect against path traversal and other vulnerabilities. See [docs/SECURITY.md](docs/SECURITY.md) for details on:
+
 - Path traversal protection
 - Configurable home directory restrictions
 - Input validation

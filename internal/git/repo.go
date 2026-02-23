@@ -1,6 +1,7 @@
 package git
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -12,8 +13,28 @@ import (
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/spf13/viper"
 )
+
+// RemoteSyncState describes local/remote relationship for the current branch.
+type RemoteSyncState string
+
+const (
+	// RemoteSyncUpToDate indicates local and remote point to the same commit.
+	RemoteSyncUpToDate RemoteSyncState = "up-to-date"
+	// RemoteSyncRemoteAhead indicates remote contains commits missing locally.
+	RemoteSyncRemoteAhead RemoteSyncState = "remote-ahead"
+	// RemoteSyncRemoteSignificantlyAhead indicates local is at least 100 commits behind remote.
+	RemoteSyncRemoteSignificantlyAhead RemoteSyncState = "remote-significantly-ahead"
+	// RemoteSyncLocalAhead indicates local contains commits missing on remote.
+	RemoteSyncLocalAhead RemoteSyncState = "local-ahead"
+	// RemoteSyncDiverged indicates both sides contain unique commits.
+	RemoteSyncDiverged RemoteSyncState = "diverged"
+)
+
+const maxAncestorSearchDepth = 100
 
 // Check if folder has git repo
 func IsGitRepo(path string) bool {
@@ -224,6 +245,192 @@ func PushRepo() error {
 	}
 
 	return nil
+}
+
+// PullRepo pulls changes from the origin remote for the current branch.
+// Returns true if updates were applied, false if already up to date.
+func PullRepo() (bool, error) {
+	repoPath := viper.GetString("repo-path")
+	if repoPath == "" {
+		return false, fmt.Errorf("repository path is not set")
+	}
+
+	r, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return false, fmt.Errorf("failed to open repository: %w", err)
+	}
+
+	headRef, err := r.Head()
+	if err != nil {
+		return false, fmt.Errorf("failed to get current branch: %w", err)
+	}
+
+	if !headRef.Name().IsBranch() {
+		return false, fmt.Errorf("cannot pull from detached HEAD")
+	}
+
+	worktree, err := r.Worktree()
+	if err != nil {
+		return false, fmt.Errorf("failed to get worktree: %w", err)
+	}
+
+	err = worktree.Pull(&git.PullOptions{
+		RemoteName:    "origin",
+		ReferenceName: headRef.Name(),
+		SingleBranch:  true,
+	})
+	if err != nil {
+		if errors.Is(err, git.NoErrAlreadyUpToDate) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to pull repository: %w", err)
+	}
+
+	return true, nil
+}
+
+// HasRemoteUpdates checks if the current branch needs pull from origin.
+// Returns true when remote is ahead or diverged.
+func HasRemoteUpdates() (bool, error) {
+	state, err := GetRemoteSyncState()
+	if err != nil {
+		return false, err
+	}
+
+	return state == RemoteSyncRemoteAhead || state == RemoteSyncRemoteSignificantlyAhead || state == RemoteSyncDiverged, nil
+}
+
+// GetRemoteSyncState returns local/remote relationship for the current branch.
+// It uses a lightweight remote reference list and local commit graph traversal.
+func GetRemoteSyncState() (RemoteSyncState, error) {
+	repoPath := viper.GetString("repo-path")
+	if repoPath == "" {
+		return "", fmt.Errorf("repository path is not set")
+	}
+
+	r, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open repository: %w", err)
+	}
+
+	headRef, err := r.Head()
+	if err != nil {
+		return "", fmt.Errorf("failed to get current branch: %w", err)
+	}
+
+	if !headRef.Name().IsBranch() {
+		return "", fmt.Errorf("cannot check updates from detached HEAD")
+	}
+
+	remote, err := r.Remote("origin")
+	if err != nil {
+		return "", fmt.Errorf("no remote 'origin' configured: %w", err)
+	}
+
+	remoteRefs, err := remote.List(&git.ListOptions{})
+	if err != nil {
+		return "", fmt.Errorf("unable to access remote repository: %w", err)
+	}
+
+	remoteBranchRefName := plumbing.NewBranchReferenceName(headRef.Name().Short())
+	var remoteBranchHash plumbing.Hash
+	found := false
+	for _, ref := range remoteRefs {
+		if ref.Name() == remoteBranchRefName {
+			remoteBranchHash = ref.Hash()
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return "", fmt.Errorf("remote branch %s not found", remoteBranchRefName.String())
+	}
+
+	localHash := headRef.Hash()
+	if remoteBranchHash == localHash {
+		return RemoteSyncUpToDate, nil
+	}
+
+	remoteCommit, err := r.CommitObject(remoteBranchHash)
+	if err != nil {
+		if errors.Is(err, plumbing.ErrObjectNotFound) {
+			return RemoteSyncRemoteAhead, nil
+		}
+		return "", fmt.Errorf("failed to inspect remote commit %s: %w", remoteBranchHash.String(), err)
+	}
+
+	localCommit, err := r.CommitObject(localHash)
+	if err != nil {
+		return "", fmt.Errorf("failed to inspect local commit %s: %w", localHash.String(), err)
+	}
+
+	remoteHasLocal, remoteDepthExceeded, err := commitContainsAncestor(remoteCommit, localHash, maxAncestorSearchDepth)
+	if err != nil {
+		return "", fmt.Errorf("failed to compare local and remote commits: %w", err)
+	}
+	if remoteHasLocal {
+		return RemoteSyncRemoteAhead, nil
+	}
+	if remoteDepthExceeded {
+		return RemoteSyncRemoteSignificantlyAhead, nil
+	}
+
+	localHasRemote, localDepthExceeded, err := commitContainsAncestor(localCommit, remoteBranchHash, maxAncestorSearchDepth)
+	if err != nil {
+		return "", fmt.Errorf("failed to compare local and remote commits: %w", err)
+	}
+	if localHasRemote {
+		return RemoteSyncLocalAhead, nil
+	}
+	if localDepthExceeded {
+		return RemoteSyncLocalAhead, nil
+	}
+
+	return RemoteSyncDiverged, nil
+}
+
+// commitContainsAncestor reports whether targetHash is an ancestor of start by
+// performing a depth-first search over the commit graph starting from start.
+// Returns depthExceeded when maxDepth commits were inspected without finding targetHash.
+func commitContainsAncestor(start *object.Commit, targetHash plumbing.Hash, maxDepth int) (bool, bool, error) {
+	visited := map[plumbing.Hash]struct{}{}
+	stack := []*object.Commit{start}
+	inspected := 0
+
+	for len(stack) > 0 {
+		if maxDepth > 0 && inspected >= maxDepth {
+			return false, true, nil
+		}
+
+		current := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		inspected++
+
+		if current.Hash == targetHash {
+			return true, false, nil
+		}
+
+		if _, seen := visited[current.Hash]; seen {
+			continue
+		}
+		visited[current.Hash] = struct{}{}
+
+		parents := current.Parents()
+		err := func() error {
+			defer parents.Close()
+
+			return parents.ForEach(func(parent *object.Commit) error {
+				stack = append(stack, parent)
+				return nil
+			})
+		}()
+		if err != nil {
+			return false, false, fmt.Errorf("failed to iterate commit parents: %w", err)
+		}
+	}
+
+	return false, false, nil
 }
 
 func ListFiles() ([]string, error) {

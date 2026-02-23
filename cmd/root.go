@@ -47,6 +47,15 @@ oh-my-dot uses git to manage your dotfiles, so you can easily push and pull your
 			fileops.ColorPrintln("Run "+cmd.Root().Name()+" init to initialize your dotfiles repository", fileops.Yellow)
 			os.Exit(1)
 		}
+
+		StartAsyncUpdateCheck(cmd)
+	},
+	PersistentPostRun: func(cmd *cobra.Command, args []string) {
+		if cmd == cmd.Root() {
+			return
+		}
+
+		FinishAsyncUpdateCheck(cmd)
 	},
 }
 

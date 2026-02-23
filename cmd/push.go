@@ -26,6 +26,8 @@ var pushCommand = &cobra.Command{
 			os.Exit(1)
 		}
 
+		WarnIfRemoteUpdatesSync(cmd)
+
 		// Check remote push permissions (exit on error since push requires access)
 		git.CheckRemoteAccessWithHelp(true)
 	},
