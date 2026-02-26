@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/shell"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -561,6 +562,63 @@ func CheckRepoWritePermission() error {
 	}
 
 	return nil
+}
+
+// StageAndCommitShellFeatureChanges stages and commits shell framework changes under omd-shells.
+// Device-local override manifests (enabled.local.json) are always excluded.
+// Returns true when a commit was created, false when there were no committable changes.
+func StageAndCommitShellFeatureChanges(message string) (bool, error) {
+	worktree, err := GetWorktree(viper.GetString("repo-path"))
+	if err != nil {
+		return false, fmt.Errorf("failed to get worktree: %w", err)
+	}
+
+	status, err := worktree.Status()
+	if err != nil {
+		return false, fmt.Errorf("failed to read worktree status: %w", err)
+	}
+
+	hasStagedChanges := false
+	for path, fileStatus := range status {
+		if fileStatus.Staging == git.Unmodified && fileStatus.Worktree == git.Unmodified {
+			continue
+		}
+
+		if !isCommittableShellChangePath(path) {
+			continue
+		}
+
+		if fileStatus.Worktree == git.Deleted || fileStatus.Staging == git.Deleted {
+			if _, err := worktree.Remove(path); err != nil {
+				return false, fmt.Errorf("failed to stage deleted file %s: %w", path, err)
+			}
+		} else {
+			if _, err := worktree.Add(path); err != nil {
+				return false, fmt.Errorf("failed to stage file %s: %w", path, err)
+			}
+		}
+
+		hasStagedChanges = true
+	}
+
+	if !hasStagedChanges {
+		return false, nil
+	}
+
+	if _, err := worktree.Commit(message, &git.CommitOptions{}); err != nil {
+		return false, fmt.Errorf("failed to commit shell feature changes: %w", err)
+	}
+
+	return true, nil
+}
+
+func isCommittableShellChangePath(path string) bool {
+	normalizedPath := filepath.ToSlash(filepath.Clean(path))
+	if !strings.HasPrefix(normalizedPath, "omd-shells/") {
+		return false
+	}
+
+	return !strings.HasSuffix(normalizedPath, "/"+shell.LocalManifestFileName())
 }
 
 // CheckRemotePushPermission checks if the user has valid git credentials for pushing to the remote repository.

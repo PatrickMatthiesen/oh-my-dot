@@ -32,6 +32,10 @@ var pushCommand = &cobra.Command{
 		git.CheckRemoteAccessWithHelp(true)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
+		if state, err := git.GetRemoteSyncState(); err == nil && state == git.RemoteSyncLocalAhead {
+			fileops.ColorPrintln("Detected local committed changes. Pushing...", fileops.Cyan)
+		}
+
 		err := git.PushRepo()
 		if err != nil {
 			if git.IsSSHAgentError(err) {

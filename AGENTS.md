@@ -6,7 +6,7 @@ This file provides coding guidelines and commands for AI agents working on the o
 
 **oh-my-dot** is a cross-platform dotfile manager written in Go that uses git for version control. It includes a shell framework feature for managing shell configurations (aliases, prompts, completions) across bash, zsh, fish, PowerShell, and POSIX sh.
 
-- **Language**: Go 1.24.11
+- **Language**: Go 1.25.0
 - **CLI Framework**: Cobra + Viper
 - **Main Binary**: `oh-my-dot`
 - **Module**: `github.com/PatrickMatthiesen/oh-my-dot`
@@ -36,26 +36,7 @@ go build -o build/oh-my-dot
 
 ### Test
 
-```bash
-# Run all tests
-go test ./...
-
-# Run tests with verbose output
-go test -v ./...
-
-# Run a single test file
-go test ./internal/manifest
-
-# Run a specific test function
-go test -v ./internal/manifest -run TestValidateFeatureName
-
-# Run tests with coverage
-go test -cover ./...
-
-# Optional: run fuzz tests (Go built-in fuzzing)
-# Tip: keep fuzzing local / on a longer CI job, not every quick run.
-go test ./... -fuzz=Fuzz -fuzztime=10s
-```
+Remember to run tests for new features or bug fixes.
 
 ### Lint and Format
 
@@ -248,11 +229,13 @@ export OMD_FEATURE_MYFEATURE_LOADED=1
 ```
 
 **Use feature-level guards for:**
+
 - Expensive operations (network calls, heavy computation)
 - State-dependent setup (starting daemons, checking system state)
 - One-time initialization that shouldn't repeat
 
 **Don't use feature-level guards for:**
+
 - Prompt modifications (PS1, RPROMPT) - need to re-apply on `.bashrc` re-source
 - Environment variable modifications (PATH, EDITOR) - should be re-applied
 - Function/alias definitions - harmless to redefine, but guard is optional
@@ -272,6 +255,7 @@ export OMD_FEATURE_MYFEATURE_LOADED=1
 ### Adding a New Feature to Catalog
 
 Edit `internal/catalog/catalog.go` and add to the `Catalog` map.
+Then create template files in `internal/catalog/features/<feature>/` for each shell.
 
 ### Creating a New Command
 

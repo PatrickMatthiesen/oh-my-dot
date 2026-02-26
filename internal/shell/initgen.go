@@ -48,7 +48,6 @@ func GenerateInitScript(repoPath, shellName string) (string, error) {
 	}
 }
 
-
 // categorizeFeaturesMerged organizes enabled features from a merged manifest
 func categorizeFeaturesMerged(m *manifest.MergedManifest) FeaturesByStrategy {
 	features := FeaturesByStrategy{
@@ -660,6 +659,7 @@ func RegenerateInitScript(repoPath, shellName string) error {
 	return writeFile(initPath, content)
 }
 
+// TODO: Hook up somehow so the user can use it
 // RegenerateAllInitScripts regenerates init scripts for all initialized shells
 func RegenerateAllInitScripts(repoPath string) error {
 	shells, err := ListShellsWithFeatures(repoPath)

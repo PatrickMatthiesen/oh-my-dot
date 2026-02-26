@@ -7,6 +7,8 @@ import (
 	"testing"
 )
 
+const testLocalManifestFileName = "enabled.local.json"
+
 func TestMergeManifests_NoLocal(t *testing.T) {
 	base := &FeatureManifest{
 		Features: []FeatureConfig{
@@ -257,7 +259,7 @@ func TestMergedManifest_GetEnabledFeatures(t *testing.T) {
 }
 
 func TestValidateLocalManifest_NotExist(t *testing.T) {
-	err := ValidateLocalManifest("/nonexistent/path/enabled.local.json")
+	err := ValidateLocalManifest(filepath.Join("/nonexistent/path", testLocalManifestFileName))
 	if err != nil {
 		t.Errorf("Expected nil error for non-existent file, got: %v", err)
 	}
@@ -266,7 +268,7 @@ func TestValidateLocalManifest_NotExist(t *testing.T) {
 func TestValidateLocalManifest_RegularFile(t *testing.T) {
 	// Create a temp file with proper permissions
 	tmpDir := t.TempDir()
-	testFile := filepath.Join(tmpDir, "enabled.local.json")
+	testFile := filepath.Join(tmpDir, testLocalManifestFileName)
 
 	err := os.WriteFile(testFile, []byte(`{"features":[]}`), 0600)
 	if err != nil {
@@ -283,7 +285,7 @@ func TestValidateLocalManifest_Symlink(t *testing.T) {
 	// Create a temp file and symlink
 	tmpDir := t.TempDir()
 	realFile := filepath.Join(tmpDir, "real.json")
-	symlinkFile := filepath.Join(tmpDir, "enabled.local.json")
+	symlinkFile := filepath.Join(tmpDir, testLocalManifestFileName)
 
 	err := os.WriteFile(realFile, []byte(`{"features":[]}`), 0600)
 	if err != nil {
@@ -312,7 +314,7 @@ func TestValidateLocalManifest_GroupWritable(t *testing.T) {
 
 	// Create a temp file with group-writable permissions
 	tmpDir := t.TempDir()
-	testFile := filepath.Join(tmpDir, "enabled.local.json")
+	testFile := filepath.Join(tmpDir, testLocalManifestFileName)
 
 	err := os.WriteFile(testFile, []byte(`{"features":[]}`), 0600)
 	if err != nil {
@@ -339,7 +341,7 @@ func TestValidateLocalManifest_WorldWritable(t *testing.T) {
 
 	// Create a temp file with world-writable permissions
 	tmpDir := t.TempDir()
-	testFile := filepath.Join(tmpDir, "enabled.local.json")
+	testFile := filepath.Join(tmpDir, testLocalManifestFileName)
 
 	err := os.WriteFile(testFile, []byte(`{"features":[]}`), 0600)
 	if err != nil {
@@ -362,7 +364,7 @@ func TestParseManifestWithLocal_NoLocal(t *testing.T) {
 	// Create base manifest
 	tmpDir := t.TempDir()
 	baseFile := filepath.Join(tmpDir, "enabled.json")
-	localFile := filepath.Join(tmpDir, "enabled.local.json")
+	localFile := filepath.Join(tmpDir, testLocalManifestFileName)
 
 	baseContent := `{
 		"features": [
@@ -393,7 +395,7 @@ func TestParseManifestWithLocal_WithLocal(t *testing.T) {
 	// Create base and local manifests
 	tmpDir := t.TempDir()
 	baseFile := filepath.Join(tmpDir, "enabled.json")
-	localFile := filepath.Join(tmpDir, "enabled.local.json")
+	localFile := filepath.Join(tmpDir, testLocalManifestFileName)
 
 	baseContent := `{
 		"features": [
@@ -438,7 +440,7 @@ func TestParseManifestWithLocal_InvalidLocal(t *testing.T) {
 	// Create base and invalid local manifests
 	tmpDir := t.TempDir()
 	baseFile := filepath.Join(tmpDir, "enabled.json")
-	localFile := filepath.Join(tmpDir, "enabled.local.json")
+	localFile := filepath.Join(tmpDir, testLocalManifestFileName)
 
 	baseContent := `{
 		"features": [
@@ -481,7 +483,7 @@ func TestParseManifestWithLocal_UnsafeLocal(t *testing.T) {
 	// Create base and unsafe local manifests
 	tmpDir := t.TempDir()
 	baseFile := filepath.Join(tmpDir, "enabled.json")
-	localFile := filepath.Join(tmpDir, "enabled.local.json")
+	localFile := filepath.Join(tmpDir, testLocalManifestFileName)
 
 	baseContent := `{
 		"features": [

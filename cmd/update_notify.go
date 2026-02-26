@@ -75,6 +75,16 @@ func stateHasRemoteUpdates(state git.RemoteSyncState) bool {
 	return state == git.RemoteSyncRemoteAhead || state == git.RemoteSyncRemoteSignificantlyAhead || state == git.RemoteSyncDiverged
 }
 
+func shouldShowSyncNotice(cmd *cobra.Command, state git.RemoteSyncState) bool {
+	if stateHasRemoteUpdates(state) {
+		return true
+	}
+
+	// For the 'push' command, we suppress the "local ahead" notice because the user is
+	// already explicitly publishing local commits; showing the notice would be redundant.
+	return topLevelCommandName(cmd) != "push" && state == git.RemoteSyncLocalAhead
+}
+
 func cacheUpdateCheckResult(res updateCheckResult) {
 	viper.Set(updateLastCheckedKey, res.checkedAt)
 	viper.Set(updateStateKey, string(res.state))
@@ -102,7 +112,7 @@ func StartAsyncUpdateCheck(cmd *cobra.Command) {
 				state = git.RemoteSyncRemoteAhead
 			}
 
-			if stateHasRemoteUpdates(state) {
+			if shouldShowSyncNotice(cmd, state) {
 				updateCheckStateMu.Lock()
 				updateCheckState.immediateNotice = true
 				updateCheckStateMu.Unlock()
@@ -143,7 +153,7 @@ func FinishAsyncUpdateCheck(cmd *cobra.Command) {
 		if cachedState == "" && viper.GetBool(updateHasUpdatesKey) {
 			cachedState = git.RemoteSyncRemoteAhead
 		}
-		if stateHasRemoteUpdates(cachedState) {
+		if shouldShowSyncNotice(cmd, cachedState) {
 			printUpdateAvailableNotice(cmd, cachedState)
 		}
 		return
@@ -159,7 +169,7 @@ func FinishAsyncUpdateCheck(cmd *cobra.Command) {
 			return
 		}
 		cacheUpdateCheckResult(res)
-		if stateHasRemoteUpdates(res.state) {
+		if shouldShowSyncNotice(cmd, res.state) {
 			printUpdateAvailableNotice(cmd, res.state)
 		}
 	case <-time.After(updateCheckResultWaitTimeout):
@@ -188,7 +198,7 @@ func WarnIfRemoteUpdatesSync(cmd *cobra.Command) {
 		checkedAt: time.Now().Unix(),
 	})
 
-	if stateHasRemoteUpdates(state) || state == git.RemoteSyncLocalAhead {
+	if stateHasRemoteUpdates(state) {
 		printUpdateAvailableNotice(cmd, state)
 	}
 }

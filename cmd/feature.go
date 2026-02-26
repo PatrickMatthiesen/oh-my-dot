@@ -8,6 +8,7 @@ import (
 
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/catalog"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/git"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/interactive"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/manifest"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/options"
@@ -165,6 +166,21 @@ func init() {
 
 func isInteractive() bool {
 	return term.IsTerminal(int(os.Stdin.Fd()))
+}
+
+func autoCommitShellFeatureChanges(commitMessage string) error {
+	committed, err := git.StageAndCommitShellFeatureChanges(commitMessage)
+	if err != nil {
+		return err
+	}
+
+	if committed {
+		fileops.ColorPrintln("Shell feature changes committed.", fileops.Green)
+	} else {
+		fileops.ColorPrintln("No committable shell changes detected (device-local overrides are never committed).", fileops.Yellow)
+	}
+
+	return nil
 }
 
 // sortFeaturesByCategory sorts features by category first, then alphabetically by name
@@ -330,10 +346,13 @@ func runFeatureAdd(cmd *cobra.Command, args []string) error {
 		fileops.ColorPrintfn(fileops.Green, "  ✓ Feature added")
 	}
 
+	if err := autoCommitShellFeatureChanges("Add shell feature: " + featureName); err != nil {
+		return fmt.Errorf("failed to commit shell feature changes: %w", err)
+	}
+
 	fmt.Println()
-	fileops.ColorPrintln("Changes staged for commit.", fileops.Green)
 	fileops.ColorPrintfn(fileops.Cyan, "Run '%s apply' to activate the feature(s)", alias)
-	fileops.ColorPrintfn(fileops.Cyan, "Run '%s push' to commit and push changes", alias)
+	fileops.ColorPrintfn(fileops.Cyan, "Run '%s push' to push committed changes", alias)
 
 	return nil
 }
@@ -562,10 +581,13 @@ func runInteractiveFeatureAdd(repoPath string) error {
 	}
 
 	if addedCount > 0 {
+		if err := autoCommitShellFeatureChanges("Add shell features (interactive)"); err != nil {
+			return fmt.Errorf("failed to commit shell feature changes: %w", err)
+		}
+
 		fmt.Println()
-		fileops.ColorPrintln("Changes staged for commit.", fileops.Green)
 		fileops.ColorPrintfn(fileops.Cyan, "Run '%s apply' to activate the feature(s)", alias)
-		fileops.ColorPrintfn(fileops.Cyan, "Run '%s push' to commit and push changes", alias)
+		fileops.ColorPrintfn(fileops.Cyan, "Run '%s push' to push committed changes", alias)
 	}
 
 	return nil
@@ -735,9 +757,13 @@ func runFeatureRemove(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	if err := autoCommitShellFeatureChanges("Remove shell feature: " + featureName); err != nil {
+		return fmt.Errorf("failed to commit shell feature changes: %w", err)
+	}
+
 	fmt.Println()
-	fileops.ColorPrintln("Changes staged for commit.", fileops.Green)
 	fileops.ColorPrintfn(fileops.Cyan, "Run '%s apply' to sync changes", alias)
+	fileops.ColorPrintfn(fileops.Cyan, "Run '%s push' to push committed changes", alias)
 
 	return nil
 }
@@ -892,10 +918,14 @@ func runInteractiveFeatureRemove(repoPath string) error {
 
 	fmt.Println()
 	if removedCount > 0 {
+		if err := autoCommitShellFeatureChanges("Remove shell features (interactive)"); err != nil {
+			return fmt.Errorf("failed to commit shell feature changes: %w", err)
+		}
+
 		fileops.ColorPrintfn(fileops.Green, "Successfully removed %d feature(s)", removedCount)
 		fmt.Println()
-		fileops.ColorPrintln("Changes staged for commit.", fileops.Green)
 		fileops.ColorPrintfn(fileops.Cyan, "Run '%s apply' to sync changes", alias)
+		fileops.ColorPrintfn(fileops.Cyan, "Run '%s push' to push committed changes", alias)
 	} else {
 		fileops.ColorPrintln("No features were removed", fileops.Yellow)
 	}
@@ -1027,7 +1057,12 @@ func runFeatureEnable(cmd *cobra.Command, args []string) error {
 		fileops.ColorPrintfn(fileops.Green, "Enabled %s in %s", featureName, shellName)
 	}
 
+	if err := autoCommitShellFeatureChanges("Enable shell feature: " + featureName); err != nil {
+		return fmt.Errorf("failed to commit shell feature changes: %w", err)
+	}
+
 	fileops.ColorPrintfn(fileops.Cyan, "\nRun '%s apply' to activate changes", assumedAlias())
+	fileops.ColorPrintfn(fileops.Cyan, "Run '%s push' to push committed changes", assumedAlias())
 	return nil
 }
 
@@ -1060,7 +1095,12 @@ func runFeatureDisable(cmd *cobra.Command, args []string) error {
 		fileops.ColorPrintfn(fileops.Yellow, "Disabled %s in %s", featureName, shellName)
 	}
 
+	if err := autoCommitShellFeatureChanges("Disable shell feature: " + featureName); err != nil {
+		return fmt.Errorf("failed to commit shell feature changes: %w", err)
+	}
+
 	fileops.ColorPrintfn(fileops.Cyan, "\nRun '%s apply' to sync changes", assumedAlias())
+	fileops.ColorPrintfn(fileops.Cyan, "Run '%s push' to push committed changes", assumedAlias())
 	return nil
 }
 

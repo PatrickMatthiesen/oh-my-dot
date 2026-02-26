@@ -8,13 +8,18 @@ import (
 	"strings"
 )
 
+const (
+	manifestFileName      = "enabled.json"
+	localManifestFileName = "enabled.local.json"
+)
+
 // DetectCurrentShell attempts to detect the current shell
 func DetectCurrentShell() (string, error) {
 	// PowerShell detection (Windows-specific)
 	// PowerShell doesn't set $SHELL, but may set PowerShell-specific environment variables
 	if runtime.GOOS == "windows" {
 		// POWERSHELL_DISTRIBUTION_CHANNEL is set by PowerShell but not by cmd.exe
-		if os.Getenv("PSModulePath") != "" || os.Getenv("POWERSHELL_DISTRIBUTION_CHANNEL") != ""  {
+		if os.Getenv("PSModulePath") != "" || os.Getenv("POWERSHELL_DISTRIBUTION_CHANNEL") != "" {
 			return "powershell", nil
 		}
 	}
@@ -112,12 +117,17 @@ func GetInitScriptPath(repoPath, shellName string) (string, error) {
 
 // GetManifestPath returns the path to enabled.json for a shell
 func GetManifestPath(repoPath, shellName string) string {
-	return filepath.Join(GetShellDirectory(repoPath, shellName), "enabled.json")
+	return filepath.Join(GetShellDirectory(repoPath, shellName), manifestFileName)
 }
 
 // GetLocalManifestPath returns the path to enabled.local.json for a shell
 func GetLocalManifestPath(repoPath, shellName string) string {
-	return filepath.Join(GetShellDirectory(repoPath, shellName), "enabled.local.json")
+	return filepath.Join(GetShellDirectory(repoPath, shellName), localManifestFileName)
+}
+
+// LocalManifestFileName returns the filename used for device-local shell overrides.
+func LocalManifestFileName() string {
+	return localManifestFileName
 }
 
 // GetFeaturesDirectory returns the path to the features directory for a shell
