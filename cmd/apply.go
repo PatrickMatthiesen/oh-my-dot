@@ -71,6 +71,12 @@ var applyCommand = &cobra.Command{
 				continue
 			}
 
+			if !fileops.PathExists(filepath.Dir(expandedLink)) {
+				missingFiles++
+				fileops.ColorPrintfn(fileops.Red, "  Error: target directory '%s' does not exist for link %s -> %s", filepath.Dir(expandedLink), expandedLink, file)
+				continue
+			}
+
 			err = os.Link(file, expandedLink)
 			if err != nil {
 				missingFiles++
