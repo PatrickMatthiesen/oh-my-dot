@@ -103,3 +103,72 @@ func TestParseRawOptionPairsInvalid(t *testing.T) {
 		t.Fatal("expected error for invalid option format")
 	}
 }
+
+func TestHasPendingFeatureInstall(t *testing.T) {
+	tests := []struct {
+		name                     string
+		feature                  catalog.FeatureMetadata
+		selectedShells           []string
+		installedFeaturesByShell map[string]map[string]bool
+		want                     bool
+	}{
+		{
+			name: "returns false when feature is unsupported in selected shells",
+			feature: catalog.FeatureMetadata{
+				Name:            "git-prompt",
+				SupportedShells: []string{"bash"},
+			},
+			selectedShells: []string{"powershell"},
+			installedFeaturesByShell: map[string]map[string]bool{
+				"powershell": {},
+			},
+			want: false,
+		},
+		{
+			name: "returns false when feature is already installed in all selected shells",
+			feature: catalog.FeatureMetadata{
+				Name:            "oh-my-posh",
+				SupportedShells: []string{"powershell"},
+			},
+			selectedShells: []string{"powershell"},
+			installedFeaturesByShell: map[string]map[string]bool{
+				"powershell": {"oh-my-posh": true},
+			},
+			want: false,
+		},
+		{
+			name: "returns true when feature is pending in selected shell",
+			feature: catalog.FeatureMetadata{
+				Name:            "oh-my-dot-completion",
+				SupportedShells: []string{"powershell"},
+			},
+			selectedShells: []string{"powershell"},
+			installedFeaturesByShell: map[string]map[string]bool{
+				"powershell": {},
+			},
+			want: true,
+		},
+		{
+			name: "returns true when feature is installed in one shell but pending in another",
+			feature: catalog.FeatureMetadata{
+				Name:            "oh-my-posh",
+				SupportedShells: []string{"bash", "powershell"},
+			},
+			selectedShells: []string{"powershell", "bash"},
+			installedFeaturesByShell: map[string]map[string]bool{
+				"powershell": {"oh-my-posh": true},
+				"bash":       {},
+			},
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := hasPendingFeatureInstall(tt.feature, tt.selectedShells, tt.installedFeaturesByShell)
+			if got != tt.want {
+				t.Fatalf("hasPendingFeatureInstall() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

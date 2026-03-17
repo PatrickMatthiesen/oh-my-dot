@@ -226,6 +226,22 @@ func isFeatureInstalled(repoPath, shellName, featureName string) bool {
 	return err == nil
 }
 
+// hasPendingFeatureInstall returns true if the feature can still be added to at least
+// one of the selected shells.
+func hasPendingFeatureInstall(feature catalog.FeatureMetadata, selectedShells []string, installedFeaturesByShell map[string]map[string]bool) bool {
+	for _, shellName := range selectedShells {
+		if !feature.SupportsShell(shellName) {
+			continue
+		}
+
+		if !installedFeaturesByShell[shellName][feature.Name] {
+			return true
+		}
+	}
+
+	return false
+}
+
 // filterFeaturesByShells returns features that support at least one of the provided shells
 func filterFeaturesByShells(features []catalog.FeatureMetadata, shells []string) []catalog.FeatureMetadata {
 	if len(shells) == 0 {
@@ -447,8 +463,11 @@ func runInteractiveFeatureAdd(repoPath string) error {
 	// Build a map of already installed features across selected shells
 	// Optimize by parsing each shell's manifest only once
 	installedFeatures := make(map[string]bool)
+	installedFeaturesByShell := make(map[string]map[string]bool, len(selectedShells))
 	for _, shellName := range selectedShells {
 		manifestPath := shell.GetManifestPath(repoPath, shellName)
+		installedForShell := make(map[string]bool)
+		installedFeaturesByShell[shellName] = installedForShell
 		m, err := manifest.ParseManifest(manifestPath)
 		if err != nil {
 			// Shell not initialized yet, skip
@@ -457,6 +476,7 @@ func runInteractiveFeatureAdd(repoPath string) error {
 		// Mark all features in this shell as installed
 		for _, f := range m.Features {
 			installedFeatures[f.Name] = true
+			installedForShell[f.Name] = true
 		}
 	}
 
@@ -525,6 +545,12 @@ func runInteractiveFeatureAdd(repoPath string) error {
 	skippedCount := 0
 
 	for _, feature := range selectedFeatures {
+		if !hasPendingFeatureInstall(feature, selectedShells, installedFeaturesByShell) {
+			fileops.ColorPrintfn(fileops.Yellow, "Skipping %s (already installed in selected shell(s))", feature.Name)
+			skippedCount++
+			continue
+		}
+
 		// Prompt for options if the feature has them
 		var optionValues map[string]any
 		if len(feature.Options) > 0 {
@@ -551,7 +577,7 @@ func runInteractiveFeatureAdd(repoPath string) error {
 			}
 
 			// Check if feature is already installed in this shell
-			if isFeatureInstalled(repoPath, shellName, feature.Name) {
+			if installedFeaturesByShell[shellName][feature.Name] {
 				// Feature already installed, skip
 				fileops.ColorPrintfn(fileops.Yellow, "Skipping %s in %s (already installed)", feature.Name, shellName)
 				skippedCount++
@@ -568,6 +594,7 @@ func runInteractiveFeatureAdd(repoPath string) error {
 			}
 
 			fileops.ColorPrintfn(fileops.Green, "  ✓ Feature added")
+			installedFeaturesByShell[shellName][feature.Name] = true
 			addedCount++
 		}
 	}
