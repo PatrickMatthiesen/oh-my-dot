@@ -1,4 +1,4 @@
-package cmd
+package featurecmd
 
 import (
 	"testing"
@@ -67,10 +67,9 @@ func TestFilterFeaturesByShells(t *testing.T) {
 				t.Errorf("expected %d features, got %d", tt.expectedCount, len(result))
 			}
 
-			// Check if expected names are present
 			resultNames := make(map[string]bool)
-			for _, f := range result {
-				resultNames[f.Name] = true
+			for _, feature := range result {
+				resultNames[feature.Name] = true
 			}
 
 			for _, expectedName := range tt.expectedNames {
