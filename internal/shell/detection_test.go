@@ -1,7 +1,9 @@
 package shell
 
 import (
+	"errors"
 	"os"
+	"path/filepath"
 	"runtime"
 	"testing"
 )
@@ -186,4 +188,98 @@ func TestNormalizeShellName(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestResolveProfilePath(t *testing.T) {
+	originalGOOS := currentGOOS
+	originalLookPath := lookPath
+	originalRunCommand := runCommand
+	t.Cleanup(func() {
+		currentGOOS = originalGOOS
+		lookPath = originalLookPath
+		runCommand = originalRunCommand
+	})
+
+	t.Run("expands tilde paths", func(t *testing.T) {
+		path, err := ResolveProfilePath(ShellConfig{ProfilePath: "~/.bashrc"})
+		if err != nil {
+			t.Fatalf("ResolveProfilePath returned error: %v", err)
+		}
+
+		home, err := os.UserHomeDir()
+		if err != nil {
+			t.Fatalf("failed to get home directory: %v", err)
+		}
+
+		expected := filepath.Join(home, ".bashrc")
+		if path != expected {
+			t.Fatalf("ResolveProfilePath returned %q, want %q", path, expected)
+		}
+	})
+
+	t.Run("uses PROFILE environment variable when set", func(t *testing.T) {
+		t.Setenv("PROFILE", `C:\Users\pbma\Documents\PowerShell\Microsoft.PowerShell_profile.ps1`)
+
+		path, err := ResolveProfilePath(ShellConfig{ProfilePath: "$PROFILE"})
+		if err != nil {
+			t.Fatalf("ResolveProfilePath returned error: %v", err)
+		}
+		if path != `C:\Users\pbma\Documents\PowerShell\Microsoft.PowerShell_profile.ps1` {
+			t.Fatalf("ResolveProfilePath returned %q", path)
+		}
+	})
+
+	t.Run("uses PowerShell-reported profile path on windows", func(t *testing.T) {
+		t.Setenv("PROFILE", "")
+		currentGOOS = "windows"
+		lookPath = func(file string) (string, error) {
+			if file == "pwsh" {
+				return `C:\Program Files\PowerShell\7\pwsh.exe`, nil
+			}
+			return "", errors.New("not found")
+		}
+		runCommand = func(name string, args ...string) ([]byte, error) {
+			if name != "pwsh" {
+				t.Fatalf("unexpected executable: %s", name)
+			}
+			return []byte("C:\\Users\\pbma\\OneDrive - Netcompany\\Documents\\PowerShell\\Microsoft.PowerShell_profile.ps1\r\n"), nil
+		}
+
+		path, err := ResolveProfilePath(ShellConfig{ProfilePath: "$PROFILE"})
+		if err != nil {
+			t.Fatalf("ResolveProfilePath returned error: %v", err)
+		}
+
+		expected := `C:\Users\pbma\OneDrive - Netcompany\Documents\PowerShell\Microsoft.PowerShell_profile.ps1`
+		if path != expected {
+			t.Fatalf("ResolveProfilePath returned %q, want %q", path, expected)
+		}
+	})
+
+	t.Run("falls back to home documents path when PowerShell path lookup fails", func(t *testing.T) {
+		t.Setenv("PROFILE", "")
+		currentGOOS = "windows"
+		lookPath = func(file string) (string, error) {
+			return "", errors.New("not found")
+		}
+		runCommand = func(name string, args ...string) ([]byte, error) {
+			t.Fatalf("runCommand should not be called when executables are not found")
+			return nil, nil
+		}
+
+		path, err := ResolveProfilePath(ShellConfig{ProfilePath: "$PROFILE"})
+		if err != nil {
+			t.Fatalf("ResolveProfilePath returned error: %v", err)
+		}
+
+		home, err := os.UserHomeDir()
+		if err != nil {
+			t.Fatalf("failed to get home directory: %v", err)
+		}
+
+		expected := filepath.Join(home, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1")
+		if path != expected {
+			t.Fatalf("ResolveProfilePath returned %q, want %q", path, expected)
+		}
+	})
 }

@@ -3,6 +3,7 @@ package shell
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -11,6 +12,14 @@ import (
 const (
 	manifestFileName      = "enabled.json"
 	localManifestFileName = "enabled.local.json"
+)
+
+var (
+	currentGOOS = runtime.GOOS
+	lookPath    = exec.LookPath
+	runCommand  = func(name string, args ...string) ([]byte, error) {
+		return exec.Command(name, args...).Output()
+	}
 )
 
 // DetectCurrentShell attempts to detect the current shell
@@ -78,12 +87,17 @@ func ResolveProfilePath(shellConfig ShellConfig) (string, error) {
 	if path == "$PROFILE" {
 		profilePath := os.Getenv("PROFILE")
 		if profilePath == "" {
-			// Fallback to default PowerShell profile location
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return "", fmt.Errorf("failed to get user home directory: %w", err)
+			if currentGOOS == "windows" {
+				profilePath = detectPowerShellProfilePath()
 			}
-			profilePath = filepath.Join(home, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1")
+			if profilePath == "" {
+				// Fallback to default PowerShell profile location
+				home, err := os.UserHomeDir()
+				if err != nil {
+					return "", fmt.Errorf("failed to get user home directory: %w", err)
+				}
+				profilePath = filepath.Join(home, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1")
+			}
 		}
 		return profilePath, nil
 	}
@@ -98,6 +112,26 @@ func ResolveProfilePath(shellConfig ShellConfig) (string, error) {
 	}
 
 	return path, nil
+}
+
+func detectPowerShellProfilePath() string {
+	for _, executable := range []string{"pwsh", "powershell", "powershell.exe"} {
+		if _, err := lookPath(executable); err != nil {
+			continue
+		}
+
+		output, err := runCommand(executable, "-NoProfile", "-Command", "$PROFILE.CurrentUserCurrentHost")
+		if err != nil {
+			continue
+		}
+
+		profilePath := strings.TrimSpace(string(output))
+		if profilePath != "" {
+			return profilePath
+		}
+	}
+
+	return ""
 }
 
 // GetShellDirectory returns the path to the shell directory within omd-shells
