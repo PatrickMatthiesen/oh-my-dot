@@ -231,6 +231,17 @@ func TestResolveProfilePath(t *testing.T) {
 
 	t.Run("uses PowerShell-reported profile path on windows", func(t *testing.T) {
 		t.Setenv("PROFILE", "")
+
+		// Save and restore global state modified by this subtest.
+		origGOOS := currentGOOS
+		origLookPath := lookPath
+		origRunCommand := runCommand
+		t.Cleanup(func() {
+			currentGOOS = origGOOS
+			lookPath = origLookPath
+			runCommand = origRunCommand
+		})
+
 		currentGOOS = "windows"
 		lookPath = func(file string) (string, error) {
 			if file == "pwsh" {
@@ -258,6 +269,17 @@ func TestResolveProfilePath(t *testing.T) {
 
 	t.Run("falls back to home documents path when PowerShell path lookup fails", func(t *testing.T) {
 		t.Setenv("PROFILE", "")
+
+		// Save and restore global state modified by this subtest.
+		origGOOS := currentGOOS
+		origLookPath := lookPath
+		origRunCommand := runCommand
+		t.Cleanup(func() {
+			currentGOOS = origGOOS
+			lookPath = origLookPath
+			runCommand = origRunCommand
+		})
+
 		currentGOOS = "windows"
 		lookPath = func(file string) (string, error) {
 			return "", errors.New("not found")

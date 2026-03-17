@@ -128,7 +128,7 @@ func InsertHook(profilePath, hookContent string) (bool, error) {
 	}
 
 	// Write back to file
-	if err := os.MkdirAll(filepath.Dir(profilePath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(profilePath), 0700); err != nil {
 		return false, fmt.Errorf("failed to create profile directory: %w", err)
 	}
 	if err := os.WriteFile(profilePath, []byte(newContent), 0644); err != nil {

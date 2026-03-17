@@ -116,11 +116,12 @@ func ResolveProfilePath(shellConfig ShellConfig) (string, error) {
 
 func detectPowerShellProfilePath() string {
 	for _, executable := range []string{"pwsh", "powershell", "powershell.exe"} {
-		if _, err := lookPath(executable); err != nil {
+		resolvedPath, err := lookPath(executable)
+		if err != nil {
 			continue
 		}
 
-		output, err := runCommand(executable, "-NoProfile", "-Command", "$PROFILE.CurrentUserCurrentHost")
+		output, err := runCommand(resolvedPath, "-NoProfile", "-Command", "$PROFILE.CurrentUserCurrentHost")
 		if err != nil {
 			continue
 		}
