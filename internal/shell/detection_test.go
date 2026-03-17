@@ -231,6 +231,7 @@ func TestResolveProfilePath(t *testing.T) {
 
 	t.Run("uses PowerShell-reported profile path on windows", func(t *testing.T) {
 		t.Setenv("PROFILE", "")
+		resolvedPath := `C:\Program Files\PowerShell\7\pwsh.exe`
 
 		// Save and restore global state modified by this subtest.
 		origGOOS := currentGOOS
@@ -245,12 +246,12 @@ func TestResolveProfilePath(t *testing.T) {
 		currentGOOS = "windows"
 		lookPath = func(file string) (string, error) {
 			if file == "pwsh" {
-				return `C:\Program Files\PowerShell\7\pwsh.exe`, nil
+				return resolvedPath, nil
 			}
 			return "", errors.New("not found")
 		}
 		runCommand = func(name string, args ...string) ([]byte, error) {
-			if name != "pwsh" {
+			if name != resolvedPath {
 				t.Fatalf("unexpected executable: %s", name)
 			}
 			return []byte("C:\\Users\\pbma\\OneDrive - Netcompany\\Documents\\PowerShell\\Microsoft.PowerShell_profile.ps1\r\n"), nil
