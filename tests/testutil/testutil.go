@@ -35,13 +35,21 @@ func SetupTestFile(t testing.TB) error {
 
 // CreateRemoteRepo creates a fake remote repository with a default branch and an initial commit.
 func CreateRemoteRepo(t testing.TB, branchName string) string {
-	// Create a bare repository (this is what a remote typically is)
-	remoteRepoPath := t.TempDir()
-	_, err := git.PlainInit(remoteRepoPath, true)
+	return CreateRemoteRepoAt(t, t.TempDir(), t.TempDir(), branchName)
+}
+
+// CreateRemoteRepoAt creates a fake remote repository with a default branch and an initial commit
+// using the provided paths for the bare remote and temporary working repository.
+func CreateRemoteRepoAt(t testing.TB, remoteRepoPath, tempRepoPath, branchName string) string {
+	err := os.MkdirAll(remoteRepoPath, os.ModePerm)
 	TBErrorIfNotNil(t, err)
 
-	// Create a temporary non-bare repo to make the initial commit
-	tempRepoPath := t.TempDir()
+	err = os.MkdirAll(tempRepoPath, os.ModePerm)
+	TBErrorIfNotNil(t, err)
+
+	_, err = git.PlainInit(remoteRepoPath, true)
+	TBErrorIfNotNil(t, err)
+
 	tempRepo, err := git.PlainInit(tempRepoPath, false)
 	TBErrorIfNotNil(t, err)
 
@@ -103,6 +111,15 @@ func CreateRemoteRepo(t testing.TB, branchName string) string {
 	return remoteRepoPath
 }
 
+// CreateBareRemoteRepo creates an empty bare repository that can be used as a push target.
+func CreateBareRemoteRepo(t testing.TB) string {
+	remoteRepoPath := t.TempDir()
+	_, err := git.PlainInit(remoteRepoPath, true)
+	TBErrorIfNotNil(t, err)
+
+	return remoteRepoPath
+}
+
 func SetupTestRepo(t testing.TB) (*git.Repository, error) {
 	viper.Reset()
 
@@ -119,6 +136,23 @@ func SetupTestRepo(t testing.TB) (*git.Repository, error) {
 	fileops.CheckIfError(err)
 
 	// Initialize the git repo
+	return internalgit.InitGitRepo(temp, remote, false)
+}
+
+// SetupPushableTestRepo creates a local repository with an empty bare origin remote.
+// This is cheaper than SetupTestRepo when tests only need a configured remote for push.
+func SetupPushableTestRepo(t testing.TB) (*git.Repository, error) {
+	viper.Reset()
+
+	temp := t.TempDir()
+	viper.Set("repo-path", temp)
+
+	remote := CreateBareRemoteRepo(t)
+	viper.Set("remote-url", remote)
+
+	err := os.MkdirAll(temp, os.ModePerm)
+	TBErrorIfNotNil(t, err)
+
 	return internalgit.InitGitRepo(temp, remote, false)
 }
 

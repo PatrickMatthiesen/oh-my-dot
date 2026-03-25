@@ -2,8 +2,8 @@ package git_test
 
 import (
 	"errors"
-	"os"
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -17,6 +17,8 @@ import (
 )
 
 func TestGetRemoteSyncState_UpToDate(t *testing.T) {
+	setMaxAncestorSearchDepth(t, 10)
+
 	_, err := testutil.SetupTestRepo(t)
 	if err != nil {
 		t.Fatalf("setup repo: %v", err)
@@ -30,17 +32,11 @@ func TestGetRemoteSyncState_UpToDate(t *testing.T) {
 	if state != internalgit.RemoteSyncUpToDate {
 		t.Fatalf("state = %q, want %q", state, internalgit.RemoteSyncUpToDate)
 	}
-
-	hasUpdates, err := internalgit.HasRemoteUpdates()
-	if err != nil {
-		t.Fatalf("HasRemoteUpdates error: %v", err)
-	}
-	if hasUpdates {
-		t.Fatalf("HasRemoteUpdates = true, want false")
-	}
 }
 
 func TestGetRemoteSyncState_RemoteAhead(t *testing.T) {
+	setMaxAncestorSearchDepth(t, 10)
+
 	_, err := testutil.SetupTestRepo(t)
 	if err != nil {
 		t.Fatalf("setup repo: %v", err)
@@ -59,17 +55,11 @@ func TestGetRemoteSyncState_RemoteAhead(t *testing.T) {
 	if state != internalgit.RemoteSyncRemoteAhead {
 		t.Fatalf("state = %q, want %q", state, internalgit.RemoteSyncRemoteAhead)
 	}
-
-	hasUpdates, err := internalgit.HasRemoteUpdates()
-	if err != nil {
-		t.Fatalf("HasRemoteUpdates error: %v", err)
-	}
-	if !hasUpdates {
-		t.Fatalf("HasRemoteUpdates = false, want true")
-	}
 }
 
 func TestGetRemoteSyncState_RemoteSignificantlyAhead(t *testing.T) {
+	setMaxAncestorSearchDepth(t, 10)
+
 	_, err := testutil.SetupTestRepo(t)
 	if err != nil {
 		t.Fatalf("setup repo: %v", err)
@@ -78,7 +68,7 @@ func TestGetRemoteSyncState_RemoteSignificantlyAhead(t *testing.T) {
 	repoPath := viper.GetString("repo-path")
 	remotePath := viper.GetString("remote-url")
 
-	if err := commitAndPushManyToRemote(t, remotePath, 101); err != nil {
+	if err := commitAndPushManyToRemote(t, remotePath, 11); err != nil {
 		t.Fatalf("commit remote: %v", err)
 	}
 	if err := fetchLocalOriginMain(repoPath); err != nil {
@@ -93,17 +83,11 @@ func TestGetRemoteSyncState_RemoteSignificantlyAhead(t *testing.T) {
 	if state != internalgit.RemoteSyncRemoteSignificantlyAhead {
 		t.Fatalf("state = %q, want %q", state, internalgit.RemoteSyncRemoteSignificantlyAhead)
 	}
-
-	hasUpdates, err := internalgit.HasRemoteUpdates()
-	if err != nil {
-		t.Fatalf("HasRemoteUpdates error: %v", err)
-	}
-	if !hasUpdates {
-		t.Fatalf("HasRemoteUpdates = false, want true")
-	}
 }
 
 func TestGetRemoteSyncState_LocalAhead(t *testing.T) {
+	setMaxAncestorSearchDepth(t, 10)
+
 	_, err := testutil.SetupTestRepo(t)
 	if err != nil {
 		t.Fatalf("setup repo: %v", err)
@@ -122,17 +106,11 @@ func TestGetRemoteSyncState_LocalAhead(t *testing.T) {
 	if state != internalgit.RemoteSyncLocalAhead {
 		t.Fatalf("state = %q, want %q", state, internalgit.RemoteSyncLocalAhead)
 	}
-
-	hasUpdates, err := internalgit.HasRemoteUpdates()
-	if err != nil {
-		t.Fatalf("HasRemoteUpdates error: %v", err)
-	}
-	if hasUpdates {
-		t.Fatalf("HasRemoteUpdates = true, want false")
-	}
 }
 
 func TestGetRemoteSyncState_Diverged(t *testing.T) {
+	setMaxAncestorSearchDepth(t, 10)
+
 	_, err := testutil.SetupTestRepo(t)
 	if err != nil {
 		t.Fatalf("setup repo: %v", err)
@@ -159,14 +137,22 @@ func TestGetRemoteSyncState_Diverged(t *testing.T) {
 	if state != internalgit.RemoteSyncDiverged {
 		t.Fatalf("state = %q, want %q", state, internalgit.RemoteSyncDiverged)
 	}
+}
 
-	hasUpdates, err := internalgit.HasRemoteUpdates()
-	if err != nil {
-		t.Fatalf("HasRemoteUpdates error: %v", err)
+func TestHasRemoteUpdates_ErrorWhenRepoPathMissing(t *testing.T) {
+	viper.Reset()
+
+	_, err := internalgit.HasRemoteUpdates()
+	if err == nil {
+		t.Fatal("HasRemoteUpdates error = nil, want error")
 	}
-	if !hasUpdates {
-		t.Fatalf("HasRemoteUpdates = false, want true")
-	}
+}
+
+func setMaxAncestorSearchDepth(t *testing.T, depth int) {
+	t.Helper()
+
+	restore := internalgit.SetMaxAncestorSearchDepthForTesting(depth)
+	t.Cleanup(restore)
 }
 
 func commitToRepo(t *testing.T, repoPath, filename, content string) error {

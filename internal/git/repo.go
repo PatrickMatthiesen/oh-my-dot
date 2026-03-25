@@ -35,7 +35,18 @@ const (
 	RemoteSyncDiverged RemoteSyncState = "diverged"
 )
 
-const maxAncestorSearchDepth = 100
+var maxAncestorSearchDepth = 100
+
+// SetMaxAncestorSearchDepthForTesting overrides the remote sync ancestor search depth.
+// It returns a restore function so tests can reset the previous value.
+func SetMaxAncestorSearchDepthForTesting(depth int) func() {
+	original := maxAncestorSearchDepth
+	maxAncestorSearchDepth = depth
+
+	return func() {
+		maxAncestorSearchDepth = original
+	}
+}
 
 // Check if folder has git repo
 func IsGitRepo(path string) bool {
@@ -298,7 +309,11 @@ func HasRemoteUpdates() (bool, error) {
 		return false, err
 	}
 
-	return state == RemoteSyncRemoteAhead || state == RemoteSyncRemoteSignificantlyAhead || state == RemoteSyncDiverged, nil
+	return stateHasRemoteUpdates(state), nil
+}
+
+func stateHasRemoteUpdates(state RemoteSyncState) bool {
+	return state == RemoteSyncRemoteAhead || state == RemoteSyncRemoteSignificantlyAhead || state == RemoteSyncDiverged
 }
 
 // GetRemoteSyncState returns local/remote relationship for the current branch.

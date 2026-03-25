@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/PatrickMatthiesen/oh-my-dot/tests/testutil"
 	internalgit "github.com/PatrickMatthiesen/oh-my-dot/internal/git"
+	"github.com/PatrickMatthiesen/oh-my-dot/tests/testutil"
 	"github.com/go-git/go-git/v5"
 	"github.com/spf13/viper"
 )
@@ -22,7 +22,7 @@ func Fuzz_RemoveFile(f *testing.F) {
 	}
 
 	f.Fuzz(func(t *testing.T, testPrefix string, testSufix string) {
-		r, err := testutil.SetupTestRepo(t)
+		r, err := testutil.SetupPushableTestRepo(t)
 		testutil.TBErrorIfNotNil(t, err)
 
 		// create files dir

@@ -5,14 +5,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/PatrickMatthiesen/oh-my-dot/tests/testutil"
 	internalgit "github.com/PatrickMatthiesen/oh-my-dot/internal/git"
+	"github.com/PatrickMatthiesen/oh-my-dot/tests/testutil"
 	"github.com/go-git/go-git/v5"
 	"github.com/spf13/viper"
 )
 
 func Test_LinkAndAddFile(t *testing.T) {
-	r, err := testutil.SetupTestRepo(t)
+	r, err := testutil.SetupPushableTestRepo(t)
 	testutil.TBErrorIfNotNil(t, err)
 
 	// Create a file
@@ -57,7 +57,7 @@ func Test_LinkAndAddFile(t *testing.T) {
 }
 
 func Test_CopyAndAddFile(t *testing.T) {
-	r, err := testutil.SetupTestRepo(t)
+	r, err := testutil.SetupPushableTestRepo(t)
 	testutil.TBErrorIfNotNil(t, err)
 
 	// Create a file

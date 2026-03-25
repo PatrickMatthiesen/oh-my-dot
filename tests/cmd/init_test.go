@@ -1,10 +1,10 @@
 package cmd_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
-
-	"log"
+	"sync"
 
 	"github.com/PatrickMatthiesen/oh-my-dot/cmd"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/config"
@@ -22,7 +22,7 @@ func mockHomeDir(t testing.TB) {
 	// Mock the home directory to a temporary directory
 	tempHome := t.TempDir()
 	os.Setenv("HOME", tempHome)
-	os.Setenv("home", tempHome) // For Plan9
+	os.Setenv("home", tempHome)        // For Plan9
 	os.Setenv("USERPROFILE", tempHome) // For Windows
 }
 
@@ -82,9 +82,10 @@ func Test_Init_Clone_Remote_With_Main_Branch(t *testing.T) {
 // Fuzz_Init_With_Random_Branch_Names tests that the init command works correctly
 // with remote repositories that have various random branch names as their default branch
 func Fuzz_Init_With_Random_Branch_Names(f *testing.F) {
-	log.Println("Viper config file used:", viper.ConfigFileUsed())
-    log.Println("repo-path value:", viper.GetString("repo-path"))
-    log.Println("All settings:", viper.AllSettings())
+	remoteRepoRoot := f.TempDir()
+	remoteRepoPaths := map[string]string{}
+	var remoteRepoMu sync.Mutex
+	remoteRepoID := 0
 
 	// Seed with common branch names and some random strings
 	f.Add("main")
@@ -133,8 +134,7 @@ func Fuzz_Init_With_Random_Branch_Names(f *testing.F) {
 			}
 		}
 
-		// Create a fake remote repository with the random branch name
-		remoteRepoPath := testutil.CreateRemoteRepo(t, branchName)
+		remoteRepoPath := cachedRemoteRepoPath(t, remoteRepoRoot, &remoteRepoMu, remoteRepoPaths, &remoteRepoID, branchName)
 
 		// set viper remote-url to avoid issues with command args
 		viper.Set("remote-url", remoteRepoPath)
@@ -163,18 +163,39 @@ func Fuzz_Init_With_Random_Branch_Names(f *testing.F) {
 	})
 }
 
+func cachedRemoteRepoPath(t *testing.T, remoteRepoRoot string, remoteRepoMu *sync.Mutex, remoteRepoPaths map[string]string, remoteRepoID *int, branchName string) string {
+	t.Helper()
+
+	remoteRepoMu.Lock()
+	defer remoteRepoMu.Unlock()
+
+	if remoteRepoPath, ok := remoteRepoPaths[branchName]; ok {
+		return remoteRepoPath
+	}
+
+	id := *remoteRepoID
+	*remoteRepoID++
+
+	remotePath := filepath.Join(remoteRepoRoot, fmt.Sprintf("remote-%d.git", id))
+	tempPath := filepath.Join(remoteRepoRoot, fmt.Sprintf("seed-%d", id))
+	remoteRepoPath := testutil.CreateRemoteRepoAt(t, remotePath, tempPath, branchName)
+	remoteRepoPaths[branchName] = remoteRepoPath
+
+	return remoteRepoPath
+}
+
 func invokeCommand(t *testing.T, args []string, remote ...string) {
 	// Set default values for viper BEFORE reset to preserve some settings
 	configFolder := t.TempDir()
 	configFile := filepath.Join(configFolder, "config.json")
-	
+
 	repoFolder := t.TempDir()
 	repoPath := filepath.Join(repoFolder, "dotfiles")
-	
+
 	viper.Reset()
 
 	config.InitializeConfig(configFile)
-	
+
 	viper.SetDefault("repo-path", repoPath)
 	viper.SetDefault("dot-home", configFile)
 	if len(remote) > 0 {
