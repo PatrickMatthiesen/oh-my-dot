@@ -2,9 +2,9 @@ package shell
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/manifest"
 )
 
@@ -678,5 +678,5 @@ func RegenerateAllInitScripts(repoPath string) error {
 
 // writeFile is a helper to write content to a file
 func writeFile(path, content string) error {
-	return os.WriteFile(path, []byte(content), 0644)
+	return fileops.WriteTextFileLF(path, content, 0644)
 }

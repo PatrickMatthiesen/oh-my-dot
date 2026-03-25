@@ -79,6 +79,34 @@ func normalizeShellName(name string) string {
 	}
 }
 
+// IsShellExecutableAvailable reports whether the current environment can resolve a shell executable.
+func IsShellExecutableAvailable(shellName string) bool {
+	var candidates []string
+
+	switch shellName {
+	case "bash":
+		candidates = []string{"bash", "bash.exe"}
+	case "zsh":
+		candidates = []string{"zsh", "zsh.exe"}
+	case "fish":
+		candidates = []string{"fish", "fish.exe"}
+	case "powershell":
+		candidates = []string{"pwsh", "powershell", "powershell.exe"}
+	case "posix":
+		candidates = []string{"sh", "sh.exe"}
+	default:
+		return false
+	}
+
+	for _, candidate := range candidates {
+		if _, err := lookPath(candidate); err == nil {
+			return true
+		}
+	}
+
+	return false
+}
+
 // ResolveProfilePath resolves the profile path for a shell, expanding ~ to home directory
 func ResolveProfilePath(shellConfig ShellConfig) (string, error) {
 	path := shellConfig.ProfilePath

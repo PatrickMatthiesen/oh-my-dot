@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 )
 
 const (
@@ -131,7 +133,7 @@ func InsertHook(profilePath, hookContent string) (bool, error) {
 	if err := os.MkdirAll(filepath.Dir(profilePath), 0700); err != nil {
 		return false, fmt.Errorf("failed to create profile directory: %w", err)
 	}
-	if err := os.WriteFile(profilePath, []byte(newContent), 0644); err != nil {
+	if err := fileops.WriteTextFileLF(profilePath, newContent, 0644); err != nil {
 		return false, fmt.Errorf("failed to write profile: %w", err)
 	}
 
@@ -190,7 +192,7 @@ func RemoveHook(profilePath string) error {
 		content += "\n"
 	}
 
-	if err := os.WriteFile(profilePath, []byte(content), 0644); err != nil {
+	if err := fileops.WriteTextFileLF(profilePath, content, 0644); err != nil {
 		return fmt.Errorf("failed to write profile: %w", err)
 	}
 

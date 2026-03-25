@@ -306,3 +306,35 @@ func TestResolveProfilePath(t *testing.T) {
 		}
 	})
 }
+
+func TestIsShellExecutableAvailable(t *testing.T) {
+	originalLookPath := lookPath
+	t.Cleanup(func() {
+		lookPath = originalLookPath
+	})
+
+	lookPath = func(file string) (string, error) {
+		switch file {
+		case "pwsh":
+			return "/usr/bin/pwsh", nil
+		default:
+			return "", errors.New("not found")
+		}
+	}
+
+	if !IsShellExecutableAvailable("powershell") {
+		t.Fatal("expected powershell to be reported as available when pwsh is resolvable")
+	}
+
+	lookPath = func(file string) (string, error) {
+		return "", errors.New("not found")
+	}
+
+	if IsShellExecutableAvailable("powershell") {
+		t.Fatal("expected powershell to be reported as unavailable when no executable is resolvable")
+	}
+
+	if IsShellExecutableAvailable("unknown") {
+		t.Fatal("expected unknown shells to be reported as unavailable")
+	}
+}

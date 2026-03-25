@@ -8,6 +8,7 @@ func registeredChecks() []check {
 		{run: checkManifest},
 		{run: checkLocalOverride},
 		{run: checkFeatureFiles},
+		{run: checkLineEndings},
 		{run: checkProfileHooks},
 		{run: checkInitScriptSyntax},
 	}

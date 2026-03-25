@@ -1,10 +1,13 @@
 package doctor
 
 import (
+	"bytes"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/manifest"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/shell"
 )
@@ -68,7 +71,7 @@ func checkDirectoryStructure(ctx context) []result {
 					return "", fmt.Errorf("create shared lib directory: %w", err)
 				}
 
-				if err := os.WriteFile(helpersFile, []byte(shell.HelpersFileContent), 0644); err != nil {
+				if err := fileops.WriteTextFileLF(helpersFile, shell.HelpersFileContent, 0644); err != nil {
 					return "", fmt.Errorf("create helpers file: %w", err)
 				}
 
@@ -139,8 +142,8 @@ func checkFeatureFiles(ctx context) []result {
 				ctx,
 				errorResult(fmt.Sprintf("Feature file '%s'", featureName), fmt.Sprintf("File missing: %s", featurePath), true),
 				func() (string, error) {
-					content := []byte("# Feature: " + featureName + "\n")
-					if err := os.WriteFile(featurePath, content, 0644); err != nil {
+					content := "# Feature: " + featureName + "\n"
+					if err := fileops.WriteTextFileLF(featurePath, content, 0644); err != nil {
 						return "", fmt.Errorf("create feature file %q: %w", featureName, err)
 					}
 
@@ -155,4 +158,82 @@ func checkFeatureFiles(ctx context) []result {
 	}
 
 	return results
+}
+
+func checkLineEndings(ctx context) []result {
+	var results []result
+
+	files, err := shellFrameworkFiles(ctx.repoPath, ctx.shellName)
+	if err != nil {
+		return addResult(results, ctx, warningResult("Line endings", fmt.Sprintf("Cannot scan files: %v", err), false), nil)
+	}
+
+	var crlfFiles []string
+	for _, path := range files {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return addResult(results, ctx, errorResult("Line endings", fmt.Sprintf("Cannot read %s: %v", path, err), false), nil)
+		}
+
+		if bytes.Contains(data, []byte("\r")) {
+			crlfFiles = append(crlfFiles, path)
+		}
+	}
+
+	if len(crlfFiles) == 0 {
+		return addResult(results, ctx, okResult("Line endings"), nil)
+	}
+
+	return addResult(
+		results,
+		ctx,
+		errorResult("Line endings", fmt.Sprintf("CRLF detected in %d file(s)", len(crlfFiles)), true),
+		func() (string, error) {
+			for _, path := range crlfFiles {
+				data, err := os.ReadFile(path)
+				if err != nil {
+					return "", fmt.Errorf("read %s: %w", path, err)
+				}
+
+				if err := fileops.WriteTextFileLF(path, string(data), 0644); err != nil {
+					return "", fmt.Errorf("rewrite %s: %w", path, err)
+				}
+			}
+
+			return fmt.Sprintf("Rewrote %d file(s) with LF endings", len(crlfFiles)), nil
+		},
+	)
+}
+
+func shellFrameworkFiles(repoPath, shellName string) ([]string, error) {
+	var files []string
+
+	roots := []string{
+		filepath.Join(repoPath, "omd-shells", "lib"),
+		filepath.Join(repoPath, "omd-shells", shellName),
+	}
+
+	for _, root := range roots {
+		if _, err := os.Stat(root); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, fmt.Errorf("stat %s: %w", root, err)
+		}
+
+		if err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if entry.IsDir() {
+				return nil
+			}
+			files = append(files, path)
+			return nil
+		}); err != nil {
+			return nil, fmt.Errorf("walk %s: %w", root, err)
+		}
+	}
+
+	return files, nil
 }

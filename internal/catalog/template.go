@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"text/template"
+
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 )
 
 //go:embed features/**/*
@@ -85,7 +87,7 @@ func WriteFeatureTemplate(repoPath, shellName, featureName string, optionValues 
 	}
 
 	// Write template
-	if err := os.WriteFile(featurePath, []byte(renderedContent), 0644); err != nil {
+	if err := fileops.WriteTextFileLF(featurePath, renderedContent, 0644); err != nil {
 		return fmt.Errorf("failed to write feature template: %w", err)
 	}
 

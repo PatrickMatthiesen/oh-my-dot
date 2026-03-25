@@ -38,6 +38,10 @@ func checkProfileHooks(ctx context) []result {
 		return addResult(results, ctx, warningResult("Profile hook", "Shell not supported for hook checking", false), nil)
 	}
 
+	if !shell.IsShellExecutableAvailable(ctx.shellName) {
+		return addResult(results, ctx, warningResult("Profile hook", fmt.Sprintf("%s executable not found; skipping hook check", shellConfig.Name), false), nil)
+	}
+
 	profilePath, err := shell.ResolveProfilePath(shellConfig)
 	if err != nil {
 		return addResult(results, ctx, warningResult("Profile hook", fmt.Sprintf("Cannot resolve profile: %v", err), false), nil)

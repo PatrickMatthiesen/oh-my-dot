@@ -1,6 +1,11 @@
 package doctor
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
 func TestCountResults(t *testing.T) {
 	results := []result{
@@ -73,5 +78,41 @@ func TestInitScriptSyntaxCommand(t *testing.T) {
 				t.Fatalf("initScriptSyntaxCommand(%q) = nil, want command", tt.shellName)
 			}
 		})
+	}
+}
+
+func TestCheckLineEndingsFixesCRLF(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	if err := os.MkdirAll(filepath.Join(tmpDir, "omd-shells", "lib"), 0755); err != nil {
+		t.Fatalf("failed to create lib dir: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(tmpDir, "omd-shells", "bash", "features"), 0755); err != nil {
+		t.Fatalf("failed to create features dir: %v", err)
+	}
+
+	initPath := filepath.Join(tmpDir, "omd-shells", "bash", "init.sh")
+	helperPath := filepath.Join(tmpDir, "omd-shells", "lib", "helpers.sh")
+
+	if err := os.WriteFile(initPath, []byte("line1\r\nline2\r\n"), 0644); err != nil {
+		t.Fatalf("failed to create init script: %v", err)
+	}
+	if err := os.WriteFile(helperPath, []byte("helper\r\ncontent\r\n"), 0644); err != nil {
+		t.Fatalf("failed to create helper file: %v", err)
+	}
+
+	results := checkLineEndings(context{repoPath: tmpDir, shellName: "bash", fix: true})
+	if len(results) == 0 {
+		t.Fatal("expected checkLineEndings to report a result")
+	}
+
+	for _, path := range []string{initPath, helperPath} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("failed to read %s: %v", path, err)
+		}
+		if strings.Contains(string(data), "\r") {
+			t.Fatalf("expected LF-only content in %s, got %q", path, string(data))
+		}
 	}
 }

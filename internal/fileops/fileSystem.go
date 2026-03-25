@@ -87,3 +87,18 @@ func CopyFile(src, dst string) error {
 func CopyFileToDir(src, dst string) error {
 	return CopyFile(src, filepath.Join(dst, filepath.Base(src)))
 }
+
+// NormalizeLineEndings converts CRLF and bare CR line endings to LF.
+func NormalizeLineEndings(content string) string {
+	content = strings.ReplaceAll(content, "\r\n", "\n")
+	return strings.ReplaceAll(content, "\r", "\n")
+}
+
+// WriteTextFileLF writes a text file with LF line endings.
+func WriteTextFileLF(path, content string, perm os.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("create parent directory: %w", err)
+	}
+
+	return os.WriteFile(path, []byte(NormalizeLineEndings(content)), perm)
+}

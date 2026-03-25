@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/catalog"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/manifest"
 )
 
@@ -46,7 +47,7 @@ func InitializeShellDirectory(repoPath, shellName string) error {
 	// Create helpers.sh if it doesn't exist
 	helpersPath := filepath.Join(libDir, "helpers.sh")
 	if _, err := os.Stat(helpersPath); os.IsNotExist(err) {
-		if err := os.WriteFile(helpersPath, []byte(HelpersFileContent), 0644); err != nil {
+		if err := fileops.WriteTextFileLF(helpersPath, HelpersFileContent, 0644); err != nil {
 			return fmt.Errorf("failed to create helpers.sh: %w", err)
 		}
 	}
@@ -132,7 +133,7 @@ func AddFeatureToShell(repoPath, shellName, featureName string, strategy string,
 	} else {
 		// No catalog template, use generic template
 		featureContent = generateFeatureTemplate(shellName, featureName, metadata, options)
-		if err := os.WriteFile(featurePath, []byte(featureContent), 0644); err != nil {
+		if err := fileops.WriteTextFileLF(featurePath, featureContent, 0644); err != nil {
 			return fmt.Errorf("failed to create feature file: %w", err)
 		}
 	}
