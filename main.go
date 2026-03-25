@@ -28,7 +28,9 @@ func main() {
 	viper.ReadInConfig()
 
 	viper.AutomaticEnv()
-	cmd.Execute()
+	if err := cmd.Execute(); err != nil {
+		os.Exit(1)
+	}
 
 	//TODO: make execute return an error. Redirect the error to a log file or print it to the console if env var or flag is set.
 	//Update the commands to use RunE and tests to check for the error
