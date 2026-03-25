@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/hooks"
@@ -88,6 +90,10 @@ func checkInitScriptSyntax(ctx context) []result {
 		return results
 	}
 
+	if !shell.IsShellExecutableAvailable(ctx.shellName) {
+		return addResult(results, ctx, warningResult("Init script syntax", fmt.Sprintf("%s executable not found; skipping syntax check", ctx.shellName), false), nil)
+	}
+
 	if _, err := os.Stat(initScriptPath); os.IsNotExist(err) {
 		return addResult(
 			results,
@@ -131,16 +137,30 @@ func checkInitScriptSyntax(ctx context) []result {
 }
 
 func initScriptSyntaxCommand(shellName, initScriptPath string) *exec.Cmd {
+	validatedPath := shellValidationPath(initScriptPath)
+
 	switch shellName {
 	case "bash":
-		return exec.Command("bash", "-n", initScriptPath)
+		return exec.Command("bash", "-n", validatedPath)
 	case "zsh":
-		return exec.Command("zsh", "-n", initScriptPath)
+		return exec.Command("zsh", "-n", validatedPath)
 	case "fish":
-		return exec.Command("fish", "-n", initScriptPath)
+		return exec.Command("fish", "-n", validatedPath)
 	case "posix":
-		return exec.Command("sh", "-n", initScriptPath)
+		return exec.Command("sh", "-n", validatedPath)
 	default:
 		return nil
 	}
+}
+
+func shellValidationPath(path string) string {
+	return shellValidationPathForGOOS(runtime.GOOS, path)
+}
+
+func shellValidationPathForGOOS(goos, path string) string {
+	if goos == "windows" {
+		return filepath.ToSlash(path)
+	}
+
+	return path
 }

@@ -217,8 +217,32 @@ func TestResolveProfilePath(t *testing.T) {
 		}
 	})
 
-	t.Run("uses PROFILE environment variable when set", func(t *testing.T) {
+	t.Run("ignores PROFILE environment variable and uses PowerShell-reported profile path", func(t *testing.T) {
 		t.Setenv("PROFILE", `C:\Users\pbma\Documents\PowerShell\Microsoft.PowerShell_profile.ps1`)
+
+		origGOOS := currentGOOS
+		origLookPath := lookPath
+		origRunCommand := runCommand
+		t.Cleanup(func() {
+			currentGOOS = origGOOS
+			lookPath = origLookPath
+			runCommand = origRunCommand
+		})
+
+		currentGOOS = "windows"
+		resolvedPath := `C:\Program Files\PowerShell\7\pwsh.exe`
+		lookPath = func(file string) (string, error) {
+			if file == "pwsh" {
+				return resolvedPath, nil
+			}
+			return "", errors.New("not found")
+		}
+		runCommand = func(name string, args ...string) ([]byte, error) {
+			if name != resolvedPath {
+				t.Fatalf("unexpected executable: %s", name)
+			}
+			return []byte(`C:\Users\pbma\Documents\PowerShell\Microsoft.PowerShell_profile.ps1` + "\r\n"), nil
+		}
 
 		path, err := ResolveProfilePath(ShellConfig{ProfilePath: "$PROFILE"})
 		if err != nil {
@@ -268,7 +292,46 @@ func TestResolveProfilePath(t *testing.T) {
 		}
 	})
 
-	t.Run("falls back to home documents path when PowerShell path lookup fails", func(t *testing.T) {
+	t.Run("uses PowerShell-reported profile path on non-windows when available", func(t *testing.T) {
+		t.Setenv("PROFILE", "")
+		resolvedPath := "/usr/bin/pwsh"
+
+		// Save and restore global state modified by this subtest.
+		origGOOS := currentGOOS
+		origLookPath := lookPath
+		origRunCommand := runCommand
+		t.Cleanup(func() {
+			currentGOOS = origGOOS
+			lookPath = origLookPath
+			runCommand = origRunCommand
+		})
+
+		currentGOOS = "linux"
+		lookPath = func(file string) (string, error) {
+			if file == "pwsh" {
+				return resolvedPath, nil
+			}
+			return "", errors.New("not found")
+		}
+		runCommand = func(name string, args ...string) ([]byte, error) {
+			if name != resolvedPath {
+				t.Fatalf("unexpected executable: %s", name)
+			}
+			return []byte("/home/pbma/.config/powershell/Microsoft.PowerShell_profile.ps1\n"), nil
+		}
+
+		path, err := ResolveProfilePath(ShellConfig{ProfilePath: "$PROFILE"})
+		if err != nil {
+			t.Fatalf("ResolveProfilePath returned error: %v", err)
+		}
+
+		expected := "/home/pbma/.config/powershell/Microsoft.PowerShell_profile.ps1"
+		if path != expected {
+			t.Fatalf("ResolveProfilePath returned %q, want %q", path, expected)
+		}
+	})
+
+	t.Run("falls back to standard PowerShell profile path when lookup fails", func(t *testing.T) {
 		t.Setenv("PROFILE", "")
 
 		// Save and restore global state modified by this subtest.
@@ -305,14 +368,45 @@ func TestResolveProfilePath(t *testing.T) {
 			t.Fatalf("ResolveProfilePath returned %q, want %q", path, expected)
 		}
 	})
+
+	t.Run("returns error on non-windows when PowerShell is unavailable", func(t *testing.T) {
+		t.Setenv("PROFILE", "")
+
+		// Save and restore global state modified by this subtest.
+		origGOOS := currentGOOS
+		origLookPath := lookPath
+		origRunCommand := runCommand
+		t.Cleanup(func() {
+			currentGOOS = origGOOS
+			lookPath = origLookPath
+			runCommand = origRunCommand
+		})
+
+		currentGOOS = "linux"
+		lookPath = func(file string) (string, error) {
+			return "", errors.New("not found")
+		}
+		runCommand = func(name string, args ...string) ([]byte, error) {
+			t.Fatal("runCommand should not be called when PowerShell is unavailable")
+			return nil, nil
+		}
+
+		path, err := ResolveProfilePath(ShellConfig{ProfilePath: "$PROFILE"})
+		if err == nil {
+			t.Fatalf("ResolveProfilePath returned %q, want error", path)
+		}
+	})
 }
 
 func TestIsShellExecutableAvailable(t *testing.T) {
 	originalLookPath := lookPath
+	originalGOOS := currentGOOS
 	t.Cleanup(func() {
 		lookPath = originalLookPath
+		currentGOOS = originalGOOS
 	})
 
+	currentGOOS = "linux"
 	lookPath = func(file string) (string, error) {
 		switch file {
 		case "pwsh":
@@ -334,7 +428,39 @@ func TestIsShellExecutableAvailable(t *testing.T) {
 		t.Fatal("expected powershell to be reported as unavailable when no executable is resolvable")
 	}
 
+	lookPath = func(file string) (string, error) {
+		if file == "powershell.exe" {
+			return "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", nil
+		}
+		return "", errors.New("not found")
+	}
+
+	if IsShellExecutableAvailable("powershell") {
+		t.Fatal("expected powershell.exe to be ignored on non-windows hosts")
+	}
+
 	if IsShellExecutableAvailable("unknown") {
 		t.Fatal("expected unknown shells to be reported as unavailable")
+	}
+}
+
+func TestIsShellExecutableAvailableSkipsWSLBashLauncherOnWindows(t *testing.T) {
+	originalLookPath := lookPath
+	originalGOOS := currentGOOS
+	t.Cleanup(func() {
+		lookPath = originalLookPath
+		currentGOOS = originalGOOS
+	})
+
+	currentGOOS = "windows"
+	lookPath = func(file string) (string, error) {
+		if file == "bash" || file == "bash.exe" {
+			return "C:\\Windows\\System32\\bash.exe", nil
+		}
+		return "", errors.New("not found")
+	}
+
+	if IsShellExecutableAvailable("bash") {
+		t.Fatal("expected WSL bash launcher to be ignored on windows")
 	}
 }

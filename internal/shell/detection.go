@@ -91,7 +91,7 @@ func IsShellExecutableAvailable(shellName string) bool {
 	case "fish":
 		candidates = []string{"fish", "fish.exe"}
 	case "powershell":
-		candidates = []string{"pwsh", "powershell", "powershell.exe"}
+		candidates = powershellExecutableCandidates()
 	case "posix":
 		candidates = []string{"sh", "sh.exe"}
 	default:
@@ -99,12 +99,33 @@ func IsShellExecutableAvailable(shellName string) bool {
 	}
 
 	for _, candidate := range candidates {
-		if _, err := lookPath(candidate); err == nil {
+		if resolvedPath, err := lookPath(candidate); err == nil {
+			if shellName == "bash" && isWslBashLauncher(resolvedPath) {
+				continue
+			}
 			return true
 		}
 	}
 
 	return false
+}
+
+func isWslBashLauncher(path string) bool {
+	if currentGOOS != "windows" {
+		return false
+	}
+
+	normalizedPath := strings.ToLower(filepath.ToSlash(path))
+	return strings.HasSuffix(normalizedPath, "/windows/system32/bash.exe")
+}
+
+func powershellExecutableCandidates() []string {
+	if currentGOOS == "windows" {
+		return []string{"pwsh", "powershell", "powershell.exe"}
+	}
+
+	// On non-Windows hosts, prefer native pwsh and avoid picking up Windows PowerShell via interop.
+	return []string{"pwsh"}
 }
 
 // ResolveProfilePath resolves the profile path for a shell, expanding ~ to home directory
@@ -113,19 +134,18 @@ func ResolveProfilePath(shellConfig ShellConfig) (string, error) {
 
 	// Handle PowerShell $PROFILE variable
 	if path == "$PROFILE" {
-		profilePath := os.Getenv("PROFILE")
+		profilePath := detectPowerShellProfilePath()
 		if profilePath == "" {
-			if currentGOOS == "windows" {
-				profilePath = detectPowerShellProfilePath()
+			if currentGOOS != "windows" {
+				return "", fmt.Errorf("powershell profile path is unavailable on %s", currentGOOS)
 			}
-			if profilePath == "" {
-				// Fallback to default PowerShell profile location
-				home, err := os.UserHomeDir()
-				if err != nil {
-					return "", fmt.Errorf("failed to get user home directory: %w", err)
-				}
-				profilePath = filepath.Join(home, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1")
+
+			// Fallback to the standard PowerShell profile location on Windows.
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return "", fmt.Errorf("failed to get user home directory: %w", err)
 			}
+			profilePath = filepath.Join(home, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1")
 		}
 		return profilePath, nil
 	}
@@ -143,7 +163,7 @@ func ResolveProfilePath(shellConfig ShellConfig) (string, error) {
 }
 
 func detectPowerShellProfilePath() string {
-	for _, executable := range []string{"pwsh", "powershell", "powershell.exe"} {
+	for _, executable := range powershellExecutableCandidates() {
 		resolvedPath, err := lookPath(executable)
 		if err != nil {
 			continue

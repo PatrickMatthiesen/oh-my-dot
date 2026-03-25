@@ -28,6 +28,8 @@ type HookContent struct {
 
 // GenerateHook generates the hook content for a specific shell
 func GenerateHook(shell, initPath string) string {
+	initPath = normalizeHookPath(shell, initPath)
+
 	switch shell {
 	case "bash", "posix":
 		return fmt.Sprintf(`%s
@@ -65,11 +67,22 @@ if (Test-Path $omdInit) {
 
 // GenerateBashLoginShim generates the bash login shim for .bash_profile
 func GenerateBashLoginShim(bashrcPath string) string {
+	bashrcPath = filepath.ToSlash(bashrcPath)
+
 	return fmt.Sprintf(`%s
 if [ -r "%s" ]; then
   . "%s"
 fi
 %s`, LoginShimStartMarker, bashrcPath, bashrcPath, LoginShimEndMarker)
+}
+
+func normalizeHookPath(shell, path string) string {
+	switch shell {
+	case "bash", "posix", "zsh", "fish":
+		return filepath.ToSlash(path)
+	default:
+		return path
+	}
 }
 
 // HasHook checks if a profile file already contains the hook

@@ -81,6 +81,26 @@ func TestInitScriptSyntaxCommand(t *testing.T) {
 	}
 }
 
+func TestShellValidationPathForGOOS(t *testing.T) {
+	tests := []struct {
+		name string
+		goos string
+		path string
+		want string
+	}{
+		{name: "windows path", goos: "windows", path: `C:\Users\patr7\dotfiles\omd-shells\bash\init.sh`, want: `C:/Users/patr7/dotfiles/omd-shells/bash/init.sh`},
+		{name: "unix path", goos: "linux", path: `/home/user/dotfiles/omd-shells/bash/init.sh`, want: `/home/user/dotfiles/omd-shells/bash/init.sh`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shellValidationPathForGOOS(tt.goos, tt.path); got != tt.want {
+				t.Fatalf("shellValidationPathForGOOS(%q, %q) = %q, want %q", tt.goos, tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestCheckLineEndingsFixesCRLF(t *testing.T) {
 	tmpDir := t.TempDir()
 
