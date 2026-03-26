@@ -14,12 +14,12 @@ const (
 
 // OptionMetadata defines a configurable option for a feature
 type OptionMetadata struct {
-	Name        string      // Internal identifier (e.g., "theme_name")
-	DisplayName string      // Human-readable label (e.g., "Theme Name")
-	Description string      // Help text for the user
-	Type        OptionType  // Data type
-	Required    bool        // Whether this option is mandatory
-	Default     any // Default value (used if user skips optional field)
+	Name        string     // Internal identifier (e.g., "theme_name")
+	DisplayName string     // Human-readable label (e.g., "Theme Name")
+	Description string     // Help text for the user
+	Type        OptionType // Data type
+	Required    bool       // Whether this option is mandatory
+	Default     any        // Default value (used if user skips optional field)
 
 	// Type-specific constraints
 	EnumValues    []string // Valid values for enum type
@@ -165,9 +165,41 @@ var Catalog = map[string]FeatureMetadata{
 		DefaultCommands: nil,
 		SupportedShells: []string{"powershell"},
 	},
+	"powershell-psreadline": {
+		Name:            "powershell-psreadline",
+		Description:     "PSReadLine key bindings and interactive editing enhancements",
+		Category:        "tool",
+		DefaultStrategy: "eager",
+		DefaultCommands: nil,
+		SupportedShells: []string{"powershell"},
+	},
 	"posh-git": {
 		Name:            "posh-git",
 		Description:     "Git prompt and tab completion for PowerShell",
+		Category:        "tool",
+		DefaultStrategy: "eager",
+		DefaultCommands: nil,
+		SupportedShells: []string{"powershell"},
+	},
+	"terminal-icons": {
+		Name:            "terminal-icons",
+		Description:     "File and folder icons for PowerShell directory listings",
+		Category:        "tool",
+		DefaultStrategy: "eager",
+		DefaultCommands: nil,
+		SupportedShells: []string{"powershell"},
+	},
+	"dotnet-completion": {
+		Name:            "dotnet-completion",
+		Description:     "Native PowerShell argument completion for the dotnet CLI",
+		Category:        "completion",
+		DefaultStrategy: "eager",
+		DefaultCommands: nil,
+		SupportedShells: []string{"powershell"},
+	},
+	"winget-command-not-found": {
+		Name:            "winget-command-not-found",
+		Description:     "WinGet command-not-found suggestions for PowerShell",
 		Category:        "tool",
 		DefaultStrategy: "eager",
 		DefaultCommands: nil,
@@ -188,18 +220,18 @@ var Catalog = map[string]FeatureMetadata{
 				Type:        OptionTypeEnum,
 				Required:    true,
 				EnumValues: []string{
-				"1_shell",
-				"agnoster",
-				"amro",
-				"atomic",
-				"atomicBit",
-				"dracula",
-				"jandedobbeleer",
-				"paradox",
-				"powerlevel10k_rainbow",
-				"pure",
-				"robbyrussell",
-			},
+					"1_shell",
+					"agnoster",
+					"amro",
+					"atomic",
+					"atomicBit",
+					"dracula",
+					"jandedobbeleer",
+					"paradox",
+					"powerlevel10k_rainbow",
+					"pure",
+					"robbyrussell",
+				},
 			},
 			{
 				Name:          "config_file",
