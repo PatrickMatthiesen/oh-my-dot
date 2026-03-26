@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/hooks"
@@ -19,6 +20,26 @@ func init() {
 	applyCommand.Flags().Bool("no-shell", false, "Skip shell hook application")
 
 	rootCmd.AddCommand(applyCommand)
+}
+
+func createDotfileLink(sourcePath, targetPath string) error {
+	if runtime.GOOS != "windows" {
+		if err := os.Symlink(sourcePath, targetPath); err != nil {
+			return fmt.Errorf("create symlink: %w", err)
+		}
+		return nil
+	}
+
+	hardLinkErr := os.Link(sourcePath, targetPath)
+	if hardLinkErr == nil {
+		return nil
+	}
+
+	if err := os.Symlink(sourcePath, targetPath); err == nil {
+		return nil
+	} else {
+		return fmt.Errorf("create hard link: %v; create symlink: %w", hardLinkErr, err)
+	}
 }
 
 var applyCommand = &cobra.Command{
@@ -77,10 +98,10 @@ var applyCommand = &cobra.Command{
 				continue
 			}
 
-			err = os.Link(file, expandedLink)
+			err = createDotfileLink(file, expandedLink)
 			if err != nil {
 				missingFiles++
-				fileops.ColorPrintfn(fileops.Red, "  Error creating hard link %s -> %s: %s", expandedLink, file, err)
+				fileops.ColorPrintfn(fileops.Red, "  Error creating link %s -> %s: %s", expandedLink, file, err)
 				continue
 			}
 			linkedFiles++
@@ -115,6 +136,13 @@ var applyCommand = &cobra.Command{
 					if !ok {
 						if verbose {
 							fileops.ColorPrintfn(fileops.Yellow, "  Skipping unsupported shell: %s", shellName)
+						}
+						continue
+					}
+
+					if !shell.IsShellExecutableAvailable(shellName) {
+						if verbose {
+							fileops.ColorPrintfn(fileops.Yellow, "  Skipping %s: executable not found", shellConfig.Name)
 						}
 						continue
 					}
