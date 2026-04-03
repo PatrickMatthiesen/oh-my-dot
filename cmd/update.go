@@ -12,6 +12,7 @@ import (
 )
 
 func init() {
+	updateCommand.Flags().Bool("gh-auth", false, "Allow update checks to use the GitHub CLI auth token without prompting")
 	rootCmd.AddCommand(updateCommand)
 }
 
@@ -23,6 +24,8 @@ var updateCommand = &cobra.Command{
 	GroupID:          "basics",
 	Args:             cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
+		ctx := context.Background()
+
 		// Get the current executable path
 		executable, err := os.Executable()
 		if err != nil {
@@ -32,9 +35,10 @@ var updateCommand = &cobra.Command{
 
 		// Repository information
 		repository := selfupdate.ParseSlug("PatrickMatthiesen/oh-my-dot")
+		apiToken := resolveGitHubAPIToken(ctx, cmd)
 
 		// Create GitHub source
-		source, err := selfupdate.NewGitHubSource(selfupdate.GitHubConfig{})
+		source, err := selfupdate.NewGitHubSource(selfupdate.GitHubConfig{APIToken: apiToken})
 		if err != nil {
 			fileops.ColorPrintfn(fileops.Red, "Error creating GitHub source: %s", err)
 			return
@@ -68,9 +72,10 @@ var updateCommand = &cobra.Command{
 			fileops.ColorPrintfn(fileops.Yellow, "Updating to %s...", requestedVersion)
 
 			// Find the specific release
-			release, found, err := updater.DetectVersion(context.Background(), repository, requestedVersion)
+			release, found, err := updater.DetectVersion(ctx, repository, requestedVersion)
 			if err != nil {
 				fileops.ColorPrintfn(fileops.Red, "Error finding version %s: %s", requestedVersion, err)
+				printGitHubRateLimitHint(apiToken, err)
 				fileops.ColorPrintfn(fileops.Yellow, "Please check your internet connection and try again")
 				return
 			}
@@ -82,7 +87,7 @@ var updateCommand = &cobra.Command{
 			}
 
 			// Update to the specific version
-			err = updater.UpdateTo(context.Background(), release, executable)
+			err = updater.UpdateTo(ctx, release, executable)
 			if err != nil {
 				fileops.ColorPrintfn(fileops.Red, "Error updating to version %s: %s", requestedVersion, err)
 
@@ -123,11 +128,11 @@ var updateCommand = &cobra.Command{
 
 		fileops.ColorPrintfn(fileops.Yellow, "Checking for updates...")
 
-
 		// Find the latest release
-		latest, found, err := updater.DetectLatest(context.Background(), repository)
+		latest, found, err := updater.DetectLatest(ctx, repository)
 		if err != nil {
 			fileops.ColorPrintfn(fileops.Red, "Error checking for updates: %s", err)
+			printGitHubRateLimitHint(apiToken, err)
 			fileops.ColorPrintfn(fileops.Yellow, "Please check your internet connection and try again")
 			return
 		}
@@ -165,7 +170,7 @@ var updateCommand = &cobra.Command{
 			if os.IsPermission(err) {
 				fileops.ColorPrintfn(fileops.Yellow, "Permission denied. Try running with elevated privileges (sudo on Unix/Linux)")
 			}
-			
+
 			return
 		}
 

@@ -59,6 +59,10 @@ func showAllConfig() {
 	initialized := viper.GetBool("initialized")
 	fileops.ColorPrintf(fileops.Blue, "  initialized: ")
 	fileops.ColorPrintfn(fileops.Green, "%t", initialized)
+
+	allowGHAuth := viper.GetBool(allowGHAuthConfigKey)
+	fileops.ColorPrintf(fileops.Blue, "  allow-gh-auth: ")
+	fileops.ColorPrintfn(fileops.Green, "%t", allowGHAuth)
 }
 
 func showConfigValue(key string) {
@@ -90,8 +94,10 @@ func showConfigValue(key string) {
 		} else {
 			fmt.Printf("%s is not set\n", key)
 		}
+	case "allow-gh-auth":
+		fmt.Printf("%t\n", viper.GetBool(allowGHAuthConfigKey))
 	default:
 		fmt.Printf("Unknown config key: %s\n", key)
-		fmt.Println("Valid keys: location, dotfiles, remote-url, initialized")
+		fmt.Println("Valid keys: location, dotfiles, remote-url, initialized, allow-gh-auth")
 	}
 }

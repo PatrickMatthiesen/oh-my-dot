@@ -71,6 +71,9 @@ func Test_Config_Show_All(t *testing.T) {
 	if !strings.Contains(output, "initialized:") {
 		t.Error("Expected output to contain 'initialized:'")
 	}
+	if !strings.Contains(output, "allow-gh-auth:") {
+		t.Error("Expected output to contain 'allow-gh-auth:'")
+	}
 	if !strings.Contains(output, configFile) {
 		t.Errorf("Expected output to contain config file path '%s'", configFile)
 	}
@@ -106,5 +109,15 @@ func Test_Config_Unknown_Key(t *testing.T) {
 	// Check that output contains error message
 	if !strings.Contains(output, "Unknown config key") {
 		t.Error("Expected output to contain 'Unknown config key'")
+	}
+}
+
+func Test_Config_Show_AllowGHAuth(t *testing.T) {
+	setupTestConfig(t)
+	viper.Set("update.allow-gh-auth", true)
+
+	output := strings.TrimSpace(captureOutput(t, []string{"config", "allow-gh-auth"}))
+	if output != "true" {
+		t.Fatalf("expected allow-gh-auth output to be true, got %q", output)
 	}
 }
