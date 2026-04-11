@@ -27,6 +27,7 @@ func TestHasFeatureTemplate(t *testing.T) {
 		{"posh-git powershell", "posh-git", "powershell", true},
 		{"terminal-icons powershell", "terminal-icons", "powershell", true},
 		{"dotnet-completion powershell", "dotnet-completion", "powershell", true},
+		{"winget-completion powershell", "winget-completion", "powershell", true},
 		{"winget-command-not-found powershell", "winget-command-not-found", "powershell", true},
 		{"oh-my-posh bash", "oh-my-posh", "bash", true},
 		{"oh-my-posh zsh", "oh-my-posh", "zsh", true},
@@ -148,6 +149,13 @@ func TestGetFeatureTemplate(t *testing.T) {
 		{
 			name:        "dotnet-completion powershell",
 			featureName: "dotnet-completion",
+			shellName:   "powershell",
+			wantError:   false,
+			contains:    "Register-ArgumentCompleter",
+		},
+		{
+			name:        "winget-completion powershell",
+			featureName: "winget-completion",
 			shellName:   "powershell",
 			wantError:   false,
 			contains:    "Register-ArgumentCompleter",

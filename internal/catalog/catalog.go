@@ -197,6 +197,14 @@ var Catalog = map[string]FeatureMetadata{
 		DefaultCommands: nil,
 		SupportedShells: []string{"powershell"},
 	},
+	"winget-completion": {
+		Name:            "winget-completion",
+		Description:     "Native PowerShell argument completion for the winget CLI",
+		Category:        "completion",
+		DefaultStrategy: "eager",
+		DefaultCommands: nil,
+		SupportedShells: []string{"powershell"},
+	},
 	"winget-command-not-found": {
 		Name:            "winget-command-not-found",
 		Description:     "WinGet command-not-found suggestions for PowerShell",
