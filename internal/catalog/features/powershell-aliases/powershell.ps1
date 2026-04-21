@@ -50,8 +50,104 @@ function reload {
     Write-Host "Profile reloaded" -ForegroundColor Green
 }
 
-# Common Unix-like utilities (if you prefer Unix names)
+# Common Unix-like utilities (if you prefer Unix names and signatures)
 Set-Alias -Name cat -Value Get-Content -Option AllScope -Force
+
+function head {
+    param(
+        [Alias('n')]
+        [int]$Count = 10,
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]]$Path
+    )
+
+    if (-not $Path) {
+        throw 'head requires at least one file path'
+    }
+
+    Get-Content -Path $Path -TotalCount $Count
+}
+
+function tail {
+    param(
+        [Alias('n')]
+        [int]$Count = 10,
+        [Alias('f')]
+        [switch]$Follow,
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]]$Path
+    )
+
+    if (-not $Path) {
+        throw 'tail requires at least one file path'
+    }
+
+    if ($Follow) {
+        Get-Content -Path $Path -Tail $Count -Wait
+        return
+    }
+
+    Get-Content -Path $Path -Tail $Count
+}
+
+function less {
+    param(
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]]$Path
+    )
+
+    if (-not $Path) {
+        throw 'less requires at least one file path'
+    }
+
+    Get-Content -Path $Path | Out-Host -Paging
+}
+
+function find {
+    param(
+        [string]$Path = '.',
+        [string]$Name,
+        [switch]$File,
+        [switch]$Directory
+    )
+
+    $items = Get-ChildItem -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
+
+    if ($File) {
+        $items = $items | Where-Object { -not $_.PSIsContainer }
+    }
+
+    if ($Directory) {
+        $items = $items | Where-Object { $_.PSIsContainer }
+    }
+
+    if ($Name) {
+        $items = $items | Where-Object { $_.Name -like $Name }
+    }
+
+    $items | Select-Object -ExpandProperty FullName
+}
+
+function touch {
+    param(
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]]$Path
+    )
+
+    if (-not $Path) {
+        throw 'touch requires at least one file path'
+    }
+
+    foreach ($item in $Path) {
+        if (Test-Path $item) {
+            (Get-Item $item).LastWriteTime = Get-Date
+            continue
+        }
+
+        New-Item -Path $item -ItemType File -Force | Out-Null
+    }
+}
+
 Set-Alias -Name grep -Value Select-String -Option AllScope -Force
 
 # PowerShell-specific shortcuts

@@ -159,7 +159,7 @@ var Catalog = map[string]FeatureMetadata{
 	},
 	"powershell-aliases": {
 		Name:            "powershell-aliases",
-		Description:     "Common PowerShell aliases and shortcuts",
+		Description:     "Common PowerShell aliases and Unix-like helpers",
 		Category:        "alias",
 		DefaultStrategy: "eager",
 		DefaultCommands: nil,
