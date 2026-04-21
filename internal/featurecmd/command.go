@@ -52,6 +52,25 @@ Examples:
 		RunE: state.runFeatureAdd,
 	}
 
+	featureUpdateCmd := &cobra.Command{
+		Use:   "update [feature]",
+		Short: "Refresh an installed feature from the catalog template",
+		Long: `Refresh an installed shell feature file from the catalog template.
+
+This rewrites the feature file in omd-shells/<shell>/features/ using the current
+built-in template while preserving any stored feature options.
+
+Interactive mode (-i): Browse installed catalog features and refresh selected ones
+Non-interactive: Specify a feature name directly
+
+Examples:
+  oh-my-dot feature update -i
+  oh-my-dot feature update powershell-aliases
+  oh-my-dot feature update powershell-aliases --shell powershell`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: state.runFeatureUpdate,
+	}
+
 	featureRemoveCmd := &cobra.Command{
 		Use:   "remove [feature]",
 		Short: "Remove a shell feature",
@@ -125,7 +144,7 @@ Examples:
 		RunE: state.runFeatureInfo,
 	}
 
-	featureCmd.AddCommand(featureAddCmd, featureRemoveCmd, featureListCmd, featureEnableCmd, featureDisableCmd, featureInfoCmd)
+	featureCmd.AddCommand(featureAddCmd, featureUpdateCmd, featureRemoveCmd, featureListCmd, featureEnableCmd, featureDisableCmd, featureInfoCmd)
 
 	featureAddCmd.Flags().BoolVarP(&state.flagInteractive, "interactive", "i", false, "Browse and select features from catalog")
 	featureAddCmd.Flags().StringSliceVar(&state.flagShell, "shell", nil, "Target specific shell(s)")
@@ -134,6 +153,9 @@ Examples:
 	featureAddCmd.Flags().StringSliceVar(&state.flagOnCommand, "on-command", nil, "Set trigger commands for on-command strategy")
 	featureAddCmd.Flags().StringSliceVar(&state.flagOption, "option", nil, "Set feature option (key=value); repeatable")
 	featureAddCmd.Flags().BoolVar(&state.flagDisabled, "disabled", false, "Add feature but keep it disabled")
+
+	featureUpdateCmd.Flags().BoolVarP(&state.flagInteractive, "interactive", "i", false, "Browse and select features to update")
+	featureUpdateCmd.Flags().StringSliceVar(&state.flagShell, "shell", nil, "Target specific shell(s)")
 
 	featureRemoveCmd.Flags().StringSliceVar(&state.flagShell, "shell", nil, "Target specific shell(s)")
 	featureRemoveCmd.Flags().BoolVar(&state.flagAll, "all", false, "Remove from all shells")

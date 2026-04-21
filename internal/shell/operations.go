@@ -146,6 +146,38 @@ func AddFeatureToShell(repoPath, shellName, featureName string, strategy string,
 	return nil
 }
 
+// RefreshFeatureTemplate rewrites an installed feature file from the catalog template.
+func RefreshFeatureTemplate(repoPath, shellName, featureName string) error {
+	manifestPath := GetManifestPath(repoPath, shellName)
+	localManifestPath := GetLocalManifestPath(repoPath, shellName)
+
+	merged, err := manifest.ParseManifestWithLocal(manifestPath, localManifestPath)
+	if err != nil {
+		return fmt.Errorf("failed to parse manifest: %w", err)
+	}
+
+	var feature *manifest.FeatureConfig
+	for i := range merged.Features {
+		if merged.Features[i].Name == featureName {
+			feature = &merged.Features[i].FeatureConfig
+			break
+		}
+	}
+	if feature == nil {
+		return fmt.Errorf("feature '%s' is not installed in %s", featureName, shellName)
+	}
+
+	if !catalog.HasFeatureTemplate(featureName, shellName) {
+		return fmt.Errorf("no catalog template available for feature '%s' in shell '%s'", featureName, shellName)
+	}
+
+	if err := catalog.WriteFeatureTemplate(repoPath, shellName, featureName, feature.Options); err != nil {
+		return fmt.Errorf("failed to refresh feature template: %w", err)
+	}
+
+	return nil
+}
+
 // generateFeatureTemplate creates a template feature file
 func generateFeatureTemplate(shellName, featureName string, metadata catalog.FeatureMetadata, options map[string]any) string {
 	var shebang string

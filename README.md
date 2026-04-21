@@ -172,6 +172,11 @@ oh-my-dot feature remove -i              # Interactive
 oh-my-dot feature remove git-prompt      # Direct
 oh-my-dot feature remove kubectl --all   # From all shells
 
+# Update/refresh features
+oh-my-dot feature update -i                      # Interactive
+oh-my-dot feature update powershell-aliases      # Direct
+oh-my-dot feature update powershell-aliases --shell powershell
+
 # Enable/disable features
 oh-my-dot feature enable git-prompt
 oh-my-dot feature disable kubectl --shell bash

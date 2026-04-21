@@ -1,9 +1,14 @@
 package featurecmd
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/catalog"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/shell"
 )
 
 func TestFilterFeaturesByShells(t *testing.T) {
@@ -169,5 +174,99 @@ func TestHasPendingFeatureInstall(t *testing.T) {
 				t.Fatalf("hasPendingFeatureInstall() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestShellsWithFeature(t *testing.T) {
+	repoPath := t.TempDir()
+
+	if err := shell.InitializeShellDirectory(repoPath, "powershell"); err != nil {
+		t.Fatalf("InitializeShellDirectory() error = %v", err)
+	}
+
+	if err := shell.AddFeatureToShell(repoPath, "powershell", "powershell-aliases", "", nil, false, nil); err != nil {
+		t.Fatalf("AddFeatureToShell() error = %v", err)
+	}
+
+	state := &commandState{}
+	shells, err := state.shellsWithFeature(repoPath, "powershell-aliases")
+	if err != nil {
+		t.Fatalf("shellsWithFeature() error = %v", err)
+	}
+
+	if len(shells) != 1 || shells[0] != "powershell" {
+		t.Fatalf("shellsWithFeature() = %v, want [powershell]", shells)
+	}
+}
+
+func TestRefreshFeatureTemplate(t *testing.T) {
+	repoPath := t.TempDir()
+
+	if err := shell.InitializeShellDirectory(repoPath, "powershell"); err != nil {
+		t.Fatalf("InitializeShellDirectory() error = %v", err)
+	}
+
+	if err := shell.AddFeatureToShell(repoPath, "powershell", "powershell-aliases", "", nil, false, nil); err != nil {
+		t.Fatalf("AddFeatureToShell() error = %v", err)
+	}
+
+	featurePath := filepath.Join(repoPath, "omd-shells", "powershell", "features", "powershell-aliases.ps1")
+	if err := fileops.WriteTextFileLF(featurePath, "custom override\n", 0644); err != nil {
+		t.Fatalf("WriteTextFileLF() error = %v", err)
+	}
+
+	if err := shell.RefreshFeatureTemplate(repoPath, "powershell", "powershell-aliases"); err != nil {
+		t.Fatalf("RefreshFeatureTemplate() error = %v", err)
+	}
+
+	content, err := os.ReadFile(featurePath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	if strings.Contains(string(content), "custom override") {
+		t.Fatalf("RefreshFeatureTemplate() did not replace the file contents")
+	}
+
+	if !strings.Contains(string(content), "function head") || !strings.Contains(string(content), "Set-Alias -Name ll -Value Get-ChildItem") {
+		t.Fatalf("RefreshFeatureTemplate() wrote unexpected content: %s", string(content))
+	}
+}
+
+func TestCollectUpdatableFeatures(t *testing.T) {
+	repoPath := t.TempDir()
+
+	if err := shell.InitializeShellDirectory(repoPath, "powershell"); err != nil {
+		t.Fatalf("InitializeShellDirectory() error = %v", err)
+	}
+
+	if err := shell.AddFeatureToShell(repoPath, "powershell", "powershell-aliases", "", nil, false, nil); err != nil {
+		t.Fatalf("AddFeatureToShell() error = %v", err)
+	}
+
+	if err := shell.AddFeatureToShell(repoPath, "powershell", "custom-local-feature", "", nil, false, nil); err != nil {
+		t.Fatalf("AddFeatureToShell() custom feature error = %v", err)
+	}
+
+	featureMap, err := collectUpdatableFeatures(repoPath, []string{"powershell"})
+	if err != nil {
+		t.Fatalf("collectUpdatableFeatures() error = %v", err)
+	}
+
+	if len(featureMap) != 1 {
+		t.Fatalf("collectUpdatableFeatures() = %v, want only catalog features", featureMap)
+	}
+
+	shells, ok := featureMap["powershell-aliases"]
+	if !ok {
+		t.Fatalf("collectUpdatableFeatures() did not include powershell-aliases")
+	}
+
+	if len(shells) != 1 || shells[0] != "powershell" {
+		t.Fatalf("collectUpdatableFeatures() shells = %v, want [powershell]", shells)
+	}
+
+	if _, ok := featureMap["custom-local-feature"]; ok {
+		t.Fatalf("collectUpdatableFeatures() should not include custom-local-feature")
 	}
 }
