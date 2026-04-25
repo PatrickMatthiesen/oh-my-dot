@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -159,7 +158,7 @@ func shellValidationPath(path string) string {
 
 func shellValidationPathForGOOS(goos, path string) string {
 	if goos == "windows" {
-		return filepath.ToSlash(path)
+		return strings.ReplaceAll(path, "\\", "/")
 	}
 
 	return path

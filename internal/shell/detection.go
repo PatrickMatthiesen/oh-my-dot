@@ -115,7 +115,7 @@ func isWslBashLauncher(path string) bool {
 		return false
 	}
 
-	normalizedPath := strings.ToLower(filepath.ToSlash(path))
+	normalizedPath := strings.ToLower(strings.ReplaceAll(path, "\\", "/"))
 	return strings.HasSuffix(normalizedPath, "/windows/system32/bash.exe")
 }
 

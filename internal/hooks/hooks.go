@@ -79,7 +79,7 @@ fi
 func normalizeHookPath(shell, path string) string {
 	switch shell {
 	case "bash", "posix", "zsh", "fish":
-		return filepath.ToSlash(path)
+		return strings.ReplaceAll(path, "\\", "/")
 	default:
 		return path
 	}
