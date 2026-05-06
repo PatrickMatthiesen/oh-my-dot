@@ -22,10 +22,9 @@ Checks performed:
 Examples:
   oh-my-dot doctor              # Check all shells
   oh-my-dot doctor --shell bash # Check specific shell only`,
-	GroupID:       "dotfiles",
-	SilenceErrors: true,
-	SilenceUsage:  true,
-	RunE:          runDoctor,
+	GroupID:      "dotfiles",
+	SilenceUsage: true,
+	RunE:         runDoctor,
 }
 
 var (

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -52,6 +53,33 @@ func captureOutput(t *testing.T, args []string) string {
 	var buf bytes.Buffer
 	buf.ReadFrom(r)
 	return buf.String()
+}
+
+func captureCommandOutput(t *testing.T, args []string) (string, error) {
+	t.Helper()
+
+	oldStdout := os.Stdout
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	os.Stderr = w
+
+	err := cmd.Execute(func(c *cobra.Command) {
+		c.SetArgs(args)
+	})
+
+	w.Close()
+	os.Stdout = oldStdout
+	os.Stderr = oldStderr
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	return buf.String(), err
+}
+
+func stripANSI(text string) string {
+	ansiPattern := regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	return ansiPattern.ReplaceAllString(text, "")
 }
 
 func Test_Config_Show_All(t *testing.T) {
@@ -119,5 +147,29 @@ func Test_Config_Show_AllowGHAuth(t *testing.T) {
 	output := strings.TrimSpace(captureOutput(t, []string{"config", "allow-gh-auth"}))
 	if output != "true" {
 		t.Fatalf("expected allow-gh-auth output to be true, got %q", output)
+	}
+}
+
+func Test_FeatureUpdate_ErrorFormatting(t *testing.T) {
+	setupTestConfig(t)
+	viper.Set("initialized", true)
+
+	output, err := captureCommandOutput(t, []string{"feature", "update"})
+	if err == nil {
+		t.Fatal("expected error for missing feature name")
+	}
+
+	output = stripANSI(output)
+
+	if !strings.Contains(output, "Error: feature name required (or use -i for interactive mode)\n\nUsage:\n") {
+		t.Fatalf("expected error followed by blank line and usage, got %q", output)
+	}
+
+	if strings.Count(output, "Error: feature name required (or use -i for interactive mode)") != 1 {
+		t.Fatalf("expected exactly one formatted error line, got %q", output)
+	}
+
+	if !strings.Contains(output, "--all             Refresh all installed catalog features") {
+		t.Fatalf("expected update usage to include --all flag, got %q", output)
 	}
 }

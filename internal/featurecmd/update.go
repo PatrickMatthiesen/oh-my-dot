@@ -13,6 +13,26 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func (state *commandState) validateFeatureUpdateArgs(cmd *cobra.Command, args []string) error {
+	if err := cobra.MaximumNArgs(1)(cmd, args); err != nil {
+		return err
+	}
+
+	if !cmd.Flags().Changed("all") {
+		return nil
+	}
+
+	if len(args) > 0 {
+		return fmt.Errorf("--all cannot be used with a feature name")
+	}
+
+	if cmd.Flags().Changed("interactive") {
+		return fmt.Errorf("--all cannot be used with --interactive")
+	}
+
+	return nil
+}
+
 func (state *commandState) runFeatureUpdate(cmd *cobra.Command, args []string) error {
 	repoPath := state.repoPathProvider()
 	alias := state.aliasProvider()
@@ -26,6 +46,10 @@ func (state *commandState) runFeatureUpdate(cmd *cobra.Command, args []string) e
 	}
 
 	if len(args) == 0 {
+		if state.flagAll {
+			return state.runAllFeatureUpdates(repoPath, alias)
+		}
+
 		return fmt.Errorf("feature name required (or use -i for interactive mode)")
 	}
 
@@ -51,6 +75,46 @@ func (state *commandState) runFeatureUpdate(cmd *cobra.Command, args []string) e
 	}
 
 	if err := autoCommitShellFeatureChanges("Refresh shell feature: " + featureName); err != nil {
+		return fmt.Errorf("failed to commit shell feature changes: %w", err)
+	}
+
+	fmt.Println()
+	fileops.ColorPrintfn(fileops.Cyan, "Run '%s push' to push committed changes", alias)
+	return nil
+}
+
+func (state *commandState) runAllFeatureUpdates(repoPath, alias string) error {
+	featureMap, err := state.updatableFeaturesByShell(repoPath)
+	if err != nil {
+		return err
+	}
+	if len(featureMap) == 0 {
+		fileops.ColorPrintln("No refreshable features found", fileops.Yellow)
+		return nil
+	}
+
+	featureNames := make([]string, 0, len(featureMap))
+	for featureName := range featureMap {
+		featureNames = append(featureNames, featureName)
+	}
+	sort.Strings(featureNames)
+
+	for _, featureName := range featureNames {
+		targetShells := featureMap[featureName]
+		sort.Strings(targetShells)
+
+		for _, shellName := range targetShells {
+			fileops.ColorPrintfn(fileops.Cyan, "Refreshing %s in %s...", featureName, shellName)
+
+			if err := shell.RefreshFeatureTemplate(repoPath, shellName, featureName); err != nil {
+				return fmt.Errorf("failed to refresh feature in %s: %w", shellName, err)
+			}
+
+			fileops.ColorPrintfn(fileops.Green, "  ✓ Feature file updated")
+		}
+	}
+
+	if err := autoCommitShellFeatureChanges("Refresh shell features"); err != nil {
 		return fmt.Errorf("failed to commit shell feature changes: %w", err)
 	}
 
@@ -161,6 +225,21 @@ func collectUpdatableFeatures(repoPath string, candidateShells []string) (map[st
 	}
 
 	return featureMap, nil
+}
+
+func (state *commandState) updatableFeaturesByShell(repoPath string) (map[string][]string, error) {
+	var candidateShells []string
+	if len(state.flagShell) > 0 {
+		candidateShells = append(candidateShells, state.flagShell...)
+	} else {
+		allShells, err := shell.ListShellsWithFeatures(repoPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list shells: %w", err)
+		}
+		candidateShells = allShells
+	}
+
+	return collectUpdatableFeatures(repoPath, candidateShells)
 }
 
 func (state *commandState) shellsWithFeature(repoPath, featureName string) ([]string, error) {

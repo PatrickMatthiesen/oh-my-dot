@@ -174,7 +174,56 @@ func Execute(funcs ...func(*cobra.Command)) error {
 		f(rootCmd)
 	}
 
-	return rootCmd.Execute()
+	originalSilenceErrors := rootCmd.SilenceErrors
+	originalSilenceUsage := rootCmd.SilenceUsage
+	rootCmd.SilenceErrors = true
+	rootCmd.SilenceUsage = true
+	defer func() {
+		rootCmd.SilenceErrors = originalSilenceErrors
+		rootCmd.SilenceUsage = originalSilenceUsage
+	}()
+
+	executedCmd, err := rootCmd.ExecuteC()
+	if err != nil {
+		if shouldPrintCommandError(executedCmd) {
+			fileops.ColorPrint("Error", fileops.Red)
+			fmt.Printf(": %s\n\n", err)
+		}
+
+		if shouldPrintCommandUsage(executedCmd) {
+			_ = executedCmd.Usage()
+		}
+	}
+
+	return err
+}
+
+func shouldPrintCommandError(cmd *cobra.Command) bool {
+	return !hasLocalSilenceErrorSetting(cmd)
+}
+
+func shouldPrintCommandUsage(cmd *cobra.Command) bool {
+	return !hasLocalSilenceUsageSetting(cmd)
+}
+
+func hasLocalSilenceErrorSetting(cmd *cobra.Command) bool {
+	for current := cmd; current != nil && current != rootCmd; current = current.Parent() {
+		if current.SilenceErrors {
+			return true
+		}
+	}
+
+	return false
+}
+
+func hasLocalSilenceUsageSetting(cmd *cobra.Command) bool {
+	for current := cmd; current != nil && current != rootCmd; current = current.Parent() {
+		if current.SilenceUsage {
+			return true
+		}
+	}
+
+	return false
 }
 
 var templateColorMap = &template.FuncMap{

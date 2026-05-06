@@ -9,6 +9,7 @@ import (
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/catalog"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/shell"
+	"github.com/spf13/cobra"
 )
 
 func TestFilterFeaturesByShells(t *testing.T) {
@@ -269,4 +270,87 @@ func TestCollectUpdatableFeatures(t *testing.T) {
 	if _, ok := featureMap["custom-local-feature"]; ok {
 		t.Fatalf("collectUpdatableFeatures() should not include custom-local-feature")
 	}
+}
+
+func TestUpdatableFeaturesByShellRespectsFlagShell(t *testing.T) {
+	repoPath := t.TempDir()
+
+	for _, shellName := range []string{"powershell", "bash"} {
+		if err := shell.InitializeShellDirectory(repoPath, shellName); err != nil {
+			t.Fatalf("InitializeShellDirectory(%q) error = %v", shellName, err)
+		}
+	}
+
+	if err := shell.AddFeatureToShell(repoPath, "powershell", "powershell-aliases", "", nil, false, nil); err != nil {
+		t.Fatalf("AddFeatureToShell(powershell) error = %v", err)
+	}
+
+	if err := shell.AddFeatureToShell(repoPath, "bash", "git-prompt", "", nil, false, nil); err != nil {
+		t.Fatalf("AddFeatureToShell(bash) error = %v", err)
+	}
+
+	state := &commandState{flagShell: []string{"powershell"}}
+	featureMap, err := state.updatableFeaturesByShell(repoPath)
+	if err != nil {
+		t.Fatalf("updatableFeaturesByShell() error = %v", err)
+	}
+
+	if len(featureMap) != 1 {
+		t.Fatalf("updatableFeaturesByShell() = %v, want only powershell feature", featureMap)
+	}
+
+	shells, ok := featureMap["powershell-aliases"]
+	if !ok {
+		t.Fatalf("updatableFeaturesByShell() did not include powershell-aliases")
+	}
+
+	if len(shells) != 1 || shells[0] != "powershell" {
+		t.Fatalf("updatableFeaturesByShell() shells = %v, want [powershell]", shells)
+	}
+
+	if _, ok := featureMap["git-prompt"]; ok {
+		t.Fatalf("updatableFeaturesByShell() should not include bash feature when filtered")
+	}
+}
+
+func TestValidateFeatureUpdateArgs(t *testing.T) {
+	newCommand := func(t *testing.T, flagArgs ...string) *cobra.Command {
+		t.Helper()
+
+		cmd := &cobra.Command{Use: "update"}
+		cmd.Flags().Bool("all", false, "")
+		cmd.Flags().BoolP("interactive", "i", false, "")
+		cmd.Flags().StringSlice("shell", nil, "")
+
+		if err := cmd.ParseFlags(flagArgs); err != nil {
+			t.Fatalf("ParseFlags() error = %v", err)
+		}
+
+		return cmd
+	}
+
+	state := &commandState{}
+
+	t.Run("rejects all with feature name", func(t *testing.T) {
+		cmd := newCommand(t, "--all")
+		err := state.validateFeatureUpdateArgs(cmd, []string{"powershell-aliases"})
+		if err == nil || err.Error() != "--all cannot be used with a feature name" {
+			t.Fatalf("validateFeatureUpdateArgs() error = %v, want feature-name conflict", err)
+		}
+	})
+
+	t.Run("rejects all with interactive", func(t *testing.T) {
+		cmd := newCommand(t, "--all", "--interactive")
+		err := state.validateFeatureUpdateArgs(cmd, nil)
+		if err == nil || err.Error() != "--all cannot be used with --interactive" {
+			t.Fatalf("validateFeatureUpdateArgs() error = %v, want interactive conflict", err)
+		}
+	})
+
+	t.Run("allows all with shell filter", func(t *testing.T) {
+		cmd := newCommand(t, "--all", "--shell", "powershell")
+		if err := state.validateFeatureUpdateArgs(cmd, nil); err != nil {
+			t.Fatalf("validateFeatureUpdateArgs() error = %v", err)
+		}
+	})
 }

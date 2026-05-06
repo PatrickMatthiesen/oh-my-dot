@@ -61,13 +61,18 @@ This rewrites the feature file in omd-shells/<shell>/features/ using the current
 built-in template while preserving any stored feature options.
 
 Interactive mode (-i): Browse installed catalog features and refresh selected ones
-Non-interactive: Specify a feature name directly
+Non-interactive: Specify a feature name directly, or use --all to refresh every installed catalog feature
+
+The selection modes are mutually exclusive: choose exactly one of a feature name,
+-i, or --all.
 
 Examples:
   oh-my-dot feature update -i
   oh-my-dot feature update powershell-aliases
-  oh-my-dot feature update powershell-aliases --shell powershell`,
-		Args: cobra.MaximumNArgs(1),
+  oh-my-dot feature update powershell-aliases --shell powershell
+  oh-my-dot feature update --all
+  oh-my-dot feature update --all --shell powershell`,
+		Args: state.validateFeatureUpdateArgs,
 		RunE: state.runFeatureUpdate,
 	}
 
@@ -155,6 +160,7 @@ Examples:
 	featureAddCmd.Flags().BoolVar(&state.flagDisabled, "disabled", false, "Add feature but keep it disabled")
 
 	featureUpdateCmd.Flags().BoolVarP(&state.flagInteractive, "interactive", "i", false, "Browse and select features to update")
+	featureUpdateCmd.Flags().BoolVar(&state.flagAll, "all", false, "Refresh all installed catalog features")
 	featureUpdateCmd.Flags().StringSliceVar(&state.flagShell, "shell", nil, "Target specific shell(s)")
 
 	featureRemoveCmd.Flags().StringSliceVar(&state.flagShell, "shell", nil, "Target specific shell(s)")

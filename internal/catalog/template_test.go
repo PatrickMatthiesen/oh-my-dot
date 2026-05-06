@@ -1,6 +1,10 @@
 package catalog
 
 import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -219,6 +223,253 @@ func TestGetFeatureTemplate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPowerShellAliasesTailSupportsPipelineInput(t *testing.T) {
+	pwshPath, err := exec.LookPath("pwsh")
+	if err != nil {
+		t.Skip("pwsh is required for this test")
+	}
+
+	content, err := GetFeatureTemplate("powershell-aliases", "powershell")
+	if err != nil {
+		t.Fatalf("GetFeatureTemplate() error = %v", err)
+	}
+
+	tempDir := t.TempDir()
+	scriptPath := filepath.Join(tempDir, "powershell-aliases.ps1")
+	inputPath := filepath.Join(tempDir, "input.txt")
+
+	if err := os.WriteFile(scriptPath, []byte(content), 0644); err != nil {
+		t.Fatalf("os.WriteFile(scriptPath) error = %v", err)
+	}
+
+	inputContent := "one\ntwo\nthree\nfour\n"
+	if err := os.WriteFile(inputPath, []byte(inputContent), 0644); err != nil {
+		t.Fatalf("os.WriteFile(inputPath) error = %v", err)
+	}
+
+	t.Run("pipeline", func(t *testing.T) {
+		output := runPowerShellAliasCommand(t, pwshPath, scriptPath, "Get-Content "+quotePowerShellPath(inputPath)+" | tail -n 2")
+		if output != "three\nfour" {
+			t.Fatalf("pipeline tail output = %q, want %q", output, "three\nfour")
+		}
+	})
+
+	t.Run("path", func(t *testing.T) {
+		output := runPowerShellAliasCommand(t, pwshPath, scriptPath, "tail -n 2 "+quotePowerShellPath(inputPath))
+		if output != "three\nfour" {
+			t.Fatalf("path tail output = %q, want %q", output, "three\nfour")
+		}
+	})
+}
+
+func TestPowerShellAliasesHeadSupportsPipelineInput(t *testing.T) {
+	pwshPath, err := exec.LookPath("pwsh")
+	if err != nil {
+		t.Skip("pwsh is required for this test")
+	}
+
+	content, err := GetFeatureTemplate("powershell-aliases", "powershell")
+	if err != nil {
+		t.Fatalf("GetFeatureTemplate() error = %v", err)
+	}
+
+	tempDir := t.TempDir()
+	scriptPath := filepath.Join(tempDir, "powershell-aliases.ps1")
+	inputPath := filepath.Join(tempDir, "input.txt")
+
+	if err := os.WriteFile(scriptPath, []byte(content), 0644); err != nil {
+		t.Fatalf("os.WriteFile(scriptPath) error = %v", err)
+	}
+
+	inputContent := "one\ntwo\nthree\nfour\n"
+	if err := os.WriteFile(inputPath, []byte(inputContent), 0644); err != nil {
+		t.Fatalf("os.WriteFile(inputPath) error = %v", err)
+	}
+
+	t.Run("pipeline", func(t *testing.T) {
+		output := runPowerShellAliasCommand(t, pwshPath, scriptPath, "Get-Content "+quotePowerShellPath(inputPath)+" | head -n 2")
+		if output != "one\ntwo" {
+			t.Fatalf("pipeline head output = %q, want %q", output, "one\ntwo")
+		}
+	})
+
+	t.Run("path", func(t *testing.T) {
+		output := runPowerShellAliasCommand(t, pwshPath, scriptPath, "head -n 2 "+quotePowerShellPath(inputPath))
+		if output != "one\ntwo" {
+			t.Fatalf("path head output = %q, want %q", output, "one\ntwo")
+		}
+	})
+}
+
+func TestPowerShellAliasesLessSupportsPipelineInput(t *testing.T) {
+	pwshPath, err := exec.LookPath("pwsh")
+	if err != nil {
+		t.Skip("pwsh is required for this test")
+	}
+
+	content, err := GetFeatureTemplate("powershell-aliases", "powershell")
+	if err != nil {
+		t.Fatalf("GetFeatureTemplate() error = %v", err)
+	}
+
+	tempDir := t.TempDir()
+	scriptPath := filepath.Join(tempDir, "powershell-aliases.ps1")
+	inputPath := filepath.Join(tempDir, "input.txt")
+
+	if err := os.WriteFile(scriptPath, []byte(content), 0644); err != nil {
+		t.Fatalf("os.WriteFile(scriptPath) error = %v", err)
+	}
+
+	inputContent := "one\ntwo\nthree\nfour\n"
+	if err := os.WriteFile(inputPath, []byte(inputContent), 0644); err != nil {
+		t.Fatalf("os.WriteFile(inputPath) error = %v", err)
+	}
+
+	t.Run("pipeline", func(t *testing.T) {
+		command := strings.Join([]string{
+			"function Out-Host {",
+			"param([switch]$Paging, [Parameter(ValueFromPipeline = $true)]$InputObject)",
+			"process { $InputObject }",
+			"}",
+			"Get-Content " + quotePowerShellPath(inputPath) + " | less",
+		}, " ")
+		output := runPowerShellAliasCommand(t, pwshPath, scriptPath, command)
+		if output != "one\ntwo\nthree\nfour" {
+			t.Fatalf("pipeline less output = %q, want %q", output, "one\ntwo\nthree\nfour")
+		}
+	})
+
+	t.Run("path", func(t *testing.T) {
+		command := strings.Join([]string{
+			"function Out-Host {",
+			"param([switch]$Paging, [Parameter(ValueFromPipeline = $true)]$InputObject)",
+			"process { $InputObject }",
+			"}",
+			"less " + quotePowerShellPath(inputPath),
+		}, " ")
+		output := runPowerShellAliasCommand(t, pwshPath, scriptPath, command)
+		if output != "one\ntwo\nthree\nfour" {
+			t.Fatalf("path less output = %q, want %q", output, "one\ntwo\nthree\nfour")
+		}
+	})
+}
+
+func TestPowerShellAliasesLessIgnoresUserStoppedPager(t *testing.T) {
+	pwshPath, err := exec.LookPath("pwsh")
+	if err != nil {
+		t.Skip("pwsh is required for this test")
+	}
+
+	content, err := GetFeatureTemplate("powershell-aliases", "powershell")
+	if err != nil {
+		t.Fatalf("GetFeatureTemplate() error = %v", err)
+	}
+
+	tempDir := t.TempDir()
+	scriptPath := filepath.Join(tempDir, "powershell-aliases.ps1")
+	inputPath := filepath.Join(tempDir, "input.txt")
+
+	if err := os.WriteFile(scriptPath, []byte(content), 0644); err != nil {
+		t.Fatalf("os.WriteFile(scriptPath) error = %v", err)
+	}
+
+	if err := os.WriteFile(inputPath, []byte("one\ntwo\n"), 0644); err != nil {
+		t.Fatalf("os.WriteFile(inputPath) error = %v", err)
+	}
+
+	t.Run("pipeline", func(t *testing.T) {
+		command := strings.Join([]string{
+			"function Out-Host { [CmdletBinding()] param([switch]$Paging, [Parameter(ValueFromPipeline = $true)]$InputObject) process { $exception = [System.Management.Automation.RuntimeException]::new('The command was stopped by the user.'); $errorRecord = [System.Management.Automation.ErrorRecord]::new($exception, 'OperationStopped', [System.Management.Automation.ErrorCategory]::OperationStopped, $null); $PSCmdlet.ThrowTerminatingError($errorRecord) } }",
+			"Get-Content " + quotePowerShellPath(inputPath) + " | less",
+			"'completed'",
+		}, "; ")
+		output := runPowerShellAliasCommand(t, pwshPath, scriptPath, command)
+		if output != "completed" {
+			t.Fatalf("pipeline less output = %q, want %q", output, "completed")
+		}
+	})
+
+	t.Run("path", func(t *testing.T) {
+		command := strings.Join([]string{
+			"function Out-Host { [CmdletBinding()] param([switch]$Paging, [Parameter(ValueFromPipeline = $true)]$InputObject) process { $exception = [System.Management.Automation.RuntimeException]::new('The command was stopped by the user.'); $errorRecord = [System.Management.Automation.ErrorRecord]::new($exception, 'OperationStopped', [System.Management.Automation.ErrorCategory]::OperationStopped, $null); $PSCmdlet.ThrowTerminatingError($errorRecord) } }",
+			"less " + quotePowerShellPath(inputPath),
+			"'completed'",
+		}, "; ")
+		output := runPowerShellAliasCommand(t, pwshPath, scriptPath, command)
+		if output != "completed" {
+			t.Fatalf("path less output = %q, want %q", output, "completed")
+		}
+	})
+}
+
+func TestPowerShellAliasesLessPreservesNonUserPagerErrors(t *testing.T) {
+	pwshPath, err := exec.LookPath("pwsh")
+	if err != nil {
+		t.Skip("pwsh is required for this test")
+	}
+
+	content, err := GetFeatureTemplate("powershell-aliases", "powershell")
+	if err != nil {
+		t.Fatalf("GetFeatureTemplate() error = %v", err)
+	}
+
+	tempDir := t.TempDir()
+	scriptPath := filepath.Join(tempDir, "powershell-aliases.ps1")
+	inputPath := filepath.Join(tempDir, "input.txt")
+
+	if err := os.WriteFile(scriptPath, []byte(content), 0644); err != nil {
+		t.Fatalf("os.WriteFile(scriptPath) error = %v", err)
+	}
+
+	if err := os.WriteFile(inputPath, []byte("one\ntwo\n"), 0644); err != nil {
+		t.Fatalf("os.WriteFile(inputPath) error = %v", err)
+	}
+
+	command := strings.Join([]string{
+		"function Out-Host { param([switch]$Paging, [Parameter(ValueFromPipeline = $true)]$InputObject) process { throw 'pager exploded' } }",
+		"Get-Content " + quotePowerShellPath(inputPath) + " | less",
+	}, "; ")
+
+	_, err = runPowerShellAliasCommandWithError(pwshPath, scriptPath, command)
+	if err == nil {
+		t.Fatal("expected less to preserve non-user pager error")
+	}
+	if !strings.Contains(err.Error(), "pager exploded") {
+		t.Fatalf("expected pager error in output, got %v", err)
+	}
+}
+
+func runPowerShellAliasCommand(t *testing.T, pwshPath, scriptPath, command string) string {
+	t.Helper()
+
+	output, err := runPowerShellAliasCommandWithError(pwshPath, scriptPath, command)
+	if err != nil {
+		t.Fatalf("pwsh command failed: %v", err)
+	}
+
+	return output
+}
+
+func runPowerShellAliasCommandWithError(pwshPath, scriptPath, command string) (string, error) {
+	powershellCommand := "& { . " + quotePowerShellPath(scriptPath) + "; " + command + " }"
+	cmd := exec.Command(pwshPath, "-NoProfile", "-Command", powershellCommand)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("%w\n%s", err, output)
+	}
+
+	return normalizePowerShellOutput(string(output)), nil
+}
+
+func quotePowerShellPath(path string) string {
+	return "'" + strings.ReplaceAll(path, "'", "''") + "'"
+}
+
+func normalizePowerShellOutput(output string) string {
+	normalized := strings.ReplaceAll(output, "\r\n", "\n")
+	return strings.TrimSpace(normalized)
 }
 
 func TestGetShellExtension(t *testing.T) {
