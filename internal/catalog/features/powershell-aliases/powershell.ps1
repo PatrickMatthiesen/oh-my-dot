@@ -54,53 +54,154 @@ function reload {
 Set-Alias -Name cat -Value Get-Content -Option AllScope -Force
 
 function head {
+    [CmdletBinding(DefaultParameterSetName = 'Path')]
     param(
         [Alias('n')]
         [int]$Count = 10,
-        [Parameter(ValueFromRemainingArguments = $true)]
+        [Parameter(ParameterSetName = 'Pipeline', ValueFromPipeline = $true)]
+        [object]$InputObject,
+        [Parameter(ParameterSetName = 'Path', ValueFromRemainingArguments = $true)]
         [string[]]$Path
     )
 
-    if (-not $Path) {
-        throw 'head requires at least one file path'
+    begin {
+        $remaining = $Count
+        $receivedPipelineInput = $false
     }
 
-    Get-Content -Path $Path -TotalCount $Count
+    process {
+        if ($PSBoundParameters.ContainsKey('InputObject')) {
+            $receivedPipelineInput = $true
+
+            if ($remaining -gt 0) {
+                $InputObject
+                $remaining--
+            }
+        }
+    }
+
+    end {
+        if ($Path) {
+            Get-Content -Path $Path -TotalCount $Count
+            return
+        }
+
+        if ($receivedPipelineInput) {
+            return
+        }
+
+        throw 'head requires at least one file path or pipeline input'
+    }
 }
 
 function tail {
+    [CmdletBinding(DefaultParameterSetName = 'Path')]
     param(
         [Alias('n')]
         [int]$Count = 10,
         [Alias('f')]
         [switch]$Follow,
-        [Parameter(ValueFromRemainingArguments = $true)]
+        [Parameter(ParameterSetName = 'Pipeline', ValueFromPipeline = $true)]
+        [object]$InputObject,
+        [Parameter(ParameterSetName = 'Path', ValueFromRemainingArguments = $true)]
         [string[]]$Path
     )
 
-    if (-not $Path) {
-        throw 'tail requires at least one file path'
+    begin {
+        $buffer = [System.Collections.Generic.List[object]]::new()
+        $receivedPipelineInput = $false
     }
 
-    if ($Follow) {
-        Get-Content -Path $Path -Tail $Count -Wait
-        return
+    process {
+        if ($PSBoundParameters.ContainsKey('InputObject')) {
+            $receivedPipelineInput = $true
+            $null = $buffer.Add($InputObject)
+
+            if ($buffer.Count -gt $Count) {
+                $buffer.RemoveAt(0)
+            }
+        }
     }
 
-    Get-Content -Path $Path -Tail $Count
+    end {
+        if ($Path) {
+            if ($Follow) {
+                Get-Content -Path $Path -Tail $Count -Wait
+                return
+            }
+
+            Get-Content -Path $Path -Tail $Count
+            return
+        }
+
+        if ($Follow) {
+            throw 'tail -f requires at least one file path'
+        }
+
+        if ($receivedPipelineInput) {
+            $buffer
+            return
+        }
+
+        throw 'tail requires at least one file path or pipeline input'
+    }
 }
 
 function less {
+    [CmdletBinding(DefaultParameterSetName = 'Path')]
     param(
-        [Parameter(ValueFromRemainingArguments = $true)]
+        [Parameter(ParameterSetName = 'Pipeline', ValueFromPipeline = $true)]
+        [object]$InputObject,
+        [Parameter(ParameterSetName = 'Path', ValueFromRemainingArguments = $true)]
         [string[]]$Path
     )
 
-    if (-not $Path) {
-        throw 'less requires at least one file path'
+    begin {
+        $buffer = [System.Collections.Generic.List[object]]::new()
+        $receivedPipelineInput = $false
+
+        function Invoke-LessPager {
+            param(
+                [Parameter(Mandatory = $true)]
+                [scriptblock]$Command
+            )
+
+            try {
+                & $Command
+            }
+            catch {
+                if (
+                    $_.Exception -is [System.Management.Automation.PipelineStoppedException] -or
+                    ($_.CategoryInfo.Category -eq [System.Management.Automation.ErrorCategory]::OperationStopped -and $_.Exception.Message -eq 'The command was stopped by the user.')
+                ) {
+                    return
+                }
+
+                throw
+            }
+        }
     }
 
-    Get-Content -Path $Path | Out-Host -Paging
+    process {
+        if ($PSBoundParameters.ContainsKey('InputObject')) {
+            $receivedPipelineInput = $true
+            $null = $buffer.Add($InputObject)
+        }
+    }
+
+    end {
+        if ($Path) {
+            Invoke-LessPager { Get-Content -Path $Path | Out-Host -Paging }
+            return
+        }
+
+        if ($receivedPipelineInput) {
+            Invoke-LessPager { $buffer | Out-Host -Paging }
+            return
+        }
+
+        throw 'less requires at least one file path or pipeline input'
+    }
 }
 
 function find {
