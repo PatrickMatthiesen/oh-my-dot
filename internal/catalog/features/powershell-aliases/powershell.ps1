@@ -38,9 +38,55 @@ function path {
     $env:Path -split [IO.Path]::PathSeparator
 }
 
+function Add-Path {
+    param(
+        [string]$Path,
+        [switch]$Save = $false,
+        [switch]$Machine = $false
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        Write-Error -Message 'Add-Path requires a path' -Category InvalidArgument
+        return
+    }
+
+    $separator = [IO.Path]::PathSeparator
+
+    if ($Save) {
+        $target = if ($Machine) { 'Machine' } else { 'User' }
+        $currentPath = [Environment]::GetEnvironmentVariable('Path', $target)
+        $newPath = if ([string]::IsNullOrEmpty($currentPath)) { $Path } else { "$currentPath$separator$Path" }
+        [Environment]::SetEnvironmentVariable('Path', $newPath, $target)
+        return
+    }
+
+    $env:Path = if ([string]::IsNullOrEmpty($env:Path)) { $Path } else { "$env:Path$separator$Path" }
+}
+
+function Update-Path {
+    $separator = [IO.Path]::PathSeparator
+    $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    $env:Path = [string]::Join($separator, (@($machinePath, $userPath) | Where-Object { -not [string]::IsNullOrEmpty($_) }))
+}
+
+function Compare-Path {
+    $separator = [IO.Path]::PathSeparator
+    $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    $savedPath = [string]::Join($separator, (@($machinePath, $userPath) | Where-Object { -not [string]::IsNullOrEmpty($_) }))
+    Compare-Object ($env:Path -split [regex]::Escape($separator)) ($savedPath -split [regex]::Escape($separator))
+}
+
 # Create parent directories as needed (PowerShell's New-Item -Force already does this)
 function New-Directory {
     param([string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        Write-Error -Message 'New-Directory requires a directory path' -Category InvalidArgument
+        return
+    }
+
     New-Item -Path $Path -ItemType Directory -Force
 }
 
@@ -90,7 +136,8 @@ function head {
             return
         }
 
-        throw 'head requires at least one file path or pipeline input'
+        Write-Error -Message 'head requires at least one file path or pipeline input' -Category InvalidArgument
+        return
     }
 }
 
@@ -135,7 +182,8 @@ function tail {
         }
 
         if ($Follow) {
-            throw 'tail -f requires at least one file path'
+            Write-Error -Message 'tail -f requires at least one file path' -Category InvalidArgument
+            return
         }
 
         if ($receivedPipelineInput) {
@@ -143,7 +191,8 @@ function tail {
             return
         }
 
-        throw 'tail requires at least one file path or pipeline input'
+        Write-Error -Message 'tail requires at least one file path or pipeline input' -Category InvalidArgument
+        return
     }
 }
 
@@ -200,7 +249,8 @@ function less {
             return
         }
 
-        throw 'less requires at least one file path or pipeline input'
+        Write-Error -Message 'less requires at least one file path or pipeline input' -Category InvalidArgument
+        return
     }
 }
 
@@ -236,7 +286,8 @@ function touch {
     )
 
     if (-not $Path) {
-        throw 'touch requires at least one file path'
+        Write-Error -Message 'touch requires at least one file path' -Category InvalidArgument
+        return
     }
 
     foreach ($item in $Path) {
@@ -254,6 +305,12 @@ Set-Alias -Name grep -Value Select-String -Option AllScope -Force
 # PowerShell-specific shortcuts
 function which {
     param([string]$Command)
+
+    if ([string]::IsNullOrWhiteSpace($Command)) {
+        Write-Error -Message 'which requires a command name' -Category InvalidArgument
+        return
+    }
+
     Get-Command $Command -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
 }
 

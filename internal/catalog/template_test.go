@@ -165,6 +165,27 @@ func TestGetFeatureTemplate(t *testing.T) {
 			contains:    "function touch",
 		},
 		{
+			name:        "powershell-aliases powershell addpath",
+			featureName: "powershell-aliases",
+			shellName:   "powershell",
+			wantError:   false,
+			contains:    "function addpath",
+		},
+		{
+			name:        "powershell-aliases powershell Update-Path",
+			featureName: "powershell-aliases",
+			shellName:   "powershell",
+			wantError:   false,
+			contains:    "function Update-Path",
+		},
+		{
+			name:        "powershell-aliases powershell comparePath",
+			featureName: "powershell-aliases",
+			shellName:   "powershell",
+			wantError:   false,
+			contains:    "function comparePath",
+		},
+		{
 			name:        "powershell-psreadline powershell",
 			featureName: "powershell-psreadline",
 			shellName:   "powershell",
@@ -438,6 +459,52 @@ func TestPowerShellAliasesLessPreservesNonUserPagerErrors(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "pager exploded") {
 		t.Fatalf("expected pager error in output, got %v", err)
+	}
+}
+
+func TestPowerShellAliasesUsageErrorsAreNonTerminating(t *testing.T) {
+	pwshPath, err := exec.LookPath("pwsh")
+	if err != nil {
+		t.Skip("pwsh is required for this test")
+	}
+
+	content, err := GetFeatureTemplate("powershell-aliases", "powershell")
+	if err != nil {
+		t.Fatalf("GetFeatureTemplate() error = %v", err)
+	}
+
+	tempDir := t.TempDir()
+	scriptPath := filepath.Join(tempDir, "powershell-aliases.ps1")
+
+	if err := os.WriteFile(scriptPath, []byte(content), 0644); err != nil {
+		t.Fatalf("os.WriteFile(scriptPath) error = %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		command string
+	}{
+		{"head without input", "head"},
+		{"tail without input", "tail"},
+		{"tail follow without path", "tail -f"},
+		{"less without input", "less"},
+		{"touch without path", "touch"},
+		{"which without command", "which"},
+		{"new directory without path", "New-Directory"},
+		{"addpath without path", "addpath"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			command := tt.command + "; 'completed'"
+			output, err := runPowerShellAliasCommandWithError(pwshPath, scriptPath, command)
+			if err != nil {
+				t.Fatalf("expected non-terminating usage error, got %v", err)
+			}
+			if !strings.Contains(output, "completed") {
+				t.Fatalf("expected command to continue after usage error, output = %q", output)
+			}
+		})
 	}
 }
 
