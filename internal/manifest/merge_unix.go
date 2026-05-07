@@ -79,3 +79,7 @@ func openAndValidateConfig(path string) (*os.File, error) {
 
 	return f, nil
 }
+
+func writeLocalManifestFile(path string, data []byte, perm os.FileMode) error {
+	return os.WriteFile(path, data, perm)
+}

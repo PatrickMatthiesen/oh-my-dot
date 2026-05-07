@@ -270,7 +270,7 @@ func TestValidateLocalManifest_RegularFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	testFile := filepath.Join(tmpDir, testLocalManifestFileName)
 
-	err := os.WriteFile(testFile, []byte(`{"features":[]}`), 0600)
+	err := WriteLocalManifest(testFile, &FeatureManifest{Features: []FeatureConfig{}})
 	if err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
@@ -412,7 +412,7 @@ func TestParseManifestWithLocal_WithLocal(t *testing.T) {
 			{"name": "git-prompt", "strategy": "eager"}
 		]
 	}`
-	err = os.WriteFile(localFile, []byte(localContent), 0600)
+	err = writeLocalManifestFile(localFile, []byte(localContent), 0600)
 	if err != nil {
 		t.Fatalf("Failed to create local file: %v", err)
 	}
@@ -454,7 +454,7 @@ func TestParseManifestWithLocal_InvalidLocal(t *testing.T) {
 
 	// Invalid JSON
 	localContent := `{invalid json`
-	err = os.WriteFile(localFile, []byte(localContent), 0600)
+	err = writeLocalManifestFile(localFile, []byte(localContent), 0600)
 	if err != nil {
 		t.Fatalf("Failed to create local file: %v", err)
 	}
@@ -500,7 +500,7 @@ func TestParseManifestWithLocal_UnsafeLocal(t *testing.T) {
 			{"name": "git-prompt", "strategy": "defer"}
 		]
 	}`
-	err = os.WriteFile(localFile, []byte(localContent), 0600)
+	err = writeLocalManifestFile(localFile, []byte(localContent), 0600)
 	if err != nil {
 		t.Fatalf("Failed to create local file: %v", err)
 	}

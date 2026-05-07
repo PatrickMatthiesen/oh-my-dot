@@ -3,6 +3,7 @@ package manifest
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 )
@@ -72,7 +73,18 @@ func (f *FeatureConfig) Validate() error {
 
 // ParseManifest reads and parses a manifest file
 func ParseManifest(path string) (*FeatureManifest, error) {
-	data, err := os.ReadFile(path)
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read manifest: %w", err)
+	}
+	defer f.Close()
+
+	return ParseManifestReader(f)
+}
+
+// ParseManifestReader reads and parses a manifest from r.
+func ParseManifestReader(r io.Reader) (*FeatureManifest, error) {
+	data, err := io.ReadAll(r)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read manifest: %w", err)
 	}
@@ -94,6 +106,15 @@ func ParseManifest(path string) (*FeatureManifest, error) {
 
 // WriteManifest writes a manifest to a file with pretty formatting
 func WriteManifest(path string, manifest *FeatureManifest) error {
+	return writeManifest(path, manifest, 0644, writeManifestFile)
+}
+
+// WriteLocalManifest writes a device-local manifest with restrictive permissions.
+func WriteLocalManifest(path string, manifest *FeatureManifest) error {
+	return writeManifest(path, manifest, 0600, writeLocalManifestFile)
+}
+
+func writeManifest(path string, manifest *FeatureManifest, perm os.FileMode, writeFile func(string, []byte, os.FileMode) error) error {
 	// Pretty-print with 2-space indent
 	data, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
@@ -103,11 +124,15 @@ func WriteManifest(path string, manifest *FeatureManifest) error {
 	// Add newline at end of file
 	data = append(data, '\n')
 
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := writeFile(path, data, perm); err != nil {
 		return fmt.Errorf("failed to write manifest: %w", err)
 	}
 
 	return nil
+}
+
+func writeManifestFile(path string, data []byte, perm os.FileMode) error {
+	return os.WriteFile(path, data, perm)
 }
 
 // AddFeature adds a feature to the manifest

@@ -102,6 +102,9 @@ func Test_Config_Show_All(t *testing.T) {
 	if !strings.Contains(output, "allow-gh-auth:") {
 		t.Error("Expected output to contain 'allow-gh-auth:'")
 	}
+	if !strings.Contains(output, "push-compact:") {
+		t.Error("Expected output to contain 'push-compact:'")
+	}
 	if !strings.Contains(output, configFile) {
 		t.Errorf("Expected output to contain config file path '%s'", configFile)
 	}
@@ -147,6 +150,80 @@ func Test_Config_Show_AllowGHAuth(t *testing.T) {
 	output := strings.TrimSpace(captureOutput(t, []string{"config", "allow-gh-auth"}))
 	if output != "true" {
 		t.Fatalf("expected allow-gh-auth output to be true, got %q", output)
+	}
+}
+
+func Test_Config_Show_PushCompactDefault(t *testing.T) {
+	setupTestConfig(t)
+
+	output := strings.TrimSpace(captureOutput(t, []string{"config", "push-compact"}))
+	if output != "auto" {
+		t.Fatalf("expected push-compact output to be auto, got %q", output)
+	}
+}
+
+func Test_Config_Set_PushCompact(t *testing.T) {
+	setupTestConfig(t)
+
+	captureOutput(t, []string{"config", "set", "push-compact", "ask"})
+
+	output := strings.TrimSpace(captureOutput(t, []string{"config", "push-compact"}))
+	if output != "ask" {
+		t.Fatalf("expected push-compact output to be ask, got %q", output)
+	}
+}
+
+func Test_Config_Update_Alias_PushCompact(t *testing.T) {
+	setupTestConfig(t)
+
+	captureOutput(t, []string{"config", "update", "push-compact", "off"})
+
+	output := strings.TrimSpace(captureOutput(t, []string{"config", "push-compact"}))
+	if output != "off" {
+		t.Fatalf("expected push-compact output to be off, got %q", output)
+	}
+}
+
+func Test_Config_Completion_ConfigKeys(t *testing.T) {
+	setupTestConfig(t)
+
+	output, err := captureCommandOutput(t, []string{"__complete", "config", ""})
+	if err != nil {
+		t.Fatalf("completion error: %v", err)
+	}
+
+	if !strings.Contains(output, "push-compact") {
+		t.Fatalf("expected completion output to contain push-compact, got %q", output)
+	}
+	if !strings.Contains(output, "allow-gh-auth") {
+		t.Fatalf("expected completion output to contain allow-gh-auth, got %q", output)
+	}
+}
+
+func Test_Config_Completion_SetKeysAndValues(t *testing.T) {
+	setupTestConfig(t)
+
+	output, err := captureCommandOutput(t, []string{"__complete", "config", "set", ""})
+	if err != nil {
+		t.Fatalf("completion error: %v", err)
+	}
+
+	if !strings.Contains(output, "push-compact") {
+		t.Fatalf("expected set key completion output to contain push-compact, got %q", output)
+	}
+	if strings.Contains(output, "remote-url") {
+		t.Fatalf("expected set key completion output to omit read-only remote-url, got %q", output)
+	}
+
+	output, err = captureCommandOutput(t, []string{"__complete", "config", "set", "push-compact", ""})
+	if err != nil {
+		t.Fatalf("completion error: %v", err)
+	}
+
+	for _, value := range []string{"auto", "ask", "off"} {
+		if !strings.Contains(output, value) {
+			t.Fatalf("expected value completion output to contain %s, got %q", value, output)
+		}
 	}
 }
 

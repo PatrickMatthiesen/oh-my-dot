@@ -165,11 +165,11 @@ func TestGetFeatureTemplate(t *testing.T) {
 			contains:    "function touch",
 		},
 		{
-			name:        "powershell-aliases powershell addpath",
+			name:        "powershell-aliases powershell Add-Path",
 			featureName: "powershell-aliases",
 			shellName:   "powershell",
 			wantError:   false,
-			contains:    "function addpath",
+			contains:    "function Add-Path",
 		},
 		{
 			name:        "powershell-aliases powershell Update-Path",
@@ -179,11 +179,11 @@ func TestGetFeatureTemplate(t *testing.T) {
 			contains:    "function Update-Path",
 		},
 		{
-			name:        "powershell-aliases powershell comparePath",
+			name:        "powershell-aliases powershell Compare-Path",
 			featureName: "powershell-aliases",
 			shellName:   "powershell",
 			wantError:   false,
-			contains:    "function comparePath",
+			contains:    "function Compare-Path",
 		},
 		{
 			name:        "powershell-psreadline powershell",
@@ -491,7 +491,7 @@ func TestPowerShellAliasesUsageErrorsAreNonTerminating(t *testing.T) {
 		{"touch without path", "touch"},
 		{"which without command", "which"},
 		{"new directory without path", "New-Directory"},
-		{"addpath without path", "addpath"},
+		{"Add-Path without path", "Add-Path"},
 	}
 
 	for _, tt := range tests {

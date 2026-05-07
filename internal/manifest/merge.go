@@ -127,27 +127,33 @@ func (m *MergedManifest) GetEnabledFeatures() []FeatureConfig {
 // ValidateLocalManifest checks if a local manifest file is safe to load
 // Returns nil if safe, error with reason if unsafe
 func ValidateLocalManifest(path string) error {
+	f, err := OpenValidatedLocalManifest(path)
+	if err != nil {
+		return err
+	}
+	if f != nil {
+		f.Close()
+	}
+	return nil
+}
+
+// OpenValidatedLocalManifest opens a local manifest after validating it is safe to load.
+func OpenValidatedLocalManifest(path string) (*os.File, error) {
 	// Check if file exists first
 	info, err := os.Lstat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil // File doesn't exist, that's fine
+			return nil, nil // File doesn't exist, that's fine
 		}
-		return fmt.Errorf("failed to stat file: %w", err)
+		return nil, fmt.Errorf("failed to stat file: %w", err)
 	}
 
 	// Must be a regular file, not a symlink
 	if !info.Mode().IsRegular() {
-		return fmt.Errorf("file is not a regular file (possibly a symlink)")
+		return nil, fmt.Errorf("file is not a regular file (possibly a symlink)")
 	}
 
-	// Perform platform-specific security validation
-	f, err := openAndValidateConfig(path)
-	if err != nil {
-		return err
-	}
-	f.Close()
-	return nil
+	return openAndValidateConfig(path)
 }
 
 // ParseManifestWithLocal reads both base and local manifests, validates security,
@@ -165,15 +171,20 @@ func ParseManifestWithLocal(basePath, localPath string) (*MergedManifest, error)
 		return MergeManifests(base, nil), nil
 	}
 
-	// Validate local manifest security
-	if err := ValidateLocalManifest(localPath); err != nil {
+	// Validate local manifest security and keep the validated handle for parsing.
+	localFile, err := OpenValidatedLocalManifest(localPath)
+	if err != nil {
 		// Security validation failed - log warning and ignore local manifest
 		fmt.Fprintf(os.Stderr, "oh-my-dot: warning: %s is unsafe (%v), ignoring\n", localPath, err)
 		return MergeManifests(base, nil), nil
 	}
+	if localFile == nil {
+		return MergeManifests(base, nil), nil
+	}
+	defer localFile.Close()
 
 	// Parse local manifest
-	local, err := ParseManifest(localPath)
+	local, err := ParseManifestReader(localFile)
 	if err != nil {
 		// Local manifest is invalid - log warning and ignore
 		fmt.Fprintf(os.Stderr, "oh-my-dot: warning: failed to parse %s (%v), ignoring\n", localPath, err)

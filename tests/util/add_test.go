@@ -51,7 +51,7 @@ func Test_LinkAndAddFile(t *testing.T) {
 
 	t.Run("Test config push", func(t *testing.T) {
 		// Push the repo (remote is already set up by SetupTestRepo)
-		err := internalgit.PushRepo()
+		_, err := internalgit.PushRepo()
 		testutil.TBErrorIfNotNil(t, err)
 	})
 }
@@ -96,7 +96,7 @@ func Test_CopyAndAddFile(t *testing.T) {
 
 	t.Run("Test config push", func(t *testing.T) {
 		// Push the repo (remote is already set up by SetupTestRepo)
-		err := internalgit.PushRepo()
+		_, err := internalgit.PushRepo()
 		testutil.TBErrorIfNotNil(t, err)
 	})
 }

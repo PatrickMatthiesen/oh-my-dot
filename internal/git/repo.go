@@ -241,22 +241,26 @@ func Commit(message string) error {
 	return nil
 }
 
-// PushRepo pushes the changes in the git repository located at the specified path to the remote repository.
-func PushRepo() error {
+// PushRepo pushes changes in the configured git repository to the remote repository.
+// It returns true when commits were pushed and false when the remote was already up to date.
+func PushRepo() (bool, error) {
 	r, err := git.PlainOpen(viper.GetString("repo-path"))
 	fileops.CheckIfError(err)
 
 	remote, err := r.Remote("origin")
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	err = remote.Push(&git.PushOptions{})
 	if err != nil {
-		return err
+		if errors.Is(err, git.NoErrAlreadyUpToDate) {
+			return false, nil
+		}
+		return false, err
 	}
 
-	return nil
+	return true, nil
 }
 
 // PullRepo pulls changes from the origin remote for the current branch.

@@ -64,7 +64,7 @@ func Fuzz_RemoveFile(f *testing.F) {
 		testutil.TBErrorIfNotNil(t, err)
 		t.Run("Test config push", func(t *testing.T) {
 			// Push the repo (remote is already set up by SetupTestRepo)
-			err := internalgit.PushRepo()
+			_, err := internalgit.PushRepo()
 			testutil.TBErrorIfNotNil(t, err)
 		})
 

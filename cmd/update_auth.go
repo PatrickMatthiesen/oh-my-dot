@@ -134,7 +134,7 @@ To fix this, choose one option:
     • Export GITHUB_TOKEN or GH_TOKEN with a valid GitHub personal access token
 
 To silence this warning:
-  • Run: oh-my-dot config update allow-gh-auth true
+  • Run: oh-my-dot config set allow-gh-auth true
   • Or pass --gh-auth on update commands
 `)
 

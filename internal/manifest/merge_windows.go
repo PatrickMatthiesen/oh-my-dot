@@ -44,12 +44,69 @@ func openAndValidateConfig(path string) (*os.File, error) {
 		f.Close()
 		return nil, fmt.Errorf("parent dir: %w", err)
 	}
-	if err := checkNoWriteForOthers(dir); err != nil {
-		f.Close()
-		return nil, fmt.Errorf("parent dir: %w", err)
-	}
 
 	return f, nil
+}
+
+func writeLocalManifestFile(path string, data []byte, perm os.FileMode) error {
+	if err := os.WriteFile(path, data, perm); err != nil {
+		return err
+	}
+
+	if err := applyPrivateACL(path); err != nil {
+		return fmt.Errorf("secure file: %w", err)
+	}
+
+	return nil
+}
+
+func applyPrivateACL(path string) error {
+	me, err := currentUserSID()
+	if err != nil {
+		return err
+	}
+
+	admins, err := windows.CreateWellKnownSid(windows.WinBuiltinAdministratorsSid)
+	if err != nil {
+		return err
+	}
+	system, err := windows.CreateWellKnownSid(windows.WinLocalSystemSid)
+	if err != nil {
+		return err
+	}
+
+	access := []windows.EXPLICIT_ACCESS{
+		fullControlAccess(me, windows.TRUSTEE_IS_USER),
+		fullControlAccess(admins, windows.TRUSTEE_IS_GROUP),
+		fullControlAccess(system, windows.TRUSTEE_IS_USER),
+	}
+
+	acl, err := windows.ACLFromEntries(access, nil)
+	if err != nil {
+		return err
+	}
+
+	return windows.SetNamedSecurityInfo(
+		path,
+		windows.SE_FILE_OBJECT,
+		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
+		nil,
+		nil,
+		acl,
+		nil,
+	)
+}
+
+func fullControlAccess(sid *windows.SID, trusteeType windows.TRUSTEE_TYPE) windows.EXPLICIT_ACCESS {
+	return windows.EXPLICIT_ACCESS{
+		AccessPermissions: windows.ACCESS_MASK(windows.GENERIC_ALL),
+		AccessMode:        windows.GRANT_ACCESS,
+		Trustee: windows.TRUSTEE{
+			TrusteeForm:  windows.TRUSTEE_IS_SID,
+			TrusteeType:  trusteeType,
+			TrusteeValue: windows.TrusteeValueFromSID(sid),
+		},
+	}
 }
 
 func rejectReparsePoint(path string) error {
