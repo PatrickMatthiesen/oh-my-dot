@@ -1,0 +1,86 @@
+name: Bug report
+description: Report a problem or regression in oh-my-dot
+title: "Bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    id: summary
+    attributes:
+      label: Summary
+      description: Describe the bug in one or two sentences.
+      placeholder: Running `oh-my-dot ...` fails when...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS
+      description: What operating system are you using?
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: shell
+    attributes:
+      label: Shell
+      description: What shell are you using?
+      placeholder: PowerShell 7.5, bash, zsh, fish...
+    validations:
+      required: true
+
+  - type: input
+    id: cli-version
+    attributes:
+      label: oh-my-dot version
+      description: Run `oh-my-dot version` and paste the result.
+      placeholder: x.y.z
+    validations:
+      required: true
+
+  - type: markdown
+    id: steps-to-reproduce
+    attributes:
+      label: Steps to reproduce
+      description: List the smallest set of steps needed to reproduce the issue.
+      placeholder: |
+        1. Run `oh-my-dot ...`
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: markdown
+    id: expected-behaviour
+    attributes:
+      label: Expected behaviour
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: markdown
+    id: actual-behaviour
+    attributes:
+      label: Actual behaviour
+      description: What happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs-or-output
+    attributes:
+      label: Logs or output
+      description: If relevant, paste terminal output, error messages, or stack traces.
+      render: text
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add any other context that helps explain the problem, including related configuration or recent changes.

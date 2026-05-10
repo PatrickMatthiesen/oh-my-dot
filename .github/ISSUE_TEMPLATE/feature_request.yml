@@ -1,0 +1,65 @@
+name: Feature request
+description: Suggest a new feature or improvement for oh-my-dot
+title: "Feature: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    id: summary
+    attributes:
+      label: Summary
+      description: Describe the feature or improvement in one or two sentences.
+      placeholder: Add support for...
+    validations:
+      required: true
+
+  - type: markdown
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem are you trying to solve? What is difficult, missing, or confusing today?
+      placeholder: Today it is difficult to...
+    validations:
+      required: true
+
+  - type: markdown
+    id: proposed-solution
+    attributes:
+      label: Proposed solution
+      description: Describe the behaviour you want.
+      placeholder: I want oh-my-dot to...
+    validations:
+      required: true
+
+  - type: textarea
+    id: example-workflow
+    attributes:
+      label: Example workflow
+      description: If applicable, show how this would work in practice.
+      render: text
+      placeholder: |
+        oh-my-dot ...
+
+  - type: markdown
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe any alternatives or workarounds you considered.
+
+  - type: markdown
+    id: scope
+    attributes:
+      label: Scope
+      description: Clarify what should and should not be included.
+      placeholder: |
+        In scope:
+        - ...
+
+        Out of scope:
+        - ...
+
+  - type: markdown
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add screenshots, logs, related issues, or implementation notes if they help explain the request.
