@@ -11,6 +11,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const releaseChecksumsFileName = "checksums.txt"
+
 func init() {
 	updateCommand.Flags().Bool("gh-auth", false, "Allow update checks to use the GitHub CLI auth token without prompting")
 	rootCmd.AddCommand(updateCommand)
@@ -46,7 +48,8 @@ var updateCommand = &cobra.Command{
 
 		// Create updater
 		updater, err := selfupdate.NewUpdater(selfupdate.Config{
-			Source: source,
+			Source:    source,
+			Validator: &selfupdate.ChecksumValidator{UniqueFilename: releaseChecksumsFileName},
 		})
 		if err != nil {
 			fileops.ColorPrintfn(fileops.Red, "Error creating updater: %s", err)

@@ -13,7 +13,7 @@ if [ ! -f "$OMD_OMP_CONFIG" ]; then
 fi
 
 if [ -f "$OMD_OMP_CONFIG" ]; then
-  eval "$(oh-my-posh init bash --config \"$OMD_OMP_CONFIG\")"
+  eval "$(oh-my-posh init bash --config "$OMD_OMP_CONFIG")"
 else
   eval "$(oh-my-posh init bash)"
 fi
