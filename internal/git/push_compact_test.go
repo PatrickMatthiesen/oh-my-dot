@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	gogit "github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/config"
-	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/object"
+	gogit "github.com/go-git/go-git/v6"
+	"github.com/go-git/go-git/v6/config"
+	"github.com/go-git/go-git/v6/plumbing"
+	"github.com/go-git/go-git/v6/plumbing/object"
 	"github.com/spf13/viper"
 )
 
@@ -329,7 +329,7 @@ func commitAndPushRemoteFile(t *testing.T, remotePath, filename, message string)
 	t.Helper()
 
 	clonePath := t.TempDir()
-	r, err := gogit.PlainClone(clonePath, false, &gogit.CloneOptions{URL: remotePath})
+	r, err := gogit.PlainClone(clonePath, &gogit.CloneOptions{URL: remotePath})
 	if err != nil {
 		t.Fatalf("clone remote: %v", err)
 	}

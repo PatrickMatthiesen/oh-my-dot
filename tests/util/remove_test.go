@@ -7,7 +7,7 @@ import (
 
 	internalgit "github.com/PatrickMatthiesen/oh-my-dot/internal/git"
 	"github.com/PatrickMatthiesen/oh-my-dot/tests/testutil"
-	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v6"
 	"github.com/spf13/viper"
 )
 

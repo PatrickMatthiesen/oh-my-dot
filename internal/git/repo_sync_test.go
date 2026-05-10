@@ -10,9 +10,9 @@ import (
 
 	internalgit "github.com/PatrickMatthiesen/oh-my-dot/internal/git"
 	"github.com/PatrickMatthiesen/oh-my-dot/tests/testutil"
-	"github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/config"
-	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v6"
+	"github.com/go-git/go-git/v6/config"
+	"github.com/go-git/go-git/v6/plumbing/object"
 	"github.com/spf13/viper"
 )
 
@@ -191,7 +191,7 @@ func commitAndPushToRemote(t *testing.T, remotePath, filename, content string) e
 	t.Helper()
 
 	clonePath := t.TempDir()
-	r, err := git.PlainClone(clonePath, false, &git.CloneOptions{URL: remotePath})
+	r, err := git.PlainClone(clonePath, &git.CloneOptions{URL: remotePath})
 	if err != nil {
 		return err
 	}
@@ -207,7 +207,7 @@ func commitAndPushManyToRemote(t *testing.T, remotePath string, count int) error
 	t.Helper()
 
 	clonePath := t.TempDir()
-	r, err := git.PlainClone(clonePath, false, &git.CloneOptions{URL: remotePath})
+	r, err := git.PlainClone(clonePath, &git.CloneOptions{URL: remotePath})
 	if err != nil {
 		return err
 	}

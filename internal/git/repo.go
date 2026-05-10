@@ -12,10 +12,10 @@ import (
 
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/shell"
-	"github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/config"
-	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v6"
+	"github.com/go-git/go-git/v6/config"
+	"github.com/go-git/go-git/v6/plumbing"
+	"github.com/go-git/go-git/v6/plumbing/object"
 	"github.com/spf13/viper"
 )
 
@@ -77,7 +77,7 @@ func InitGitRepo(rootGitRepoPath string, remoteUrl string, opts ...bool) (*git.R
 	// If a remote URL is provided, try to clone the repository first
 	if remoteUrl != "" && !bare {
 		// Attempt to clone the remote repository
-		r, err := git.PlainClone(rootGitRepoPath, false, &git.CloneOptions{
+		r, err := git.PlainClone(rootGitRepoPath, &git.CloneOptions{
 			URL: remoteUrl,
 		})
 		if err == nil {
