@@ -5,9 +5,20 @@ if (-not (Get-Command Set-PSReadLineOption -ErrorAction SilentlyContinue)) {
     return
 }
 
+if ($Host.Name -ne "ConsoleHost" -or [Console]::IsInputRedirected -or [Console]::IsOutputRedirected) {
+    Write-Verbose "PSReadLine console features require an interactive console; skipping powershell-psreadline feature"
+    return
+}
+
 # Shows navigable menu of all options when hitting Tab
-Set-PSReadLineKeyHandler -Key Tab -Function MenuComplete
-Set-PSReadLineOption -PredictionViewStyle ListView
+try {
+    Set-PSReadLineKeyHandler -Key Tab -Function MenuComplete -ErrorAction Stop
+    Set-PSReadLineOption -PredictionViewStyle ListView -ErrorAction Stop
+}
+catch [System.IO.IOException] {
+    Write-Verbose "PSReadLine console handle is not available; skipping powershell-psreadline feature"
+    return
+}
 
 # Insert paired quotes and move cursor between them when appropriate
 Set-PSReadLineKeyHandler -Chord '"', "'" `
