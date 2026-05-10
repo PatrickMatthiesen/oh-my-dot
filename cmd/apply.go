@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/hooks"
@@ -18,6 +19,7 @@ import (
 func init() {
 	applyCommand.Flags().BoolP("verbose", "v", false, "Prints more information about the linking process")
 	applyCommand.Flags().Bool("no-shell", false, "Skip shell hook application")
+	applyCommand.Flags().Bool("allow-outside-home", false, "Allow link targets outside the current user's home directory")
 
 	rootCmd.AddCommand(applyCommand)
 }
@@ -42,6 +44,80 @@ func createDotfileLink(sourcePath, targetPath string) error {
 	}
 }
 
+func applyTargetWarnings(targetPath string) ([]string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("get home directory: %w", err)
+	}
+
+	var warnings []string
+	cleanTarget := filepath.Clean(targetPath)
+	cleanHome := filepath.Clean(homeDir)
+
+	if !pathWithinBase(cleanTarget, cleanHome) {
+		warnings = append(warnings, "target is outside your home directory")
+	}
+
+	if sensitiveApplyTarget(cleanTarget, cleanHome) {
+		warnings = append(warnings, "target is a sensitive startup, SSH, autostart, service, or executable path")
+	}
+
+	return warnings, nil
+}
+
+func pathWithinBase(path, base string) bool {
+	rel, err := filepath.Rel(base, path)
+	if err != nil {
+		return false
+	}
+
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
+}
+
+func sensitiveApplyTarget(path, homeDir string) bool {
+	rel, err := filepath.Rel(homeDir, path)
+	if err != nil {
+		return false
+	}
+
+	rel = filepath.ToSlash(rel)
+	if rel == "." || strings.HasPrefix(rel, "../") || rel == ".." {
+		return false
+	}
+
+	sensitiveExact := map[string]bool{
+		".bashrc":                  true,
+		".bash_profile":            true,
+		".bash_login":              true,
+		".profile":                 true,
+		".zshrc":                   true,
+		".zprofile":                true,
+		".zlogin":                  true,
+		".config/fish/config.fish": true,
+	}
+	if sensitiveExact[rel] {
+		return true
+	}
+
+	sensitivePrefixes := []string{
+		".ssh/",
+		".config/autostart/",
+		".config/systemd/user/",
+		".local/bin/",
+		"bin/",
+		"AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup/",
+		"Documents/PowerShell/",
+		"Documents/WindowsPowerShell/",
+	}
+	for _, prefix := range sensitivePrefixes {
+		if strings.HasPrefix(rel, prefix) {
+			return true
+		}
+	}
+
+	return false
+}
+
 var applyCommand = &cobra.Command{
 	Use:     "apply",
 	Short:   "Apply the dotfiles and shell hooks to the system",
@@ -55,6 +131,7 @@ var applyCommand = &cobra.Command{
 		}
 
 		noShell, _ := cmd.Flags().GetBool("no-shell")
+		allowOutsideHome, _ := cmd.Flags().GetBool("allow-outside-home")
 		repoPath := viper.GetString("repo-path")
 
 		// Apply dotfiles
@@ -96,6 +173,21 @@ var applyCommand = &cobra.Command{
 				missingFiles++
 				fileops.ColorPrintfn(fileops.Red, "  Error: target directory '%s' does not exist for link %s -> %s", filepath.Dir(expandedLink), expandedLink, file)
 				continue
+			}
+
+			warnings, err := applyTargetWarnings(expandedLink)
+			if err != nil {
+				missingFiles++
+				fileops.ColorPrintfn(fileops.Red, "  Error checking target %s: %s", expandedLink, err)
+				continue
+			}
+			if len(warnings) > 0 {
+				if !allowOutsideHome && containsApplyWarning(warnings, "target is outside your home directory") {
+					missingFiles++
+					fileops.ColorPrintfn(fileops.Red, "  Error: refusing to link %s -> %s (%s). Use --allow-outside-home to allow this target.", expandedLink, file, strings.Join(warnings, "; "))
+					continue
+				}
+				fileops.ColorPrintfn(fileops.Yellow, "  Warning: %s -> %s (%s)", expandedLink, file, strings.Join(warnings, "; "))
 			}
 
 			err = createDotfileLink(file, expandedLink)
@@ -203,4 +295,13 @@ var applyCommand = &cobra.Command{
 		fmt.Println()
 		fileops.ColorPrintln("Done!", fileops.Green)
 	},
+}
+
+func containsApplyWarning(warnings []string, warning string) bool {
+	for _, item := range warnings {
+		if item == warning {
+			return true
+		}
+	}
+	return false
 }

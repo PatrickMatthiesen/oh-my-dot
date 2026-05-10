@@ -135,7 +135,9 @@ func LinkAndAddFile(file string) error {
 	newFile := filepath.Join(viper.GetString("repo-path"), fileRepoPath)
 	fmt.Println("Linking", fileops.SColorPrint(file, fileops.Blue), "to", fileops.SColorPrint(newFile, fileops.Cyan))
 
-	fileops.EnsureDir(filepath.Dir(newFile))
+	if err := fileops.EnsureDir(filepath.Dir(newFile)); err != nil {
+		return fmt.Errorf("failed to create repository files directory: %w", err)
+	}
 	err := os.Link(file, newFile)
 	if err != nil {
 		return err
@@ -163,7 +165,9 @@ func CopyAndAddFile(file, destination string) error {
 	newFile := filepath.Join(viper.GetString("repo-path"), fileRepoPath)
 	log.Println("Copying", file, "to", newFile)
 
-	fileops.EnsureDir(filepath.Dir(newFile))
+	if err := fileops.EnsureDir(filepath.Dir(newFile)); err != nil {
+		return fmt.Errorf("failed to create repository files directory: %w", err)
+	}
 	err = fileops.CopyFile(file, newFile)
 	if err != nil {
 		return err
@@ -181,17 +185,23 @@ func RemoveFile(file string) error {
 
 	filesPath := filepath.Join(repoPath, "files")
 
-	// Normalize the path: if it's absolute and within the repo, keep it as-is
-	// Otherwise, treat it as relative to filesPath
 	var fullPath string
-	if filepath.IsAbs(file) && strings.HasPrefix(file, repoPath) {
-		// Already an absolute path within the repo
+	if filepath.IsAbs(file) {
 		fullPath = file
 	} else {
-		// Treat as relative path - join with filesPath
-		// Strip leading separators to handle accidental user input like "/myfile.txt"
 		file = strings.TrimPrefix(file, string(filepath.Separator))
 		fullPath = filepath.Join(filesPath, file)
+	}
+
+	fullPath = filepath.Clean(fullPath)
+	filesPath = filepath.Clean(filesPath)
+
+	relativeToFiles, err := filepath.Rel(filesPath, fullPath)
+	if err != nil {
+		return fmt.Errorf("file %s is not in the repository files directory: %w", fullPath, err)
+	}
+	if relativeToFiles == ".." || strings.HasPrefix(relativeToFiles, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("file %s is outside the repository files directory", fullPath)
 	}
 
 	is, err := fileops.IsFileErr(fullPath)

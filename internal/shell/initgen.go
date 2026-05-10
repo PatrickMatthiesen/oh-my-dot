@@ -2,6 +2,7 @@ package shell
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
@@ -42,7 +43,7 @@ func GenerateInitScript(repoPath, shellName string) (string, error) {
 	case "powershell":
 		return generatePowerShellInit(features), nil
 	case "posix":
-		return generatePosixInit(features), nil
+		return generatePosixInit(repoPath, features), nil
 	default:
 		return "", fmt.Errorf("unsupported shell: %s", shellName)
 	}
@@ -73,6 +74,10 @@ func categorizeFeaturesMerged(m *manifest.MergedManifest) FeaturesByStrategy {
 	}
 
 	return features
+}
+
+func shellSingleQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
 // generateBashInit generates a bash init script with all loading strategies
@@ -123,12 +128,13 @@ fi
 
 	// Defer loading
 	if len(features.Defer) > 0 {
-		sb.WriteString("# Load deferred features (background)\n")
+		sb.WriteString("# Load deferred features in the current interactive shell\n")
 		sb.WriteString("_omd_load_deferred_features() {\n")
 		sb.WriteString("  if [[ $- == *i* ]]; then\n")
 		for _, feature := range features.Defer {
-			sb.WriteString(fmt.Sprintf(`    ( [ -r "$OMD_SHELL_ROOT/features/%s.sh" ] && . "$OMD_SHELL_ROOT/features/%s.sh" ) &
-`, feature, feature))
+			sb.WriteString(fmt.Sprintf(`    local feature_file="$OMD_SHELL_ROOT/features/%s.sh"
+    [ -r "$feature_file" ] && . "$feature_file"
+`, feature))
 		}
 		sb.WriteString("  fi\n")
 		sb.WriteString("}\n\n")
@@ -252,12 +258,13 @@ fi
 
 	// Defer loading
 	if len(features.Defer) > 0 {
-		sb.WriteString("# Load deferred features (background)\n")
+		sb.WriteString("# Load deferred features in the current interactive shell\n")
 		sb.WriteString("_omd_load_deferred_features() {\n")
 		sb.WriteString("  if [[ -o interactive ]]; then\n")
 		for _, feature := range features.Defer {
-			sb.WriteString(fmt.Sprintf(`    ( [[ -r "$OMD_SHELL_ROOT/features/%s.zsh" ]] && . "$OMD_SHELL_ROOT/features/%s.zsh" ) &!
-`, feature, feature))
+			sb.WriteString(fmt.Sprintf(`    local feature_file="$OMD_SHELL_ROOT/features/%s.zsh"
+    [[ -r "$feature_file" ]] && . "$feature_file"
+`, feature))
 		}
 		sb.WriteString("  fi\n")
 		sb.WriteString("}\n\n")
@@ -374,15 +381,14 @@ end
 
 	// Defer loading (using fish_prompt event)
 	if len(features.Defer) > 0 {
-		sb.WriteString("# Load deferred features (on first prompt)\n")
+		sb.WriteString("# Load deferred features in the current shell on first prompt\n")
 		sb.WriteString("function __omd_load_deferred --on-event fish_prompt\n")
 		sb.WriteString("  # Remove this function after first run\n")
 		sb.WriteString("  functions -e __omd_load_deferred\n")
 		sb.WriteString("  \n")
-		sb.WriteString("  # Load deferred features in background\n")
 		for _, feature := range features.Defer {
 			sb.WriteString(fmt.Sprintf(`  set -l feature_file "$OMD_SHELL_ROOT/features/%s.fish"
-  test -r "$feature_file"; and source "$feature_file" &
+  test -r "$feature_file"; and source "$feature_file"
 `, feature))
 		}
 		sb.WriteString("end\n\n")
@@ -472,12 +478,12 @@ if (Test-Path $featureFile) {
 
 	// Defer loading (using background jobs)
 	if len(features.Defer) > 0 {
-		sb.WriteString("# Load deferred features (background jobs)\n")
+		sb.WriteString("# Load deferred features in the current interactive shell\n")
 		sb.WriteString("if ($Host.UI.RawUI) {  # Interactive shell check\n")
 		for _, feature := range features.Defer {
 			sb.WriteString(fmt.Sprintf(`  $featureFile = Join-Path $OMD_SHELL_ROOT "features\%s.ps1"
   if (Test-Path $featureFile) {
-    Start-Job -ScriptBlock { param($f) . $f } -ArgumentList $featureFile | Out-Null
+    . $featureFile
   }
 `, feature))
 		}
@@ -541,11 +547,12 @@ if (Test-Path $featureFile) {
 }
 
 // generatePosixInit generates a POSIX sh init script with all loading strategies
-func generatePosixInit(features FeaturesByStrategy) string {
+func generatePosixInit(repoPath string, features FeaturesByStrategy) string {
 	var sb strings.Builder
+	shellRoot := filepath.ToSlash(GetShellDirectory(repoPath, "posix"))
 
 	// Header
-	sb.WriteString(`#!/usr/bin/env sh
+	sb.WriteString(fmt.Sprintf(`#!/usr/bin/env sh
 # oh-my-dot shell framework - POSIX sh init script
 # Auto-generated - do not edit manually
 
@@ -555,15 +562,16 @@ if [ "${OMD_POSIX_LOADED:-}" = "1" ]; then
 fi
 OMD_POSIX_LOADED=1
 
-# Determine shell root (POSIX-compatible)
-OMD_SHELL_ROOT="$(cd "$(dirname "$0")" && pwd)"
+# Shell root is generated as an absolute path because POSIX sh cannot
+# reliably discover the path of a sourced script.
+OMD_SHELL_ROOT=%s
 
 # Source helper library
 if [ -r "$OMD_SHELL_ROOT/../lib/helpers.sh" ]; then
   . "$OMD_SHELL_ROOT/../lib/helpers.sh"
 fi
 
-`)
+`, shellSingleQuote(shellRoot)))
 
 	// Eager loading
 	if len(features.Eager) > 0 {
@@ -582,13 +590,14 @@ fi
 
 	// Defer loading (basic background sourcing)
 	if len(features.Defer) > 0 {
-		sb.WriteString("# Load deferred features (background)\n")
+		sb.WriteString("# Load deferred features in the current interactive shell\n")
 		sb.WriteString("# Check for interactive shell\n")
 		sb.WriteString("case $- in\n")
 		sb.WriteString("  *i*)\n")
 		for _, feature := range features.Defer {
-			sb.WriteString(fmt.Sprintf(`    ( [ -r "$OMD_SHELL_ROOT/features/%s.sh" ] && . "$OMD_SHELL_ROOT/features/%s.sh" ) &
-`, feature, feature))
+			sb.WriteString(fmt.Sprintf(`    feature_file="$OMD_SHELL_ROOT/features/%s.sh"
+    [ -r "$feature_file" ] && . "$feature_file"
+`, feature))
 		}
 		sb.WriteString("    ;;\n")
 		sb.WriteString("esac\n\n")

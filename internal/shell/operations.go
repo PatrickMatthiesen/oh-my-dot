@@ -180,32 +180,17 @@ func RefreshFeatureTemplate(repoPath, shellName, featureName string) error {
 
 // generateFeatureTemplate creates a template feature file
 func generateFeatureTemplate(shellName, featureName string, metadata catalog.FeatureMetadata, options map[string]any) string {
-	var shebang string
-	switch shellName {
-	case "bash":
-		shebang = "#!/usr/bin/env bash"
-	case "zsh":
-		shebang = "#!/usr/bin/env zsh"
-	case "fish":
-		shebang = "#!/usr/bin/env fish"
-	case "posix":
-		shebang = "#!/usr/bin/env sh"
-	case "powershell":
-		shebang = "# PowerShell"
-	}
-
 	description := featureName
 	if metadata.Description != "" {
 		description = metadata.Description
 	}
 
-	template := fmt.Sprintf(`%s
-# oh-my-dot feature: %s
+	template := fmt.Sprintf(`# oh-my-dot feature: %s
 # %s
 # 
 # Add your shell configuration below
 
-`, shebang, featureName, description)
+`, featureName, description)
 
 	// Add option comments if provided
 	if len(options) > 0 {
