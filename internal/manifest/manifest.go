@@ -26,6 +26,10 @@ var (
 	// featureNameRegex validates feature names (alphanumeric, hyphens, underscores)
 	featureNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
+	// commandNameRegex validates on-command trigger names before they are
+	// interpolated into generated shell functions.
+	commandNameRegex = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_-]*$`)
+
 	// validStrategies are the allowed load strategies
 	validStrategies = map[string]bool{
 		"eager":      true,
@@ -56,6 +60,17 @@ func ValidateStrategy(strategy string) error {
 	return nil
 }
 
+// ValidateCommandName checks if an on-command trigger name is safe for generated shell code.
+func ValidateCommandName(name string) error {
+	if name == "" {
+		return fmt.Errorf("command name cannot be empty")
+	}
+	if !commandNameRegex.MatchString(name) {
+		return fmt.Errorf("command name must contain only alphanumeric characters, hyphens, and underscores")
+	}
+	return nil
+}
+
 // Validate validates a feature configuration
 func (f *FeatureConfig) Validate() error {
 	if err := ValidateFeatureName(f.Name); err != nil {
@@ -67,6 +82,11 @@ func (f *FeatureConfig) Validate() error {
 	// Require onCommand if strategy is on-command
 	if f.Strategy == "on-command" && len(f.OnCommand) == 0 {
 		return fmt.Errorf("feature '%s' uses on-command strategy but has no trigger commands", f.Name)
+	}
+	for i, command := range f.OnCommand {
+		if err := ValidateCommandName(command); err != nil {
+			return fmt.Errorf("onCommand at index %d: %w", i, err)
+		}
 	}
 	return nil
 }

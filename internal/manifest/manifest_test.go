@@ -53,6 +53,33 @@ func TestValidateStrategy(t *testing.T) {
 	}
 }
 
+func TestValidateCommandName(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantError bool
+	}{
+		{"valid simple name", "kubectl", false},
+		{"valid with dash", "docker-compose", false},
+		{"valid with underscore", "my_tool", false},
+		{"valid starting with number", "7z", false},
+		{"empty name", "", true},
+		{"invalid space", "kubectl apply", true},
+		{"invalid command substitution", "$(touch-owned)", true},
+		{"invalid shell separator", "node;echo-owned", true},
+		{"invalid path", "../kubectl", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateCommandName(tt.input)
+			if (err != nil) != tt.wantError {
+				t.Errorf("ValidateCommandName(%q) error = %v, wantError %v", tt.input, err, tt.wantError)
+			}
+		})
+	}
+}
+
 func TestFeatureConfigValidate(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -70,8 +97,23 @@ func TestFeatureConfigValidate(t *testing.T) {
 			false,
 		},
 		{
+			"valid on-command with dashed command",
+			FeatureConfig{Name: "docker", Strategy: "on-command", OnCommand: []string{"docker-compose"}},
+			false,
+		},
+		{
 			"invalid on-command without commands",
 			FeatureConfig{Name: "kubectl", Strategy: "on-command"},
+			true,
+		},
+		{
+			"invalid on-command injection",
+			FeatureConfig{Name: "kubectl", Strategy: "on-command", OnCommand: []string{"kubectl; echo owned"}},
+			true,
+		},
+		{
+			"invalid on-command empty command",
+			FeatureConfig{Name: "kubectl", Strategy: "on-command", OnCommand: []string{""}},
 			true,
 		},
 		{
