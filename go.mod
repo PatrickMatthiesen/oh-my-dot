@@ -68,12 +68,12 @@ require (
 	charm.land/bubbles/v2 v2.1.0
 	charm.land/bubbletea/v2 v2.0.6
 	charm.land/lipgloss/v2 v2.0.3
-	github.com/blang/semver v3.5.1+incompatible
 	github.com/creativeprojects/go-selfupdate v1.5.2
 	github.com/go-git/go-git/v6 v6.0.0-alpha.3
 	github.com/mattn/go-isatty v0.0.22
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
+	golang.org/x/mod v0.36.0
 	golang.org/x/sys v0.44.0
 	golang.org/x/term v0.43.0
 )

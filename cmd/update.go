@@ -3,12 +3,13 @@ package cmd
 import (
 	"context"
 	"os"
-	"regexp"
+	"strings"
 
-	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
-	"github.com/blang/semver"
 	"github.com/creativeprojects/go-selfupdate"
 	"github.com/spf13/cobra"
+	"golang.org/x/mod/semver"
+
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 )
 
 const releaseChecksumsFileName = "checksums.txt"
@@ -115,19 +116,12 @@ var updateCommand = &cobra.Command{
 			currentVersionStr = "v" + currentVersionStr
 		}
 
-		// Remove 'v' prefix for parsing
-		versionToParse := currentVersionStr
-		if len(versionToParse) > 0 && versionToParse[0] == 'v' {
-			versionToParse = versionToParse[1:]
-		}
-
-		// Parse the current version
-		currentVersion, err := semver.Parse(versionToParse)
-		if err != nil {
-			fileops.ColorPrintfn(fileops.Red, "Error parsing current version: %s", err)
+		if !semver.IsValid(currentVersionStr) {
+			fileops.ColorPrintfn(fileops.Red, "Error parsing current version: %s", currentVersionStr)
 			return
 		}
-		fileops.ColorPrintfn(fileops.Yellow, "Current version: v%s", currentVersion)
+		currentVersion := semver.Canonical(currentVersionStr)
+		fileops.ColorPrintfn(fileops.Yellow, "Current version: %s", currentVersion)
 
 		fileops.ColorPrintfn(fileops.Yellow, "Checking for updates...")
 
@@ -147,22 +141,22 @@ var updateCommand = &cobra.Command{
 
 		// Parse latest version
 		latestVersionStr := latest.Version()
-		if len(latestVersionStr) > 0 && latestVersionStr[0] == 'v' {
-			latestVersionStr = latestVersionStr[1:]
+		if len(latestVersionStr) > 0 && latestVersionStr[0] != 'v' {
+			latestVersionStr = "v" + latestVersionStr
 		}
-		latestVersion, err := semver.Parse(latestVersionStr)
-		if err != nil {
-			fileops.ColorPrintfn(fileops.Red, "Error parsing latest version: %s", err)
+		if !semver.IsValid(latestVersionStr) {
+			fileops.ColorPrintfn(fileops.Red, "Error parsing latest version: %s", latestVersionStr)
 			return
 		}
+		latestVersion := semver.Canonical(latestVersionStr)
 
 		// Compare versions
-		if latestVersion.LTE(currentVersion) {
-			fileops.ColorPrintfn(fileops.Green, "Already up to date (v%s)", currentVersion)
+		if semver.Compare(latestVersion, currentVersion) <= 0 {
+			fileops.ColorPrintfn(fileops.Green, "Already up to date (%s)", currentVersion)
 			return
 		}
 
-		fileops.ColorPrintfn(fileops.Yellow, "Updating from v%s to v%s...", currentVersion, latestVersion)
+		fileops.ColorPrintfn(fileops.Yellow, "Updating from %s to %s...", currentVersion, latestVersion)
 
 		// Update to the latest release
 		err = updater.UpdateTo(context.Background(), latest, executable)
@@ -177,20 +171,24 @@ var updateCommand = &cobra.Command{
 			return
 		}
 
-		fileops.ColorPrintfn(fileops.Green, "Successfully updated to v%s!", latestVersion)
+		fileops.ColorPrintfn(fileops.Green, "Successfully updated to %s!", latestVersion)
 	},
 }
 
 // isValidVersionFormat checks if the version string follows semantic versioning format
 func isValidVersionFormat(version string) bool {
-	// Reject empty strings
 	if len(version) == 0 {
 		return false
 	}
 
-	// Match semantic versioning: v1.2.3 or 1.2.3
-	// Also allows pre-release and build metadata: v1.2.3-alpha.1+build.123
-	pattern := `^v?\d+\.\d+\.\d+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$`
-	matched, _ := regexp.MatchString(pattern, version)
-	return matched
+	if version[0] != 'v' {
+		version = "v" + version
+	}
+
+	core := version
+	if suffixStart := strings.IndexAny(core, "-+"); suffixStart >= 0 {
+		core = core[:suffixStart]
+	}
+
+	return strings.Count(core, ".") == 2 && semver.IsValid(version)
 }
