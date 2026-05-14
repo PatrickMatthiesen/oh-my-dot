@@ -26,6 +26,24 @@ func DisplaySSHAgentError(exitOnError bool) {
 // CheckRemoteAccessWithHelp checks remote push permissions and provides helpful error messages
 // exitOnError: if true, exits on error; if false, displays warning and continues
 func CheckRemoteAccessWithHelp(exitOnError bool) {
+	hasRemote, err := HasOriginRemote()
+	if err != nil {
+		if exitOnError {
+			fileops.ColorPrintfn(fileops.Red, "Error: %s", err)
+			os.Exit(1)
+		}
+		fileops.ColorPrintfn(fileops.Yellow, "Warning: Unable to inspect remote configuration: %s", err)
+		return
+	}
+	if !hasRemote {
+		if exitOnError {
+			fileops.ColorPrintln("Error: no remote 'origin' configured", fileops.Red)
+			fileops.ColorPrintln("Configure a remote repository before using this command.", fileops.Yellow)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if err := CheckRemotePushPermission(); err != nil {
 		if IsSSHAgentError(err) {
 			DisplaySSHAgentError(exitOnError)

@@ -45,11 +45,8 @@ var removeCommand = &cobra.Command{
 			os.Exit(1)
 		}
 
-		// Check remote push permissions
-		if err := git.CheckRemotePushPermission(); err != nil {
-			fileops.ColorPrintfn(fileops.Yellow, "Warning: Unable to verify remote push access: %s", err)
-			fileops.ColorPrintln("You may not be able to push changes to the remote repository.", fileops.Yellow)
-		}
+		// Check remote push permissions when a remote is configured.
+		git.CheckRemoteAccessWithHelp(false)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		file, err := cmd.Flags().GetString("file")

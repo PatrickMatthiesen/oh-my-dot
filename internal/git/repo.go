@@ -127,6 +127,28 @@ func InitFromExistingRepo(rootGitRepoPath string) error {
 	return nil
 }
 
+// HasOriginRemote reports whether the configured repository has an origin remote.
+func HasOriginRemote() (bool, error) {
+	repoPath := viper.GetString("repo-path")
+	if repoPath == "" {
+		return false, fmt.Errorf("repository path is not set")
+	}
+
+	r, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return false, fmt.Errorf("failed to open repository: %w", err)
+	}
+
+	if _, err := r.Remote("origin"); err != nil {
+		if errors.Is(err, git.ErrRemoteNotFound) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to inspect origin remote: %w", err)
+	}
+
+	return true, nil
+}
+
 // LinkAndAddFile takes a file path as an argument, makes a hard-link to the git repo and adds the file to the git repo.
 func LinkAndAddFile(file string) error {
 	fileName := filepath.Base(file)
