@@ -56,12 +56,27 @@ func IsGitRepo(path string) bool {
 
 // GetWorktree returns the worktree of the git repository located at the specified path.
 func GetWorktree(rootGitRepoPath string) (*git.Worktree, error) {
-	r, err := git.PlainOpen(rootGitRepoPath)
+	r, err := GetRepository(rootGitRepoPath)
 	if err != nil {
 		return nil, err
 	}
 
-	return r.Worktree()
+	worktree, err := r.Worktree()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get worktree: %w", err)
+	}
+
+	return worktree, nil
+}
+
+// GetRepository opens the git repository located at the specified path.
+func GetRepository(rootGitRepoPath string) (*git.Repository, error) {
+	r, err := git.PlainOpen(rootGitRepoPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open repository: %w", err)
+	}
+
+	return r, nil
 }
 
 // InitGitRepo initializes a new git repository at the specified path,
@@ -621,7 +636,12 @@ func CheckRepoWritePermission() error {
 // Device-local override manifests (enabled.local.json) are always excluded.
 // Returns true when a commit was created, false when there were no committable changes.
 func StageAndCommitShellFeatureChanges(message string) (bool, error) {
-	worktree, err := GetWorktree(viper.GetString("repo-path"))
+	repoPath := viper.GetString("repo-path")
+	r, err := GetRepository(repoPath)
+	if err != nil {
+		return false, err
+	}
+	worktree, err := r.Worktree()
 	if err != nil {
 		return false, fmt.Errorf("failed to get worktree: %w", err)
 	}
@@ -630,14 +650,21 @@ func StageAndCommitShellFeatureChanges(message string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("failed to read worktree status: %w", err)
 	}
+	if err := ensureNoStagedNonShellChanges(status); err != nil {
+		return false, err
+	}
 
 	hasStagedChanges := false
+	hasUnrelatedUncommittedChanges := false
 	for path, fileStatus := range status {
 		if fileStatus.Staging == git.Unmodified && fileStatus.Worktree == git.Unmodified {
 			continue
 		}
 
 		if !isCommittableShellChangePath(path) {
+			if !isDeviceLocalShellChangePath(path) {
+				hasUnrelatedUncommittedChanges = true
+			}
 			continue
 		}
 
@@ -658,11 +685,38 @@ func StageAndCommitShellFeatureChanges(message string) (bool, error) {
 		return false, nil
 	}
 
-	if _, err := worktree.Commit(message, &git.CommitOptions{}); err != nil {
+	commitOptions := &git.CommitOptions{}
+	if !hasUnrelatedUncommittedChanges {
+		amend, err := shouldAmendLastShellFeatureCommit(r)
+		if err != nil {
+			return false, err
+		}
+		commitOptions.Amend = amend
+	}
+
+	if _, err := worktree.Commit(message, commitOptions); err != nil {
+		if commitOptions.Amend && errors.Is(err, git.ErrEmptyCommit) {
+			if err := dropAmendedShellFeatureCommit(r); err != nil {
+				return false, err
+			}
+			return true, nil
+		}
 		return false, fmt.Errorf("failed to commit shell feature changes: %w", err)
 	}
 
 	return true, nil
+}
+
+func ensureNoStagedNonShellChanges(status git.Status) error {
+	for path, fileStatus := range status {
+		if fileStatus.Staging == git.Unmodified || isCommittableShellChangePath(path) {
+			continue
+		}
+
+		return fmt.Errorf("refusing to commit shell feature changes while non-shell changes are staged: %s", path)
+	}
+
+	return nil
 }
 
 func isCommittableShellChangePath(path string) bool {
@@ -671,7 +725,140 @@ func isCommittableShellChangePath(path string) bool {
 		return false
 	}
 
-	return !strings.HasSuffix(normalizedPath, "/"+shell.LocalManifestFileName())
+	return !isDeviceLocalShellChangePath(normalizedPath)
+}
+
+func isDeviceLocalShellChangePath(path string) bool {
+	normalizedPath := filepath.ToSlash(filepath.Clean(path))
+	return strings.HasPrefix(normalizedPath, "omd-shells/") &&
+		strings.HasSuffix(normalizedPath, "/"+shell.LocalManifestFileName())
+}
+
+func shouldAmendLastShellFeatureCommit(r *git.Repository) (bool, error) {
+	headRef, err := r.Head()
+	if err != nil {
+		return false, fmt.Errorf("failed to get current branch: %w", err)
+	}
+	if !headRef.Name().IsBranch() {
+		return false, nil
+	}
+
+	headCommit, err := r.CommitObject(headRef.Hash())
+	if err != nil {
+		return false, fmt.Errorf("failed to inspect HEAD commit: %w", err)
+	}
+	if !isManagedShellFeatureCommitSubject(commitSubject(headCommit)) {
+		return false, nil
+	}
+	managedCommit, err := isShellOnlyCommit(headCommit)
+	if err != nil || !managedCommit {
+		return false, nil
+	}
+
+	remoteHash, err := resolveRemoteBranchHash(r, headRef.Name().Short())
+	if err != nil {
+		return false, nil
+	}
+
+	remoteCommit, err := r.CommitObject(remoteHash)
+	if err != nil {
+		return false, nil
+	}
+
+	remoteHasLocal, remoteDepthExceeded, err := commitContainsAncestor(remoteCommit, headRef.Hash(), maxAncestorSearchDepth)
+	if err != nil {
+		return false, nil
+	}
+	if remoteHasLocal || remoteDepthExceeded {
+		return false, nil
+	}
+
+	localHasRemote, localDepthExceeded, err := commitContainsAncestor(headCommit, remoteHash, maxAncestorSearchDepth)
+	if err != nil {
+		return false, nil
+	}
+
+	return localHasRemote && !localDepthExceeded, nil
+}
+
+func isShellOnlyCommit(commit *object.Commit) (bool, error) {
+	if commit.NumParents() != 1 {
+		return false, nil
+	}
+
+	parent, err := commit.Parent(0)
+	if err != nil {
+		return false, fmt.Errorf("failed to inspect parent commit: %w", err)
+	}
+
+	patch, err := parent.Patch(commit)
+	if err != nil {
+		return false, fmt.Errorf("failed to inspect commit changes: %w", err)
+	}
+
+	filePatches := patch.FilePatches()
+	if len(filePatches) == 0 {
+		return false, nil
+	}
+
+	for _, filePatch := range filePatches {
+		from, to := filePatch.Files()
+		if from != nil && !isCommittableShellChangePath(from.Path()) {
+			return false, nil
+		}
+		if to != nil && !isCommittableShellChangePath(to.Path()) {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
+func isManagedShellFeatureCommitSubject(subject string) bool {
+	managedPrefixes := []string{
+		"Add shell feature:",
+		"Add shell features",
+		"Remove shell feature:",
+		"Remove shell features",
+		"Enable shell feature:",
+		"Disable shell feature:",
+		"Refresh shell feature:",
+		"Refresh shell features",
+	}
+
+	for _, prefix := range managedPrefixes {
+		if strings.HasPrefix(subject, prefix) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func dropAmendedShellFeatureCommit(r *git.Repository) error {
+	headRef, err := r.Head()
+	if err != nil {
+		return fmt.Errorf("failed to get current branch: %w", err)
+	}
+
+	headCommit, err := r.CommitObject(headRef.Hash())
+	if err != nil {
+		return fmt.Errorf("failed to inspect HEAD commit: %w", err)
+	}
+	if headCommit.NumParents() != 1 {
+		return fmt.Errorf("cannot drop managed shell feature commit with %d parents", headCommit.NumParents())
+	}
+
+	parent, err := headCommit.Parent(0)
+	if err != nil {
+		return fmt.Errorf("failed to inspect parent commit: %w", err)
+	}
+
+	if err := r.Storer.SetReference(plumbing.NewHashReference(headRef.Name(), parent.Hash)); err != nil {
+		return fmt.Errorf("failed to drop empty shell feature commit: %w", err)
+	}
+
+	return nil
 }
 
 // CheckRemotePushPermission checks if the user has valid git credentials for pushing to the remote repository.
