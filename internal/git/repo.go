@@ -207,16 +207,18 @@ func RemoveFile(file string) error {
 
 	filesPath := filepath.Join(repoPath, "files")
 
-	var fullPath string
-	if filepath.IsAbs(file) {
-		fullPath = file
-	} else {
+	filesPath = filepath.Clean(filesPath)
+	fullPath := filepath.Clean(file)
+
+	if !filepath.IsAbs(file) {
 		file = strings.TrimPrefix(file, string(filepath.Separator))
 		fullPath = filepath.Join(filesPath, file)
+		fullPath = filepath.Clean(fullPath)
+	} else if filepath.Dir(fullPath) == string(filepath.Separator) {
+		file = strings.TrimPrefix(file, string(filepath.Separator))
+		fullPath = filepath.Join(filesPath, file)
+		fullPath = filepath.Clean(fullPath)
 	}
-
-	fullPath = filepath.Clean(fullPath)
-	filesPath = filepath.Clean(filesPath)
 
 	relativeToFiles, err := filepath.Rel(filesPath, fullPath)
 	if err != nil {
