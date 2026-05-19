@@ -3,6 +3,7 @@ package util_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	internalgit "github.com/PatrickMatthiesen/oh-my-dot/internal/git"
@@ -71,6 +72,15 @@ func Fuzz_RemoveFile(f *testing.F) {
 		// Remove the file from the git repo
 		fileToRemove := testPrefix + filepath.Base(file.Name()) + testSufix
 		err = internalgit.RemoveFile(fileToRemove)
+		if filepath.IsAbs(fileToRemove) {
+			if err == nil {
+				t.Fatalf("expected absolute path %q to be rejected", fileToRemove)
+			}
+			if !strings.Contains(err.Error(), "outside the repository files directory") {
+				t.Fatalf("expected outside-files error for %q, got %v", fileToRemove, err)
+			}
+			return
+		}
 		testutil.TBErrorIfNotNil(t, err)
 
 		// Check if the file exists in the git repo
