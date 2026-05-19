@@ -22,7 +22,7 @@ func Fuzz_RemoveFile(f *testing.F) {
 		f.Add("", "\\")
 	}
 
-	f.Fuzz(func(t *testing.T, testPrefix string, testSufix string) {
+	f.Fuzz(func(t *testing.T, testPrefix string, testSuffix string) {
 		r, err := testutil.SetupPushableTestRepo(t)
 		testutil.TBErrorIfNotNil(t, err)
 
@@ -70,7 +70,7 @@ func Fuzz_RemoveFile(f *testing.F) {
 		})
 
 		// Remove the file from the git repo
-		fileToRemove := testPrefix + filepath.Base(file.Name()) + testSufix
+		fileToRemove := testPrefix + filepath.Base(file.Name()) + testSuffix
 		err = internalgit.RemoveFile(fileToRemove)
 		if filepath.IsAbs(fileToRemove) {
 			if err == nil {
