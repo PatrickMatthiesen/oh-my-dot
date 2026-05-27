@@ -7,13 +7,13 @@ import (
 )
 
 // AddSkills copies one or more skill directories into the managed oh-my-dot agent skills directory.
-func AddSkills(repoPath, sourcePath, nameOverride string, force bool) ([]Skill, error) {
+func AddSkills(repoPath, sourcePath, nameOverride string, force bool, recursive bool) ([]Skill, error) {
 	sourceDir, err := normalizeSkillSource(sourcePath)
 	if err != nil {
 		return nil, err
 	}
 
-	sources, err := discoverSkillSources(sourceDir)
+	sources, err := discoverSkillSources(sourceDir, recursive)
 	if err != nil {
 		return nil, err
 	}
@@ -25,12 +25,19 @@ func AddSkills(repoPath, sourcePath, nameOverride string, force bool) ([]Skill, 
 		sources[0].Name = nameOverride
 	}
 
-	added := make([]Skill, 0, len(sources))
+	seenNames := make(map[string]struct{}, len(sources))
 	for _, source := range sources {
 		if err := validateSkillName(source.Name); err != nil {
 			return nil, fmt.Errorf("invalid skill name %q: %w", source.Name, err)
 		}
+		if _, exists := seenNames[source.Name]; exists {
+			return nil, fmt.Errorf("multiple discovered skills use the name %q; use --name with a single skill path or rename one of the source directories", source.Name)
+		}
+		seenNames[source.Name] = struct{}{}
+	}
 
+	added := make([]Skill, 0, len(sources))
+	for _, source := range sources {
 		targetDir := managedSkillDirectory(repoPath, source.Name)
 		if err := copyDirectory(source.Path, targetDir, force); err != nil {
 			return nil, fmt.Errorf("failed to add skill %s: %w", source.Name, err)
@@ -80,8 +87,8 @@ func GetSkill(repoPath, skillName string) (Skill, error) {
 	return Skill{Name: skillName, Path: skillDir}, nil
 }
 
-// InstallSkill copies a managed skill into a user or project agent skills directory.
-func InstallSkill(repoPath, skillName, scope, projectPath string, force bool) (string, error) {
+// ApplySkill copies a managed skill into a user or project agent skills directory.
+func ApplySkill(repoPath, skillName, scope, projectPath string, force bool) (string, error) {
 	skill, err := GetSkill(repoPath, skillName)
 	if err != nil {
 		return "", err
@@ -94,14 +101,14 @@ func InstallSkill(repoPath, skillName, scope, projectPath string, force bool) (s
 
 	targetDir := filepath.Join(targetRoot, skill.Name)
 	if err := copyDirectory(skill.Path, targetDir, force); err != nil {
-		return "", fmt.Errorf("failed to install skill: %w", err)
+		return "", fmt.Errorf("failed to apply skill: %w", err)
 	}
 
 	return targetDir, nil
 }
 
-// UninstallSkill removes an installed skill from a user or project agent skills directory.
-func UninstallSkill(skillName, scope, projectPath string) (string, error) {
+// UnapplySkill removes an applied skill from a user or project agent skills directory.
+func UnapplySkill(skillName, scope, projectPath string) (string, error) {
 	if err := validateSkillName(skillName); err != nil {
 		return "", fmt.Errorf("invalid skill name: %w", err)
 	}
@@ -116,9 +123,12 @@ func UninstallSkill(skillName, scope, projectPath string) (string, error) {
 		return "", err
 	}
 	if _, err := os.Stat(targetDir); os.IsNotExist(err) {
-		return "", fmt.Errorf("skill %q is not installed in %s scope", skillName, scope)
+		return "", fmt.Errorf("skill %q is not applied in %s scope", skillName, scope)
 	} else if err != nil {
-		return "", fmt.Errorf("cannot inspect installed skill: %w", err)
+		return "", fmt.Errorf("cannot inspect applied skill: %w", err)
+	}
+	if !sourceContainsSkill(targetDir) {
+		return "", fmt.Errorf("skill %q is not applied in %s scope: %s does not contain %s", skillName, scope, targetDir, skillReadmeName)
 	}
 
 	return targetDir, removeDirectory(targetDir)

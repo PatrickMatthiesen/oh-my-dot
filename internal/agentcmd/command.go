@@ -16,7 +16,8 @@ type commandState struct {
 
 	flagName     string
 	flagForce    bool
-	flagInstall  string
+	flagApply    bool
+	flagRecurse  bool
 	flagScope    string
 	flagProject  string
 	flagNoCommit bool
@@ -38,9 +39,10 @@ func NewCommand(aliasProvider, repoPathProvider func() string) *cobra.Command {
 	}
 
 	skillsCmd := &cobra.Command{
-		Use:   "skills",
-		Short: "Manage agent skills",
-		Long: `Track reusable agent skills in your dotfiles repository and install them
+		Use:     "skills",
+		Aliases: []string{"skill"},
+		Short:   "Manage agent skills",
+		Long: `Track reusable agent skills in your dotfiles repository and apply them
 into user or project scopes.`,
 	}
 
@@ -50,15 +52,17 @@ into user or project scopes.`,
 		Long: `Add a skill directory to the managed oh-my-dot agent skills store.
 
 The path may point at a single skill directory containing SKILL.md, at a
-SKILL.md file, or at a parent directory containing multiple skill directories.
+SKILL.md file, or at a parent directory containing immediate child skill directories.
+Use --recurse to discover skill directories below that first level.
 
 Examples:
   oh-my-dot agent skills add ./skills/code-review
   oh-my-dot agent skills add ./skills
-  oh-my-dot agent skills add ./skills/code-review --install user
-  oh-my-dot agent skills add ./skills/code-review --install project --project .`,
+  oh-my-dot agent skills add ./skills --recurse
+  oh-my-dot agent skills add ./skills/code-review --apply
+  oh-my-dot agent skills add ./skills/code-review --apply --scope user`,
 		Args: cobra.ExactArgs(1),
-		RunE: state.runSkillsAdd,
+		RunE: silenceUsageOnRun(state.runSkillsAdd),
 	}
 
 	skillsRemoveCmd := &cobra.Command{
@@ -66,9 +70,9 @@ Examples:
 		Short: "Remove a managed agent skill",
 		Long: `Remove a skill from the managed oh-my-dot agent skills store.
 
-This does not uninstall already-installed user or project copies.`,
+This does not unapply already-applied user or project copies.`,
 		Args: cobra.ExactArgs(1),
-		RunE: state.runSkillsRemove,
+		RunE: silenceUsageOnRun(state.runSkillsRemove),
 	}
 
 	skillsListCmd := &cobra.Command{
@@ -76,7 +80,7 @@ This does not uninstall already-installed user or project copies.`,
 		Short: "List managed agent skills",
 		Long:  `List agent skills tracked in the oh-my-dot repository.`,
 		Args:  cobra.NoArgs,
-		RunE:  state.runSkillsList,
+		RunE:  silenceUsageOnRun(state.runSkillsList),
 	}
 
 	skillsInfoCmd := &cobra.Command{
@@ -84,60 +88,75 @@ This does not uninstall already-installed user or project copies.`,
 		Short: "Show managed skill information",
 		Long:  `Show the managed path and summary for an agent skill.`,
 		Args:  cobra.ExactArgs(1),
-		RunE:  state.runSkillsInfo,
+		RunE:  silenceUsageOnRun(state.runSkillsInfo),
 	}
 
-	skillsInstallCmd := &cobra.Command{
-		Use:   "install <skill>",
-		Short: "Install a managed skill into a scope",
-		Long: `Install a managed skill into a Codex-compatible user or project scope.
+	skillsApplyCmd := &cobra.Command{
+		Use:   "apply <skill>",
+		Short: "Apply a managed skill into a scope",
+		Long: `Apply a managed skill into a Codex-compatible user or project scope.
+
+Project scope is used by default.
 
 Examples:
-  oh-my-dot agent skills install code-review --scope user
-  oh-my-dot agent skills install code-review --scope project --project .`,
+  oh-my-dot agent skill apply code-review
+  oh-my-dot agent skill apply code-review --scope user
+  oh-my-dot agent skill apply code-review --scope project --project .`,
 		Args: cobra.ExactArgs(1),
-		RunE: state.runSkillsInstall,
+		RunE: silenceUsageOnRun(state.runSkillsApply),
 	}
 
-	skillsUninstallCmd := &cobra.Command{
-		Use:   "uninstall <skill>",
-		Short: "Uninstall a skill from a scope",
-		Long: `Remove an installed skill from a Codex-compatible user or project scope.
+	skillsUnapplyCmd := &cobra.Command{
+		Use:   "unapply <skill>",
+		Short: "Unapply a skill from a scope",
+		Long: `Remove an applied skill from a Codex-compatible user or project scope.
+
+Project scope is used by default.
 
 Examples:
-  oh-my-dot agent skills uninstall code-review --scope user
-  oh-my-dot agent skills uninstall code-review --scope project --project .`,
+  oh-my-dot agent skill unapply code-review
+  oh-my-dot agent skill unapply code-review --scope user
+  oh-my-dot agent skill unapply code-review --scope project --project .`,
 		Args: cobra.ExactArgs(1),
-		RunE: state.runSkillsUninstall,
+		RunE: silenceUsageOnRun(state.runSkillsUnapply),
 	}
 
 	skillsAddCmd.Flags().StringVar(&state.flagName, "name", "", "Override skill name when adding a single skill")
 	skillsAddCmd.Flags().BoolVar(&state.flagForce, "force", false, "Overwrite an existing managed skill")
-	skillsAddCmd.Flags().StringVar(&state.flagInstall, "install", "", "Also install after adding (user or project)")
-	skillsAddCmd.Flags().StringVar(&state.flagProject, "project", ".", "Project path for project-scope install")
+	skillsAddCmd.Flags().BoolVar(&state.flagApply, "apply", false, "Also apply after adding")
+	skillsAddCmd.Flags().BoolVarP(&state.flagRecurse, "recurse", "r", false, "Recursively search for skill directories")
+	skillsAddCmd.Flags().StringVar(&state.flagScope, "scope", "project", "Apply scope when using --apply (project or user)")
+	skillsAddCmd.Flags().StringVar(&state.flagProject, "project", ".", "Project path for project-scope apply")
 	skillsAddCmd.Flags().BoolVar(&state.flagNoCommit, "no-commit", false, "Do not commit managed skill changes")
 
 	skillsRemoveCmd.Flags().BoolVar(&state.flagNoCommit, "no-commit", false, "Do not commit managed skill changes")
 
 	skillsInfoCmd.Flags().BoolVar(&state.flagLongInfo, "long", false, "Print the full SKILL.md content")
 
-	skillsInstallCmd.Flags().StringVar(&state.flagScope, "scope", "", "Install scope (user or project)")
-	skillsInstallCmd.Flags().StringVar(&state.flagProject, "project", ".", "Project path for project-scope install")
-	skillsInstallCmd.Flags().BoolVar(&state.flagForce, "force", false, "Overwrite an existing installed skill")
+	skillsApplyCmd.Flags().StringVar(&state.flagScope, "scope", "project", "Apply scope (project or user)")
+	skillsApplyCmd.Flags().StringVar(&state.flagProject, "project", ".", "Project path for project-scope apply")
+	skillsApplyCmd.Flags().BoolVar(&state.flagForce, "force", false, "Overwrite an existing applied skill")
 
-	skillsUninstallCmd.Flags().StringVar(&state.flagScope, "scope", "", "Install scope (user or project)")
-	skillsUninstallCmd.Flags().StringVar(&state.flagProject, "project", ".", "Project path for project-scope install")
+	skillsUnapplyCmd.Flags().StringVar(&state.flagScope, "scope", "project", "Apply scope (project or user)")
+	skillsUnapplyCmd.Flags().StringVar(&state.flagProject, "project", ".", "Project path for project-scope apply")
 
-	skillsCmd.AddCommand(skillsAddCmd, skillsRemoveCmd, skillsListCmd, skillsInfoCmd, skillsInstallCmd, skillsUninstallCmd)
+	skillsCmd.AddCommand(skillsAddCmd, skillsRemoveCmd, skillsListCmd, skillsInfoCmd, skillsApplyCmd, skillsUnapplyCmd)
 	agentCmd.AddCommand(skillsCmd)
 
 	return agentCmd
 }
 
+func silenceUsageOnRun(runE func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		cmd.SilenceUsage = true
+		return runE(cmd, args)
+	}
+}
+
 func (state *commandState) runSkillsAdd(cmd *cobra.Command, args []string) error {
 	repoPath := state.repoPathProvider()
 
-	addedSkills, err := AddSkills(repoPath, args[0], state.flagName, state.flagForce)
+	addedSkills, err := AddSkills(repoPath, args[0], state.flagName, state.flagForce, state.flagRecurse)
 	if err != nil {
 		return err
 	}
@@ -152,13 +171,13 @@ func (state *commandState) runSkillsAdd(cmd *cobra.Command, args []string) error
 		}
 	}
 
-	if state.flagInstall != "" {
+	if state.flagApply {
 		for _, skill := range addedSkills {
-			target, err := InstallSkill(repoPath, skill.Name, state.flagInstall, state.flagProject, state.flagForce)
+			target, err := ApplySkill(repoPath, skill.Name, state.flagScope, state.flagProject, state.flagForce)
 			if err != nil {
 				return err
 			}
-			fileops.ColorPrintfn(fileops.Green, "Installed %s to %s", skill.Name, target)
+			fileops.ColorPrintfn(fileops.Green, "Applied %s to %s", skill.Name, target)
 		}
 	}
 
@@ -226,31 +245,23 @@ func (state *commandState) runSkillsInfo(cmd *cobra.Command, args []string) erro
 	return nil
 }
 
-func (state *commandState) runSkillsInstall(cmd *cobra.Command, args []string) error {
-	if state.flagScope == "" {
-		return fmt.Errorf("--scope is required (user or project)")
-	}
-
-	target, err := InstallSkill(state.repoPathProvider(), args[0], state.flagScope, state.flagProject, state.flagForce)
+func (state *commandState) runSkillsApply(cmd *cobra.Command, args []string) error {
+	target, err := ApplySkill(state.repoPathProvider(), args[0], state.flagScope, state.flagProject, state.flagForce)
 	if err != nil {
 		return err
 	}
 
-	fileops.ColorPrintfn(fileops.Green, "Installed %s to %s", args[0], target)
+	fileops.ColorPrintfn(fileops.Green, "Applied %s to %s", args[0], target)
 	return nil
 }
 
-func (state *commandState) runSkillsUninstall(cmd *cobra.Command, args []string) error {
-	if state.flagScope == "" {
-		return fmt.Errorf("--scope is required (user or project)")
-	}
-
-	target, err := UninstallSkill(args[0], state.flagScope, state.flagProject)
+func (state *commandState) runSkillsUnapply(cmd *cobra.Command, args []string) error {
+	target, err := UnapplySkill(args[0], state.flagScope, state.flagProject)
 	if err != nil {
 		return err
 	}
 
-	fileops.ColorPrintfn(fileops.Green, "Uninstalled %s from %s", args[0], target)
+	fileops.ColorPrintfn(fileops.Green, "Unapplied %s from %s", args[0], target)
 	return nil
 }
 

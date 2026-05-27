@@ -2,6 +2,7 @@ package agentcmd
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -99,7 +100,7 @@ func sourceContainsSkill(sourceDir string) bool {
 	return err == nil && !info.IsDir()
 }
 
-func discoverSkillSources(sourceDir string) ([]Skill, error) {
+func discoverSkillSources(sourceDir string, recursive bool) ([]Skill, error) {
 	if sourceContainsSkill(sourceDir) {
 		return []Skill{{
 			Name: filepath.Base(sourceDir),
@@ -107,6 +108,14 @@ func discoverSkillSources(sourceDir string) ([]Skill, error) {
 		}}, nil
 	}
 
+	if recursive {
+		return discoverSkillSourcesRecursive(sourceDir)
+	}
+
+	return discoverSkillSourcesShallow(sourceDir)
+}
+
+func discoverSkillSourcesShallow(sourceDir string) ([]Skill, error) {
 	entries, err := os.ReadDir(sourceDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read source directory: %w", err)
@@ -125,6 +134,47 @@ func discoverSkillSources(sourceDir string) ([]Skill, error) {
 				Path: childDir,
 			})
 		}
+	}
+
+	sort.Slice(skills, func(i, j int) bool {
+		return skills[i].Name < skills[j].Name
+	})
+
+	if len(skills) == 0 {
+		return nil, fmt.Errorf("no skills found; expected %s in %s or one of its immediate child directories (use --recurse to search deeper)", skillReadmeName, sourceDir)
+	}
+
+	return skills, nil
+}
+
+func discoverSkillSourcesRecursive(sourceDir string) ([]Skill, error) {
+	var skills []Skill
+	err := filepath.WalkDir(sourceDir, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+
+		if !entry.IsDir() {
+			return nil
+		}
+
+		name := entry.Name()
+		if path != sourceDir && (name == ".git" || name == ".svn" || name == ".hg") {
+			return filepath.SkipDir
+		}
+
+		if sourceContainsSkill(path) {
+			skills = append(skills, Skill{
+				Name: filepath.Base(path),
+				Path: path,
+			})
+			return filepath.SkipDir
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to search source directory: %w", err)
 	}
 
 	sort.Slice(skills, func(i, j int) bool {

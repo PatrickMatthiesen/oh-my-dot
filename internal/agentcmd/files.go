@@ -23,7 +23,7 @@ func copyDirectory(srcDir, dstDir string, force bool) error {
 
 	if _, err := os.Stat(dstAbs); err == nil {
 		if !force {
-			return fmt.Errorf("%s already exists (use --force to overwrite)", dstAbs)
+			return fmt.Errorf("destination already exists:\n  %s\n\nUse --force to overwrite it", dstAbs)
 		}
 		if err := os.RemoveAll(dstAbs); err != nil {
 			return fmt.Errorf("failed to remove existing destination: %w", err)
