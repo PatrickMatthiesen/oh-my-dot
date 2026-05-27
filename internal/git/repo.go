@@ -835,6 +835,77 @@ func isManagedShellFeatureCommitSubject(subject string) bool {
 	return false
 }
 
+// StageAndCommitAgentSkillChanges stages and commits agent skill changes under omd-agents.
+// Returns true when a commit was created, false when there were no committable changes.
+func StageAndCommitAgentSkillChanges(message string) (bool, error) {
+	repoPath := viper.GetString("repo-path")
+	r, err := GetRepository(repoPath)
+	if err != nil {
+		return false, err
+	}
+	worktree, err := r.Worktree()
+	if err != nil {
+		return false, fmt.Errorf("failed to get worktree: %w", err)
+	}
+
+	status, err := worktree.Status()
+	if err != nil {
+		return false, fmt.Errorf("failed to read worktree status: %w", err)
+	}
+	if err := ensureNoStagedNonAgentChanges(status); err != nil {
+		return false, err
+	}
+
+	hasStagedChanges := false
+	for path, fileStatus := range status {
+		if fileStatus.Staging == git.Unmodified && fileStatus.Worktree == git.Unmodified {
+			continue
+		}
+		if !isCommittableAgentChangePath(path) {
+			continue
+		}
+
+		if fileStatus.Worktree == git.Deleted || fileStatus.Staging == git.Deleted {
+			if _, err := worktree.Remove(path); err != nil {
+				return false, fmt.Errorf("failed to stage deleted file %s: %w", path, err)
+			}
+		} else {
+			if _, err := worktree.Add(path); err != nil {
+				return false, fmt.Errorf("failed to stage file %s: %w", path, err)
+			}
+		}
+
+		hasStagedChanges = true
+	}
+
+	if !hasStagedChanges {
+		return false, nil
+	}
+
+	if _, err := worktree.Commit(message, &git.CommitOptions{}); err != nil {
+		return false, fmt.Errorf("failed to commit agent skill changes: %w", err)
+	}
+
+	return true, nil
+}
+
+func ensureNoStagedNonAgentChanges(status git.Status) error {
+	for path, fileStatus := range status {
+		if fileStatus.Staging == git.Unmodified || isCommittableAgentChangePath(path) {
+			continue
+		}
+
+		return fmt.Errorf("refusing to commit agent skill changes while non-agent changes are staged: %s", path)
+	}
+
+	return nil
+}
+
+func isCommittableAgentChangePath(path string) bool {
+	normalizedPath := filepath.ToSlash(filepath.Clean(path))
+	return strings.HasPrefix(normalizedPath, "omd-agents/")
+}
+
 func dropAmendedShellFeatureCommit(r *git.Repository) error {
 	headRef, err := r.Head()
 	if err != nil {
