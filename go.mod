@@ -68,7 +68,7 @@ require (
 	charm.land/bubbletea/v2 v2.0.6
 	charm.land/lipgloss/v2 v2.0.3
 	github.com/creativeprojects/go-selfupdate v1.5.2
-	github.com/go-git/go-git/v6 v6.0.0-alpha.3
+	github.com/go-git/go-git/v6 v6.0.0-alpha.4
 	github.com/mattn/go-isatty v0.0.22
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
