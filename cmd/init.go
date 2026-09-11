@@ -1,16 +1,17 @@
 package cmd
 
 import (
-	// "fmt"
+	"fmt"
 	"os"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/config"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/exitcodes"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/git"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/interactive"
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 func init() {
@@ -35,13 +36,13 @@ Makes a git repository and sets remote origin to the specified URL.
 The clone is placed in $HOME/dotfiles by default, but can be changed with --folder <new path>`,
 	Run: func(cmd *cobra.Command, args []string) {
 		force, _ := cmd.Flags().GetBool("force")
-		
+
 		// If forcing reinitialization without explicit URL, clear stored remote
 		if force && len(args) == 0 {
 			// Clear remote URL to allow interactive prompting
 			viper.Set("remote-url", "")
 		}
-		
+
 		if git.IsGitRepo(viper.GetString("repo-path")) && !force {
 			git.InitFromExistingRepo(viper.GetString("repo-path"))
 			fileops.ColorPrintln("Dotfiles repo initialized 🎉🎉🎉", fileops.Green)
@@ -97,15 +98,21 @@ The clone is placed in $HOME/dotfiles by default, but can be changed with --fold
 		viper.Set("initialized", true)
 		viper.WriteConfig()
 	},
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		if err := interactive.ValidateMode(cmd); err != nil {
+			return fmt.Errorf("invalid interaction mode: %w", err)
+		}
 		force, err := cmd.Flags().GetBool("force")
-		fileops.CheckIfErrorWithMessage(err, "Error getting force flag")
+		if err != nil {
+			return fmt.Errorf("read force flag: %w", err)
+		}
 
 		if viper.IsSet("initialized") && !force {
 			fileops.ColorPrintln("Dotfiles repository has been initialized previously", fileops.Yellow)
 			fileops.ColorPrintln("Use the --force flag to reinitialize the repository", fileops.Blue)
 			os.Exit(0)
 		}
+		return nil
 	},
 	GroupID: "basics",
 	Example: `oh-my-dot init github.com/username/dotfiles

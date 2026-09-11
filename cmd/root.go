@@ -9,11 +9,11 @@ import (
 	"text/template"
 	"unicode"
 
-	// "log"
-
-	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/interactive"
 )
 
 //go:embed templates/helpTemplate.go.tpl
@@ -35,20 +35,22 @@ oh-my-dot uses git to manage your dotfiles, so you can easily push and pull your
 			fileops.ColorPrintln("Use the --help flag for more information on the init command", fileops.Yellow)
 		}
 	},
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		if err := interactive.ValidateMode(cmd); err != nil {
+			return fmt.Errorf("invalid interaction mode: %w", err)
+		}
 		// Skip this check if we're running the root command itself
 		if cmd == cmd.Root() {
-			return
+			return nil
 		}
 
 		cmdName := topLevelCommandName(cmd)
 		if !viper.IsSet("initialized") && !(cmdName == "init" || cmdName == "help" || cmdName == "config" || cmdName == "version" || cmdName == "update" || cmdName == cobra.ShellCompRequestCmd) {
-			fileops.ColorPrintln("Dotfiles repository has not been initialized", fileops.Yellow)
-			fileops.ColorPrintln("Run "+cmd.Root().Name()+" init to initialize your dotfiles repository", fileops.Yellow)
-			os.Exit(1)
+			return fmt.Errorf("dotfiles repository has not been initialized; run %s init to initialize your dotfiles repository", cmd.Root().Name())
 		}
 
 		StartAsyncUpdateCheck(cmd)
+		return nil
 	},
 	PersistentPostRun: func(cmd *cobra.Command, args []string) {
 		if cmd == cmd.Root() {
@@ -184,6 +186,10 @@ func Execute(funcs ...func(*cobra.Command)) error {
 	}()
 
 	executedCmd, err := rootCmd.ExecuteC()
+	if onlyCancellation(err) {
+		fileops.ColorPrintln("Cancelled", fileops.Yellow)
+		return nil
+	}
 	if err != nil {
 		if shouldPrintCommandError(executedCmd) {
 			fileops.ColorPrint("Error", fileops.Red)
@@ -237,4 +243,30 @@ var templateColorMap = &template.FuncMap{
 	"white":  func() string { return fileops.White },
 	"weird":  func() string { return fileops.WeirdColor },
 	"reset":  func() string { return fileops.Reset },
+}
+
+// onlyCancellation preserves real errors when a batch also contains cancellation.
+func onlyCancellation(err error) bool {
+	if err == nil {
+		return false
+	}
+	if err == interactive.ErrCancelled {
+		return true
+	}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		children := joined.Unwrap()
+		if len(children) == 0 {
+			return false
+		}
+		for _, child := range children {
+			if !onlyCancellation(child) {
+				return false
+			}
+		}
+		return true
+	}
+	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
+		return onlyCancellation(wrapped.Unwrap())
+	}
+	return false
 }

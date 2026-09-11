@@ -7,9 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/spf13/viper"
+
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/git"
-	"github.com/spf13/viper"
 )
 
 type Linkings map[string]string
@@ -94,12 +95,9 @@ func BuildLinkPath(file string) (string, error) {
 	// Normalize both paths for comparison
 	home = filepath.Clean(home)
 	absPath = filepath.Clean(absPath)
-	if after, ok := strings.CutPrefix(absPath, home); ok {
-		rel := after
-		// Ensure single leading separator is removed
-		rel = strings.TrimPrefix(rel, string(os.PathSeparator))
-		// Use forward slash here, matching the final filepath.ToSlash normalization.
-		absPath = "~/" + rel
+	rel, err := filepath.Rel(home, absPath)
+	if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) && !filepath.IsAbs(rel) {
+		absPath = "~/" + filepath.ToSlash(rel)
 	}
 
 	return filepath.ToSlash(absPath), nil

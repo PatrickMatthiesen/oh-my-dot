@@ -4,17 +4,21 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/spf13/viper"
+
 	"github.com/PatrickMatthiesen/oh-my-dot/cmd"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/config"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
-	"github.com/spf13/viper"
 )
 
 func main() {
 	home, err := os.UserHomeDir()
 	fileops.CheckIfErrorWithMessage(err, "Error getting home directory")
 
-	configFile := filepath.Join(home, ".oh-my-dot", "config.json")
+	configFile := os.Getenv("OH_MY_DOT_CONFIG")
+	if configFile == "" {
+		configFile = filepath.Join(home, ".oh-my-dot", "config.json")
+	}
 
 	config.InitializeConfig(configFile)
 
