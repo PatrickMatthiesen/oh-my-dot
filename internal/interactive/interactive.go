@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -17,6 +18,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// ErrCancelled indicates that the user left a prompt without submitting it.
+var ErrCancelled = errors.New("cancelled")
+
 type Mode int
 
 const (
@@ -24,6 +28,22 @@ const (
 	ModeInteractive                // Force interactive
 	ModeNonInteractive             // Force non-interactive
 )
+
+var isTerminal = func(fd uintptr) bool {
+	return isatty.IsTerminal(fd) || isatty.IsCygwinTerminal(fd)
+}
+
+func hasInteractiveTerminal() bool {
+	return isTerminal(os.Stdin.Fd()) && isTerminal(os.Stdout.Fd())
+}
+
+// ValidateMode rejects forced interaction when input or output is not a terminal.
+func ValidateMode(cmd *cobra.Command) error {
+	if forced, _ := cmd.Flags().GetBool("interactive"); forced && !hasInteractiveTerminal() {
+		return fmt.Errorf("--interactive requires both stdin and stdout to be terminals; use --no-interactive or run in a terminal")
+	}
+	return nil
+}
 
 // GetMode detects the appropriate mode based on flags and environment
 func GetMode(cmd *cobra.Command) Mode {
@@ -43,8 +63,7 @@ func GetMode(cmd *cobra.Command) Mode {
 	}
 
 	// 3. Check if running in a TTY
-	if !isatty.IsTerminal(os.Stdin.Fd()) ||
-		!isatty.IsTerminal(os.Stdout.Fd()) {
+	if !hasInteractiveTerminal() {
 		return ModeNonInteractive
 	}
 
@@ -88,7 +107,7 @@ func PromptInput(question string, defaultValue string) (string, error) {
 
 	if finalModel, ok := result.(textInputModel); ok {
 		if finalModel.cancelled {
-			return "", fmt.Errorf("cancelled")
+			return "", ErrCancelled
 		}
 		value := finalModel.textInput.Value()
 		if value == "" {
@@ -159,7 +178,7 @@ func PromptConfirm(question string) (bool, error) {
 
 	if finalModel, ok := result.(confirmModel); ok {
 		if finalModel.cancelled {
-			return false, fmt.Errorf("cancelled")
+			return false, ErrCancelled
 		}
 		return finalModel.selected, nil
 	}
@@ -179,7 +198,7 @@ func (m confirmModel) Init() tea.Cmd {
 
 func (m confirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "y", "Y":
 			m.selected = true
@@ -193,9 +212,9 @@ func (m confirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cancelled = true
 			return m, tea.Quit
 		case "left", "h":
-			m.selected = false
-		case "right", "l":
 			m.selected = true
+		case "right", "l":
+			m.selected = false
 		}
 	}
 	return m, nil
@@ -204,19 +223,22 @@ func (m confirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m confirmModel) View() tea.View {
 	yesStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	noStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	yesLabel, noLabel := "  [Yes]", "  [No]"
 
 	if m.selected {
 		yesStyle = yesStyle.Bold(true).Foreground(lipgloss.Color("42"))
+		yesLabel = "> [Yes]"
 	} else {
 		noStyle = noStyle.Bold(true).Foreground(lipgloss.Color("196"))
+		noLabel = "> [No]"
 	}
 
 	content := fmt.Sprintf(
 		"%s\n\n  %s  %s\n\n%s",
 		lipgloss.NewStyle().Bold(true).Render(m.question),
-		yesStyle.Render("[Yes]"),
-		noStyle.Render("[No]"),
-		lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(Use arrow keys or y/n, Enter to confirm, Esc to cancel)"),
+		yesStyle.Render(yesLabel),
+		noStyle.Render(noLabel),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(Left: Yes, Right: No; Enter confirms; y/n answers immediately; Esc cancels)"),
 	)
 	return tea.NewView(content)
 }
@@ -249,7 +271,7 @@ func PromptSelect(question string, options []string) (int, error) {
 
 	if finalModel, ok := result.(selectModel); ok {
 		if finalModel.cancelled {
-			return -1, fmt.Errorf("cancelled")
+			return -1, ErrCancelled
 		}
 		if i, ok := finalModel.list.SelectedItem().(item); ok {
 			return i.index, nil
@@ -346,7 +368,7 @@ func PromptMultiSelect(question string, options []string) ([]int, error) {
 
 	if finalModel, ok := result.(multiSelectModel); ok {
 		if finalModel.cancelled {
-			return nil, fmt.Errorf("cancelled")
+			return nil, ErrCancelled
 		}
 
 		selectedIndices := []int{}
@@ -446,7 +468,7 @@ func MultiSelect(question string, options []string, defaultSelected func(string)
 
 	if finalModel, ok := result.(multiSelectModel); ok {
 		if finalModel.cancelled {
-			return nil, fmt.Errorf("cancelled")
+			return nil, ErrCancelled
 		}
 
 		selected := []string{}
@@ -476,7 +498,7 @@ func Confirm(question string, defaultYes bool) (bool, error) {
 
 	if finalModel, ok := result.(confirmModel); ok {
 		if finalModel.cancelled {
-			return false, fmt.Errorf("cancelled")
+			return false, ErrCancelled
 		}
 		return finalModel.selected, nil
 	}
@@ -486,7 +508,7 @@ func Confirm(question string, defaultYes bool) (bool, error) {
 
 // PromptFilePicker prompts the user with a file picker for multi-file selection
 // Returns a slice of absolute file paths that were selected.
-// Users must explicitly select files with Space key; Enter with no selection cancels.
+// Users must explicitly select files with Space; Enter submits selected files, Esc cancels.
 func PromptFilePicker(prompt string, directory string) ([]string, error) {
 	if directory == "" {
 		var err error
@@ -499,7 +521,7 @@ func PromptFilePicker(prompt string, directory string) ([]string, error) {
 	fp := filepicker.New()
 	fp.CurrentDirectory = directory
 	// AllowedTypes is nil by default, allowing all file types
-	fp.ShowHidden = false
+	fp.ShowHidden = true // Dotfiles must be visible in the default picker.
 	fp.FileAllowed = true
 	fp.DirAllowed = false
 
@@ -518,7 +540,7 @@ func PromptFilePicker(prompt string, directory string) ([]string, error) {
 
 	if finalModel, ok := result.(filePickerModel); ok {
 		if finalModel.cancelled {
-			return nil, fmt.Errorf("cancelled")
+			return nil, ErrCancelled
 		}
 
 		// Convert map to slice
@@ -526,6 +548,8 @@ func PromptFilePicker(prompt string, directory string) ([]string, error) {
 		for file := range finalModel.selected {
 			files = append(files, file)
 		}
+		// Stable order also makes automatic names predictable for batch additions.
+		sort.Strings(files)
 
 		return files, nil
 	}
@@ -562,7 +586,7 @@ func (m filePickerModel) Init() tea.Cmd {
 
 func (m filePickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		// Handle our keys BEFORE passing to filepicker
 		switch {
 		case key.Matches(msg, m.keyMap.Cancel):

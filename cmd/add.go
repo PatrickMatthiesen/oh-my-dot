@@ -1,230 +1,229 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 
-	"github.com/PatrickMatthiesen/oh-my-dot/internal/exitcodes"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/git"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/interactive"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/symlink"
-
-	"github.com/spf13/cobra"
 )
 
 func init() {
 	addCommand.Flags().StringP("file", "f", "", "Path of the file to add")
-
-	addCommand.Flags().StringP("copy-to", "c", "", "Path where the file should be copied to before being added to the repository")
-	addCommand.Flags().StringP("move-to", "m", "", "Move the file to the repository and link it to the given path")
+	addCommand.Flags().String("as", "", "Override the automatic repository name, e.g. work/git/config")
+	addCommand.Flags().StringP("copy-to", "c", "", "Path where the file should be copied before being added")
+	addCommand.Flags().StringP("move-to", "m", "", "Move the file to this path before adding it")
 	addCommand.MarkFlagsMutuallyExclusive("copy-to", "move-to")
-
 	addCommand.Flags().BoolP("no-commit", "n", false, "Do not commit the changes")
-	addCommand.Flags().Bool("force", false, "Overwrite existing files without prompting")
-
+	addCommand.Flags().Bool("force", false, "Overwrite a copy/move destination; repository entries are never overwritten")
 	rootCmd.AddCommand(addCommand)
 }
 
 var addCommand = &cobra.Command{
-	Aliases:          []string{"a"},
-	Use:              "add [file | -f <file>]",
-	Short:            "Add config files to the repository",
-	Long:             `Adds config files to the repository.`,
+	Aliases: []string{"a"},
+	Use:     "add [file | -f <file>] [--as <repository-path>]",
+	Short:   "Add config files to the repository",
+	Long: `Add a config file with an automatically chosen repository name.
+
+The filename is used when available. On collision, up to three parent directory
+names are prepended, stopping before your home directory or filesystem root.
+The chosen name is printed. Existing entries are never renamed.
+
+Run add without a file in a terminal to open the file picker. If no automatic
+name works, a terminal prompts for a name; noninteractive use returns an error.
+Use --as to choose an exact repository name instead:
+  oh-my-dot add ~/.ssh/config --as ssh/config
+
+Folders organize stored files; they do not select groups or profiles.`,
 	TraverseChildren: true,
 	GroupID:          "dotfiles",
 	Args:             cobra.MaximumNArgs(1),
-	PreRun: func(cmd *cobra.Command, args []string) {
-		// Check write permissions on the repository
+	SilenceUsage:     true,
+	PreRunE: func(cmd *cobra.Command, args []string) error {
 		if err := git.CheckRepoWritePermission(); err != nil {
-			fileops.ColorPrintfn(fileops.Red, "Error: %s", err)
-			os.Exit(1)
+			return fmt.Errorf("cannot write repository: %w", err)
 		}
+		return nil
 	},
-	Run: func(cmd *cobra.Command, args []string) {
-		file, err := cmd.Flags().GetString("file")
-		forceOverwrite, _ := cmd.Flags().GetBool("force")
-
-		// Check if interactive mode should be used
+	RunE: func(cmd *cobra.Command, args []string) error {
+		file, _ := cmd.Flags().GetString("file")
+		force, _ := cmd.Flags().GetBool("force")
 		mode := interactive.GetMode(cmd)
-		if mode == interactive.ModeInteractive && file == "" && len(args) == 0 {
-			// Show file picker starting from current directory
-			currentDir, _ := os.Getwd()
+		if mode != interactive.ModeNonInteractive && file == "" && len(args) == 0 {
+			currentDir, err := os.Getwd()
+			if err != nil {
+				return fmt.Errorf("get working directory: %w", err)
+			}
 			files, err := interactive.PromptFilePicker("Select file(s) to add:", currentDir)
 			if err != nil {
-				fileops.ColorPrintln("Cancelled", fileops.Yellow)
-				os.Exit(exitcodes.Error)
-				return
+				return fmt.Errorf("select files: %w", err)
 			}
-
-			// Process each selected file and track results
-			successCount := 0
-			failCount := 0
-			for _, f := range files {
-				if processAddFile(cmd, f, forceOverwrite) {
-					successCount++
-				} else {
-					failCount++
+			as, _ := cmd.Flags().GetString("as")
+			if as != "" && len(files) != 1 {
+				return fmt.Errorf("--as requires exactly one selected file")
+			}
+			var failures []error
+			for _, file := range files {
+				if err := processAddFile(cmd, file, force); err != nil {
+					failures = append(failures, fmt.Errorf("add %s: %w", file, err))
+					if errors.Is(err, interactive.ErrCancelled) {
+						break
+					}
 				}
 			}
-
-			// Show summary if more than 1 file was processed
-			if len(files) > 1 {
-				fmt.Println() // Add blank line before summary
-				if successCount > 0 {
-					fileops.ColorPrintfn(fileops.Green, "Summary: %d file(s) added successfully", successCount)
-				}
-				if failCount > 0 {
-					fileops.ColorPrintfn(fileops.Red, "Summary: %d file(s) failed", failCount)
-				}
-			} else if successCount == 1 {
-				// For single file, show simple success message
-				fileops.ColorPrintfn(fileops.Green, "Added %s", files[0])
-			}
-			return
+			return errors.Join(failures...)
 		}
-
-		if (err != nil || file == "") && len(args) == 0 {
-			fileops.ColorPrintln("No file was specified", fileops.Red)
-			if mode == interactive.ModeAuto {
-				fileops.ColorPrintln("Use -i flag for interactive file picker", fileops.Yellow)
-			}
-			cmd.Help()
-			os.Exit(exitcodes.MissingArgs)
-			return
-		}
-
-		if file == "" && fileops.IsFile(args[0]) {
+		if file == "" && len(args) > 0 {
 			file = args[0]
 		}
-
-		if !fileops.IsFile(file) {
-			fileops.ColorPrintln("File does not exist", fileops.Red)
-			os.Exit(exitcodes.Error)
-			return
+		if file == "" {
+			return fmt.Errorf("no file specified; pass a file path, or run add in a terminal to select files")
 		}
-
-		// Process single file
-		if processAddFile(cmd, file, forceOverwrite) {
-			fileops.ColorPrintfn(fileops.Green, "Added %s", file)
+		if err := processAddFile(cmd, file, force); err != nil {
+			return fmt.Errorf("add %s: %w", file, err)
 		}
+		return nil
 	},
 }
 
-// processAddFile handles adding a single file with conflict resolution
-// Returns true if the file was added successfully, false otherwise
-func processAddFile(cmd *cobra.Command, file string, forceOverwrite bool) bool {
-	copy, _ := cmd.Flags().GetString("copy-to")
-	if copy != "" {
-		var err error
-		copy, err = filepath.Abs(copy)
+// processAddFile validates the final repository key and destination before any copy or move.
+func processAddFile(cmd *cobra.Command, file string, force bool) error {
+	file, err := fileops.ExpandPath(file)
+	if err != nil {
+		return fmt.Errorf("expand source: %w", err)
+	}
+	file, err = filepath.Abs(file)
+	if err != nil {
+		return fmt.Errorf("resolve source: %w", err)
+	}
+	info, err := os.Lstat(file)
+	if err != nil {
+		return fmt.Errorf("inspect source: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("source must be a regular file (resolve symbolic links before adding)")
+	}
+
+	copyTo, _ := cmd.Flags().GetString("copy-to")
+	moveTo, _ := cmd.Flags().GetString("move-to")
+	destination := file
+	if copyTo != "" || moveTo != "" {
+		target := copyTo
+		if target == "" {
+			target = moveTo
+		}
+		target, err = fileops.ExpandPath(target)
 		if err != nil {
-			fileops.ColorPrintfn(fileops.Red, "Error%s when adding %s: %s", fileops.Reset, file, err)
-			return false
+			return fmt.Errorf("expand destination: %w", err)
 		}
-
-		// Check if target file exists
-		targetFile := copy
-		if fileops.IsDir(copy) {
-			targetFile = filepath.Join(copy, filepath.Base(file))
+		destination, err = filepath.Abs(target)
+		if err != nil {
+			return fmt.Errorf("resolve destination: %w", err)
 		}
+		if fileops.IsDir(destination) {
+			destination = filepath.Join(destination, filepath.Base(file))
+		}
+		if !fileops.IsDir(filepath.Dir(destination)) {
+			return fmt.Errorf("destination directory does not exist: %s", filepath.Dir(destination))
+		}
+		if destinationInfo, err := os.Lstat(destination); err == nil {
+			if os.SameFile(info, destinationInfo) {
+				return fmt.Errorf("source and destination refer to the same file")
+			}
+			if !destinationInfo.Mode().IsRegular() {
+				return fmt.Errorf("destination must be a regular file: %s", destination)
+			}
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("inspect destination: %w", err)
+		}
+	}
 
-		if fileops.PathExists(targetFile) && !forceOverwrite {
-			// Prompt for overwrite confirmation
-			if interactive.ShouldPrompt(cmd, false) {
-				overwrite, err := interactive.PromptConfirm("File " + targetFile + " already exists. Overwrite?")
-				if err != nil || !overwrite {
-					fileops.ColorPrintln("Skipping "+file, fileops.Yellow)
-					return false
-				}
-			} else {
-				// Non-interactive mode: error on conflict
-				fileops.ColorPrintfn(fileops.Red, "Error: File %s already exists. Use --force to overwrite", targetFile)
-				os.Exit(exitcodes.Conflict)
+	repoPath := viper.GetString("repo-path")
+	links, err := symlink.GetLinkings()
+	if err != nil {
+		return fmt.Errorf("read linkings: %w", err)
+	}
+	// Check the destination independently of naming, so retries do not register
+	// the same live file again under progressively longer names.
+	if err := symlink.CheckDestinationAvailable(links, "", destination); err != nil {
+		return fmt.Errorf("check destination: %w", err)
+	}
+	for _, candidate := range []string{file, destination} {
+		if err := checkOutsideRepositoryStorage(repoPath, candidate); err != nil {
+			return err
+		}
+	}
+	key, err := selectAddKey(cmd, repoPath, destination, links)
+	if err != nil {
+		return err
+	}
+	normalizedPath, err := symlink.BuildLinkPath(destination)
+	if err != nil {
+		return fmt.Errorf("normalize destination: %w", err)
+	}
+
+	if copyTo != "" || moveTo != "" {
+		if fileops.PathExists(destination) && !force {
+			if !interactive.ShouldPrompt(cmd, false) {
+				return fmt.Errorf("destination %s already exists; use --force to overwrite", destination)
+			}
+			overwrite, err := interactive.PromptConfirm("File " + destination + " already exists. Overwrite?")
+			if err != nil {
+				return fmt.Errorf("confirm overwrite: %w", err)
+			}
+			if !overwrite {
+				return fmt.Errorf("skipped existing destination %s", destination)
 			}
 		}
-
-		if fileops.IsDir(copy) {
-			err = fileops.CopyFileToDir(file, copy)
+		if copyTo != "" {
+			err = fileops.CopyFile(file, destination)
 		} else {
-			err = fileops.CopyFile(file, copy)
+			err = os.Rename(file, destination)
 		}
-
 		if err != nil {
-			fileops.ColorPrintfn(fileops.Red, "Error%s when adding %s: %s", fileops.Reset, file, err)
-			return false
+			return fmt.Errorf("prepare destination: %w", err)
 		}
-		file = copy
 	}
-
-	move, _ := cmd.Flags().GetString("move-to")
-	if move != "" {
-		log.Println("Moving file to", move)
-		var err error
-		move, err = filepath.Abs(move)
-		if err != nil {
-			fileops.ColorPrintfn(fileops.Red, "Error%s when adding %s: %s", fileops.Reset, file, err)
-			return false
-		}
-
-		if fileops.IsDir(move) {
-			move = filepath.Join(move, filepath.Base(file))
-		}
-
-		// Check if target file exists
-		if fileops.PathExists(move) && !forceOverwrite {
-			// Prompt for overwrite confirmation
-			if interactive.ShouldPrompt(cmd, false) {
-				overwrite, err := interactive.PromptConfirm("File " + move + " already exists. Overwrite?")
-				if err != nil || !overwrite {
-					fileops.ColorPrintln("Skipping "+file, fileops.Yellow)
-					return false
-				}
-			} else {
-				// Non-interactive mode: error on conflict
-				fileops.ColorPrintfn(fileops.Red, "Error: File %s already exists. Use --force to overwrite", move)
-				os.Exit(exitcodes.Conflict)
-			}
-		}
-
-		err = os.Rename(file, move)
-
-		if err != nil {
-			fileops.ColorPrintfn(fileops.Red, "Error%s when adding %s: %s", fileops.Reset, file, err)
-			return false
-		}
-
-		file = move
+	if err := git.LinkAndAddFileAs(destination, key); err != nil {
+		return fmt.Errorf("store file: %w", err)
 	}
-
-	err := git.LinkAndAddFile(file)
-	if err != nil {
-		fileops.ColorPrintfn(fileops.Red, "Error%s when adding %s: %s", fileops.Reset, file, err)
-		return false
+	if err := symlink.AddLinking(key, normalizedPath); err != nil {
+		return fmt.Errorf("save linking: %w", err)
 	}
-
-	absFilePath, _ := filepath.Abs(file)
-	normalizedPath, err := symlink.BuildLinkPath(absFilePath)
-	if err != nil {
-		fileops.ColorPrintfn(fileops.Red, "Error%s normalizing path for %s: %s", fileops.Reset, file, err)
-		return false
-	}
-	err = symlink.AddLinking(filepath.Base(file), normalizedPath)
-	if err != nil {
-		fileops.ColorPrintfn(fileops.Red, "Error%s when adding symlink for %s: %s", fileops.Reset, file, err)
-		return false
-	}
-
 	noCommit, _ := cmd.Flags().GetBool("no-commit")
 	if !noCommit {
-		err = git.Commit("Added " + file)
-		if err != nil {
-			fileops.ColorPrintfn(fileops.Red, "Error%s when adding and committing %s: %s", fileops.Reset, file, err)
-			return false
+		if err := git.Commit("Added " + file); err != nil {
+			return fmt.Errorf("commit file: %w", err)
 		}
 	}
+	fileops.ColorPrintfn(fileops.Green, "Added %s as %s", file, key)
+	return nil
+}
 
-	return true
+// checkOutsideRepositoryStorage resolves directory aliases before deciding whether
+// a copy/move could modify the repository's own source files.
+func checkOutsideRepositoryStorage(repoPath, file string) error {
+	repoRoot, err := filepath.EvalSymlinks(repoPath)
+	if err != nil {
+		return fmt.Errorf("resolve repository directory: %w", err)
+	}
+	repoRoot, err = filepath.Abs(repoRoot)
+	if err != nil {
+		return fmt.Errorf("resolve repository path: %w", err)
+	}
+	parent, err := filepath.EvalSymlinks(filepath.Dir(file))
+	if err != nil {
+		return fmt.Errorf("resolve source/destination directory: %w", err)
+	}
+	if pathWithinBase(filepath.Join(parent, filepath.Base(file)), filepath.Join(repoRoot, "files")) {
+		return fmt.Errorf("source and destination must be outside the repository files directory: %s", file)
+	}
+	return nil
 }

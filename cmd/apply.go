@@ -7,13 +7,14 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
-	"github.com/PatrickMatthiesen/oh-my-dot/internal/hooks"
-	"github.com/PatrickMatthiesen/oh-my-dot/internal/shell"
-	"github.com/PatrickMatthiesen/oh-my-dot/internal/symlink"
-
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/hooks"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/repopath"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/shell"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/symlink"
 )
 
 func init() {
@@ -119,15 +120,15 @@ func sensitiveApplyTarget(path, homeDir string) bool {
 }
 
 var applyCommand = &cobra.Command{
-	Use:     "apply",
-	Short:   "Apply the dotfiles and shell hooks to the system",
-	Long:    `Applies the dotfiles to the system and installs shell integration hooks.`,
-	GroupID: "dotfiles",
-	Run: func(cmd *cobra.Command, args []string) {
+	Use:          "apply",
+	Short:        "Apply the dotfiles and shell hooks to the system",
+	Long:         `Applies the dotfiles to the system and installs shell integration hooks.`,
+	GroupID:      "dotfiles",
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
 		verbose, verr := cmd.Flags().GetBool("verbose")
 		if verr != nil {
-			fileops.ColorPrintfn(fileops.Red, "Error getting verbose flag: %s", verr)
-			return
+			return fmt.Errorf("read verbose flag: %w", verr)
 		}
 
 		noShell, _ := cmd.Flags().GetBool("no-shell")
@@ -138,15 +139,21 @@ var applyCommand = &cobra.Command{
 		fileops.ColorPrintln("Applying dotfiles...", fileops.Cyan)
 		linkings, err := symlink.GetLinkings()
 		if err != nil {
-			fileops.ColorPrintfn(fileops.Red, "Error retrieving linkings: %s", err)
-			return
+			return fmt.Errorf("retrieve linkings: %w", err)
+		}
+
+		if err := symlink.ValidateLinkings(repoPath, linkings); err != nil {
+			return fmt.Errorf("validate linkings: %w", err)
 		}
 
 		missingFiles := 0
 		linkedFiles := 0
 
 		for file, link := range linkings {
-			file = filepath.Join(repoPath, "files", file)
+			file, err = repopath.Resolve(repoPath, file)
+			if err != nil {
+				return fmt.Errorf("resolve repository file: %w", err)
+			}
 			if !fileops.IsFile(file) {
 				missingFiles++
 				fileops.ColorPrintfn(fileops.Red, "  Error: file %s does not exist", file)
@@ -214,8 +221,7 @@ var applyCommand = &cobra.Command{
 
 			shellsWithFeatures, err := shell.ListShellsWithFeatures(repoPath)
 			if err != nil {
-				fileops.ColorPrintfn(fileops.Red, "  Error listing shells: %s", err)
-				return
+				return fmt.Errorf("list shells: %w", err)
 			}
 
 			if len(shellsWithFeatures) == 0 {
@@ -292,8 +298,12 @@ var applyCommand = &cobra.Command{
 			}
 		}
 
+		if missingFiles > 0 {
+			return fmt.Errorf("%d files could not be applied", missingFiles)
+		}
 		fmt.Println()
 		fileops.ColorPrintln("Done!", fileops.Green)
+		return nil
 	},
 }
 

@@ -227,6 +227,15 @@ Create `enabled.local.json` for per-machine customizations:
 
 Invalid local overrides are automatically ignored with warnings.
 
+### Organizing dotfiles
+
+Use `add FILE` to store a dotfile. If its filename is taken, add automatically
+includes parent directory names and reports the chosen path. Use `--as tool/config`
+for an exact name. Bare `add` opens a picker in a terminal. `list` shows full paths;
+`remove tool/config` selects one entry. Folder names organize storage and do not activate groups.
+See the [nested file naming guide](docs/specs/nested-files/README.md) for examples,
+Windows path rules, and an isolated test configuration.
+
 ### Health Checks
 
 Validate your repository and shell framework setup:

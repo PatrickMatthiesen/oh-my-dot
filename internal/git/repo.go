@@ -10,13 +10,15 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
-	"github.com/PatrickMatthiesen/oh-my-dot/internal/shell"
 	"github.com/go-git/go-git/v6"
 	"github.com/go-git/go-git/v6/config"
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/object"
 	"github.com/spf13/viper"
+
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/repopath"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/shell"
 )
 
 // RemoteSyncState describes local/remote relationship for the current branch.
@@ -166,18 +168,36 @@ func HasOriginRemote() (bool, error) {
 
 // LinkAndAddFile takes a file path as an argument, makes a hard-link to the git repo and adds the file to the git repo.
 func LinkAndAddFile(file string) error {
-	fileName := filepath.Base(file)
-	fileRepoPath := fmt.Sprint("files/", fileName)
+	return LinkAndAddFileAs(file, filepath.Base(file))
+}
 
-	newFile := filepath.Join(viper.GetString("repo-path"), fileRepoPath)
+// LinkAndAddFileAs hard-links file into the repository under a portable relative key and stages it.
+func LinkAndAddFileAs(file, key string) error {
+	repoPath := viper.GetString("repo-path")
+	if err := repopath.CheckAvailable(repoPath, key); err != nil {
+		return fmt.Errorf("cannot add %s: %w", file, err)
+	}
+	info, err := os.Lstat(file)
+	if err != nil {
+		return fmt.Errorf("inspect source file %s: %w", file, err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("source %s must be a regular file, not a symlink or directory", file)
+	}
+	newFile, err := repopath.Resolve(repoPath, key)
+	if err != nil {
+		return fmt.Errorf("resolve destination for %s: %w", file, err)
+	}
+	fileRepoPath := "files/" + key
+
 	fmt.Println("Linking", fileops.SColorPrint(file, fileops.Blue), "to", fileops.SColorPrint(newFile, fileops.Cyan))
 
 	if err := fileops.EnsureDir(filepath.Dir(newFile)); err != nil {
 		return fmt.Errorf("failed to create repository files directory: %w", err)
 	}
-	err := os.Link(file, newFile)
+	err = os.Link(file, newFile)
 	if err != nil {
-		return err
+		return fmt.Errorf("hard-link %s into repository: %w", file, err)
 	}
 
 	return StageChange(fileRepoPath)
@@ -241,6 +261,10 @@ func RemoveFile(file string) error {
 	}
 	if relativeToFiles == ".." || strings.HasPrefix(relativeToFiles, ".."+string(filepath.Separator)) {
 		return fmt.Errorf("file %s is outside the repository files directory", fullPath)
+	}
+	fullPath, err = repopath.Resolve(repoPath, filepath.ToSlash(relativeToFiles))
+	if err != nil {
+		return fmt.Errorf("cannot remove repository file: %w", err)
 	}
 
 	is, err := fileops.IsFileErr(fullPath)
@@ -502,23 +526,9 @@ func commitContainsAncestor(start *object.Commit, targetHash plumbing.Hash, maxD
 	return false, false, nil
 }
 
+// ListFiles returns all managed file keys, including nested repository paths.
 func ListFiles() ([]string, error) {
-	worktree, err := GetWorktree(viper.GetString("repo-path"))
-	if err != nil {
-		return nil, err
-	}
-
-	infos, err := worktree.Filesystem.ReadDir("files")
-	if err != nil {
-		return nil, err
-	}
-
-	files := make([]string, len(infos))
-	for i, info := range infos {
-		files[i] = info.Name()
-	}
-
-	return files, nil
+	return repopath.List(viper.GetString("repo-path"))
 }
 
 func UrlIsGitRepo(url string) bool { // unused
