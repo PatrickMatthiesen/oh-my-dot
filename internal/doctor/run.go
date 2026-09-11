@@ -21,15 +21,14 @@ func ResolveShellsToCheck(repoPath string, selectedShells []string) ([]string, e
 	return shellsToCheck, nil
 }
 
-// Run executes the doctor checks for the provided shells and prints the result summary.
+// Run checks the repository and provided shells and prints the result summary.
 func Run(repoPath string, shellsToCheck []string, alias string, fix bool) error {
-	fileops.ColorPrintln("\noh-my-dot Shell Framework Doctor", fileops.Cyan)
+	fileops.ColorPrintln("\noh-my-dot Doctor", fileops.Cyan)
 	fileops.ColorPrintln("=================================\n", fileops.Cyan)
 
 	if len(shellsToCheck) == 0 {
 		fileops.ColorPrintln("No shell features configured", fileops.Yellow)
 		fileops.ColorPrintfn(fileops.Cyan, "Run '%s feature add' to add features", alias)
-		return nil
 	}
 
 	allResults := runChecks(repoPath, shellsToCheck, fix)
@@ -41,6 +40,10 @@ func Run(repoPath string, shellsToCheck []string, alias string, fix bool) error 
 		return fmt.Errorf("health check failed")
 	}
 
-	fileops.ColorPrintln("All checks passed! ✓", fileops.Green)
+	if summary.warningCount == 0 {
+		fileops.ColorPrintln("All checks passed! ✓", fileops.Green)
+	} else {
+		fileops.ColorPrintln("Health check completed with warnings", fileops.Yellow)
+	}
 	return nil
 }

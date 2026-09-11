@@ -1,17 +1,20 @@
 package cmd
 
 import (
-	"github.com/PatrickMatthiesen/oh-my-dot/internal/doctor"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/doctor"
 )
 
 var doctorCmd = &cobra.Command{
 	Use:   "doctor",
-	Short: "Check shell framework health",
-	Long: `Diagnose and validate shell framework configuration.
+	Short: "Check repository and shell framework health",
+	Long: `Diagnose and validate repository and shell framework configuration.
 
 Checks performed:
+  - Git repository can be opened and commit identity is configured
+  - Origin remote is configured and readable (warnings only)
   - Shell hooks are properly installed in profile files
   - Directory structure is correct
   - Manifest files are valid
@@ -20,8 +23,8 @@ Checks performed:
   - Init script syntax
 
 Examples:
-  oh-my-dot doctor              # Check all shells
-  oh-my-dot doctor --shell bash # Check specific shell only`,
+  oh-my-dot doctor              # Check repository and all shells
+  oh-my-dot doctor --shell bash # Check repository and bash`,
 	GroupID:      "dotfiles",
 	SilenceUsage: true,
 	RunE:         runDoctor,

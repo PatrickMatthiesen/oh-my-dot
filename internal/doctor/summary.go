@@ -78,7 +78,7 @@ func printSummary(total summary, alias string, fix bool) {
 		}
 	} else if total.warningCount > 0 && total.fixableWarningCount == 0 {
 		fmt.Println()
-		fileops.ColorPrintln("Note: Warnings are optional issues that don't affect functionality", fileops.Yellow)
+		fileops.ColorPrintln("Note: Review warnings above for affected functionality and next steps", fileops.Yellow)
 	}
 
 	fmt.Println()

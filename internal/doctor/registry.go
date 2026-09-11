@@ -15,7 +15,7 @@ func registeredChecks() []check {
 }
 
 func runChecks(repoPath string, shellsToCheck []string, fix bool) []result {
-	var allResults []result
+	allResults := checkRepository(context{repoPath: repoPath, fix: fix})
 
 	for _, shellName := range shellsToCheck {
 		fileops.ColorPrintfn(fileops.Cyan, "\nChecking %s shell...", shellName)

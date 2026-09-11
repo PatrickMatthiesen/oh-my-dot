@@ -42,9 +42,6 @@ var addCommand = &cobra.Command{
 			fileops.ColorPrintfn(fileops.Red, "Error: %s", err)
 			os.Exit(1)
 		}
-
-		// Check remote push permissions (warning only, don't exit)
-		git.CheckRemoteAccessWithHelp(false)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		file, err := cmd.Flags().GetString("file")

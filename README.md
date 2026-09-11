@@ -229,7 +229,7 @@ Invalid local overrides are automatically ignored with warnings.
 
 ### Health Checks
 
-Validate your shell framework setup:
+Validate your repository and shell framework setup:
 
 ```sh
 # Check all shells
@@ -243,12 +243,21 @@ oh-my-dot doctor --fix
 ```
 
 The doctor checks:
+
+- Git repository and effective commit identity
+- Origin remote configuration and read access (warnings only)
 - Directory structure
 - Manifest validity
 - Feature file existence
 - Profile hooks installation
 - Local override security
 - Init script syntax
+
+Repository checks run even without shell features. Missing Git identity is an
+error with instructions for setting your name and email; `doctor --fix` does not
+choose an identity for you. Missing or inaccessible remotes produce warnings in
+doctor. Local `add` and `remove` operations do not contact the remote. Remote read
+access does not guarantee push permission.
 
 ### PowerShell Support
 
