@@ -8,12 +8,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/go-git/go-git/v6"
 	"github.com/go-git/go-git/v6/config"
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/object"
+	"github.com/go-git/go-git/v6/plumbing/transport"
 	"github.com/spf13/viper"
 
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
@@ -84,7 +86,7 @@ func GetRepository(rootGitRepoPath string) (*git.Repository, error) {
 // InitGitRepo initializes a new git repository at the specified path,
 // with an optional remote URL and bare repository flag.
 // If a remote URL is provided and the remote repository exists, it clones the repository.
-// Otherwise, it initializes a new empty repository and sets up the remote.
+// Clone failures are returned; local repositories are initialized when no remote is supplied.
 func InitGitRepo(rootGitRepoPath string, remoteUrl string, opts ...bool) (*git.Repository, error) {
 	bare := false
 	if len(opts) > 0 {
@@ -93,16 +95,46 @@ func InitGitRepo(rootGitRepoPath string, remoteUrl string, opts ...bool) (*git.R
 
 	// If a remote URL is provided, try to clone the repository first
 	if remoteUrl != "" && !bare {
-		// Attempt to clone the remote repository
-		r, err := git.PlainClone(rootGitRepoPath, &git.CloneOptions{
-			URL: remoteUrl,
-		})
-		if err == nil {
-			// Clone succeeded, return the cloned repository
-			return r, nil
+		// Clone into a temporary sibling so failures never leave a partial repository.
+		parent := filepath.Dir(rootGitRepoPath)
+		if err := os.MkdirAll(parent, 0755); err != nil {
+			return nil, fmt.Errorf("create repository parent: %w", err)
 		}
-		// If clone fails, fall back to initializing a new repository
-		// This handles cases where the remote doesn't exist yet or is inaccessible
+		if entries, err := os.ReadDir(rootGitRepoPath); err == nil && len(entries) != 0 {
+			return nil, fmt.Errorf("destination %s is not empty; reuse the existing repository or choose another folder", rootGitRepoPath)
+		} else if err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("inspect destination: %w", err)
+		}
+		temp, err := os.MkdirTemp(parent, ".omd-clone-")
+		if err != nil {
+			return nil, fmt.Errorf("create clone directory: %w", err)
+		}
+		defer os.RemoveAll(temp)
+		_, err = git.PlainClone(temp, &git.CloneOptions{
+			URL:           remoteUrl,
+			ClientOptions: RemoteClientOptions(parent, remoteUrl),
+		})
+		if errors.Is(err, transport.ErrEmptyRemoteRepository) {
+			os.RemoveAll(temp)
+			r, initErr := git.PlainInit(temp, false)
+			if initErr != nil {
+				return nil, fmt.Errorf("initialize empty remote clone: %w", initErr)
+			}
+			_, err = r.CreateRemote(&config.RemoteConfig{Name: "origin", URLs: []string{remoteUrl}})
+		}
+		if err != nil {
+			if IsSSHAgentError(err) {
+				return nil, fmt.Errorf("clone repository: %w\n%s", err, sshAgentHelp(runtime.GOOS))
+			}
+			return nil, fmt.Errorf("clone repository (check URL and authentication): %w", err)
+		}
+		if err := os.Remove(rootGitRepoPath); err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("replace empty destination: %w", err)
+		}
+		if err := os.Rename(temp, rootGitRepoPath); err != nil {
+			return nil, fmt.Errorf("move cloned repository: %w", err)
+		}
+		return GetRepository(rootGitRepoPath)
 	}
 
 	// Fall back to creating a new empty repository
@@ -135,10 +167,17 @@ func InitFromExistingRepo(rootGitRepoPath string) error {
 	// set remote in config
 	remote, err := r.Remote("origin")
 	if err != nil {
-		return err
+		if errors.Is(err, git.ErrRemoteNotFound) {
+			viper.Set("remote-url", "")
+			return nil
+		}
+		return fmt.Errorf("inspect origin: %w", err)
 	}
 
 	remoteConfig := remote.Config()
+	if len(remoteConfig.URLs) == 0 {
+		return fmt.Errorf("origin has no URL configured")
+	}
 	viper.Set("remote-url", remoteConfig.URLs[0])
 
 	return nil
@@ -325,7 +364,7 @@ func PushRepo() (bool, error) {
 		return false, err
 	}
 
-	err = remote.Push(&git.PushOptions{})
+	err = remote.Push(&git.PushOptions{ClientOptions: repositoryClientOptions(r)})
 	if err != nil {
 		if errors.Is(err, git.NoErrAlreadyUpToDate) {
 			return false, nil
@@ -364,6 +403,7 @@ func PullRepo() (bool, error) {
 	}
 
 	err = worktree.Pull(&git.PullOptions{
+		ClientOptions: repositoryClientOptions(r),
 		RemoteName:    "origin",
 		ReferenceName: headRef.Name(),
 		SingleBranch:  true,
@@ -420,7 +460,7 @@ func GetRemoteSyncState() (RemoteSyncState, error) {
 		return "", fmt.Errorf("no remote 'origin' configured: %w", err)
 	}
 
-	remoteRefs, err := remote.List(&git.ListOptions{})
+	remoteRefs, err := remote.List(&git.ListOptions{ClientOptions: repositoryClientOptions(r)})
 	if err != nil {
 		return "", fmt.Errorf("unable to access remote repository: %w", err)
 	}
@@ -963,7 +1003,7 @@ func CheckRemotePushPermission() error {
 	// List references from the remote to check connectivity and credentials.
 	// This is a lightweight operation that verifies we can authenticate without actually pushing.
 	// Uses default git authentication (SSH keys, credential helpers, etc.).
-	_, err = remote.List(&git.ListOptions{})
+	_, err = remote.List(&git.ListOptions{ClientOptions: repositoryClientOptions(r)})
 	if err != nil {
 		return fmt.Errorf("unable to access remote repository (check credentials and network): %w", err)
 	}

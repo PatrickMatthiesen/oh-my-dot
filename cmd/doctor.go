@@ -8,8 +8,9 @@ import (
 )
 
 var doctorCmd = &cobra.Command{
-	Use:   "doctor",
-	Short: "Check repository and shell framework health",
+	Use:     "doctor",
+	Aliases: []string{"status"},
+	Short:   "Check repository and shell framework health",
 	Long: `Diagnose and validate repository and shell framework configuration.
 
 Checks performed:

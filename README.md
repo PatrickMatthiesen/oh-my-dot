@@ -251,6 +251,16 @@ oh-my-dot doctor --shell bash
 oh-my-dot doctor --fix
 ```
 
+For GitHub HTTPS repositories, run `gh auth setup-git` after `gh auth login`.
+Clone, push, pull, and remote health checks use Git's configured HTTPS credential
+helpers. The `allow-gh-auth` setting applies only to release update checks.
+SSH URLs still require a configured SSH agent with your key loaded.
+
+Initialization reports clone failures without leaving a partial repository.
+`init --force` reuses an existing repository and preserves its files and origin.
+Use `git remote set-url origin <url>` to change its remote.
+`status` is an alias for `doctor`.
+
 The doctor checks:
 
 - Git repository and effective commit identity
