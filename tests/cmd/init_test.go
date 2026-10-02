@@ -27,9 +27,7 @@ func mockHomeDir(t testing.TB) {
 }
 
 func Test_Plain_Init_cmd(t *testing.T) {
-	fakeGitRepoPath := t.TempDir()
-	_, err := git.PlainInit(fakeGitRepoPath, true)
-	testutil.TBErrorIfNotNil(t, err)
+	fakeGitRepoPath := testutil.CreateRemoteRepo(t, "main")
 
 	invokeCommand(t, []string{"init", fakeGitRepoPath})
 
@@ -40,9 +38,7 @@ func Test_Plain_Init_cmd(t *testing.T) {
 }
 
 func Test_Existing_Init_cmd(t *testing.T) {
-	fakeGitRepoPath := t.TempDir()
-	_, err := git.PlainInit(fakeGitRepoPath, true)
-	testutil.TBErrorIfNotNil(t, err)
+	fakeGitRepoPath := testutil.CreateRemoteRepo(t, "main")
 
 	invokeCommand(t, []string{"init", fakeGitRepoPath})
 

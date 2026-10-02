@@ -257,8 +257,12 @@ helpers. The `allow-gh-auth` setting applies only to release update checks.
 SSH URLs still require a configured SSH agent with your key loaded.
 
 Initialization reports clone failures without leaving a partial repository.
-`init --force` reuses an existing repository and preserves its files and origin.
-Use `git remote set-url origin <url>` to change its remote.
+`init --force` confirms whether to reuse the current remote or asks for a new URL.
+An explicit URL skips the prompt; non-interactive forced initialization requires
+an explicit URL. Forced initialization validates the selected remote, updates
+origin, and fetches and checks out its default branch when recovering an empty
+repository. Existing commits and files are preserved. Remote initialization
+requires a remote containing commits; unreachable and empty remotes fail.
 `status` is an alias for `doctor`.
 
 The doctor checks:

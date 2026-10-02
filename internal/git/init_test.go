@@ -52,3 +52,17 @@ func TestInitFromExistingLocalRepo(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestInitGitRepoRejectsEmptyRemote(t *testing.T) {
+	remote := t.TempDir()
+	if _, err := gogit.PlainInit(remote, true); err != nil {
+		t.Fatal(err)
+	}
+	destination := filepath.Join(t.TempDir(), "dotfiles")
+	if _, err := InitGitRepo(destination, remote); err == nil {
+		t.Fatal("empty remote reported success")
+	}
+	if IsGitRepo(destination) {
+		t.Fatal("empty remote left an initialized repository")
+	}
+}
