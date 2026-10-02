@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -153,7 +154,14 @@ func SetupPushableTestRepo(t testing.TB) (*git.Repository, error) {
 	err := os.MkdirAll(temp, os.ModePerm)
 	TBErrorIfNotNil(t, err)
 
-	return internalgit.InitGitRepo(temp, remote, false)
+	repo, err := git.PlainInit(temp, false)
+	if err != nil {
+		return nil, fmt.Errorf("initialize push fixture: %w", err)
+	}
+	if _, err := repo.CreateRemote(&config.RemoteConfig{Name: "origin", URLs: []string{remote}}); err != nil {
+		return nil, fmt.Errorf("configure push fixture origin: %w", err)
+	}
+	return repo, nil
 }
 
 func TBErrorIfNotNil(t testing.TB, err error) {

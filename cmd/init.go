@@ -22,7 +22,7 @@ func init() {
 	initcmd.MarkFlagDirname("folder")
 	viper.BindPFlag("repo-path", initcmd.Flags().Lookup("folder"))
 
-	initcmd.Flags().BoolP("force", "", false, "Force initialization if previously initialized") //  or if given directory is not empty?
+	initcmd.Flags().BoolP("force", "", false, "Select and validate a remote, recovering an empty repository if needed") //  or if given directory is not empty?
 	rootCmd.AddCommand(initcmd)
 }
 
@@ -43,17 +43,33 @@ The clone is placed in $HOME/dotfiles by default, but can be changed with --fold
 			viper.Set("remote-url", args[0])
 		}
 
-		if git.IsGitRepo(viper.GetString("repo-path")) {
+		force, _ := cmd.Flags().GetBool("force")
+		requested := viper.GetString("remote-url")
+		explicitRemote := len(args) > 0 || cmd.Flags().Changed("remote")
+		existing := git.IsGitRepo(viper.GetString("repo-path"))
+		if existing {
 			if err := git.InitFromExistingRepo(viper.GetString("repo-path")); err != nil {
 				return fmt.Errorf("initialize existing repository: %w", err)
 			}
-			if len(args) > 0 || cmd.Flags().Changed("remote") {
-				requested, _ := cmd.Flags().GetString("remote")
-				if len(args) > 0 {
-					requested = args[0]
+		}
+		if force {
+			selected, err := selectForcedInitRemote(cmd, requested, viper.GetString("remote-url"), explicitRemote)
+			if err != nil {
+				return err
+			}
+			if existing {
+				if err := git.ReinitializeRepository(viper.GetString("repo-path"), selected); err != nil {
+					return fmt.Errorf("reinitialize repository: %w", err)
 				}
-				if requested != viper.GetString("remote-url") {
-					return fmt.Errorf("existing repository has a different origin; use git -C %q remote set-url origin %q to change it", viper.GetString("repo-path"), requested)
+			}
+			viper.Set("remote-url", selected)
+		} else if existing && explicitRemote && requested != viper.GetString("remote-url") {
+			return fmt.Errorf("existing repository has a different origin; use init --force with the desired URL")
+		}
+		if existing {
+			if !force && viper.GetString("remote-url") != "" {
+				if err := git.ReinitializeRepository(viper.GetString("repo-path"), viper.GetString("remote-url")); err != nil {
+					return fmt.Errorf("initialize existing remote repository: %w", err)
 				}
 			}
 			viper.Set("initialized", true)
@@ -130,4 +146,36 @@ The clone is placed in $HOME/dotfiles by default, but can be changed with --fold
 	GroupID: "basics",
 	Example: `oh-my-dot init github.com/username/dotfiles
 oh-my-dot init -r github.com/username/dotfiles -f $HOME/myCoolDotfiles`,
+}
+
+var confirmInitRemote = interactive.PromptConfirm
+var inputInitRemote = interactive.PromptInput
+
+func selectForcedInitRemote(cmd *cobra.Command, requested, saved string, explicit bool) (string, error) {
+	if explicit {
+		if requested == "" {
+			return "", fmt.Errorf("no remote URL provided")
+		}
+		return requested, nil
+	}
+	if !interactive.ShouldPrompt(cmd, false) {
+		return "", fmt.Errorf("forced initialization requires an explicit URL in non-interactive mode; use init --force <url> or --remote <url>")
+	}
+	if saved != "" {
+		reuse, err := confirmInitRemote(fmt.Sprintf("Reuse remote repository %s?", saved))
+		if err != nil {
+			return "", fmt.Errorf("initialization cancelled: %w", err)
+		}
+		if reuse {
+			return saved, nil
+		}
+	}
+	selected, err := inputInitRemote("Enter remote repository URL:", "")
+	if err != nil {
+		return "", fmt.Errorf("initialization cancelled: %w", err)
+	}
+	if selected == "" {
+		return "", fmt.Errorf("no remote URL provided")
+	}
+	return selected, nil
 }

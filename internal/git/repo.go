@@ -110,23 +110,25 @@ func InitGitRepo(rootGitRepoPath string, remoteUrl string, opts ...bool) (*git.R
 			return nil, fmt.Errorf("create clone directory: %w", err)
 		}
 		defer os.RemoveAll(temp)
-		_, err = git.PlainClone(temp, &git.CloneOptions{
+		cloned, err := git.PlainClone(temp, &git.CloneOptions{
 			URL:           remoteUrl,
 			ClientOptions: RemoteClientOptions(parent, remoteUrl),
 		})
 		if errors.Is(err, transport.ErrEmptyRemoteRepository) {
-			os.RemoveAll(temp)
-			r, initErr := git.PlainInit(temp, false)
-			if initErr != nil {
-				return nil, fmt.Errorf("initialize empty remote clone: %w", initErr)
-			}
-			_, err = r.CreateRemote(&config.RemoteConfig{Name: "origin", URLs: []string{remoteUrl}})
+			return nil, fmt.Errorf("remote repository has no commits; remote initialization requires a populated repository")
 		}
 		if err != nil {
 			if IsSSHAgentError(err) {
 				return nil, fmt.Errorf("clone repository: %w\n%s", err, sshAgentHelp(runtime.GOOS))
 			}
 			return nil, fmt.Errorf("clone repository (check URL and authentication): %w", err)
+		}
+		head, err := cloned.Head()
+		if err != nil {
+			return nil, fmt.Errorf("cloned repository has no checked-out commit: %w", err)
+		}
+		if _, err := cloned.CommitObject(head.Hash()); err != nil {
+			return nil, fmt.Errorf("verify cloned commit: %w", err)
 		}
 		if err := os.Remove(rootGitRepoPath); err != nil && !os.IsNotExist(err) {
 			return nil, fmt.Errorf("replace empty destination: %w", err)
