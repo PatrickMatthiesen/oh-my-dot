@@ -2,6 +2,7 @@ package git
 
 import (
 	"os"
+	"runtime"
 
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 )
@@ -9,14 +10,7 @@ import (
 // DisplaySSHAgentError displays a helpful error message when SSH agent is not configured
 // exitOnError: if true, exits the program; if false, just displays a warning
 func DisplaySSHAgentError(exitOnError bool) {
-	fileops.ColorPrintfn(fileops.Yellow, "⚠ SSH agent not configured - cannot access remote repository.\n")
-	fileops.ColorPrintln("To fix this, choose one of the following:", fileops.Reset)
-	fileops.ColorPrintln("  1. Fix in this session only, run:", fileops.Reset)
-	fileops.ColorPrintfn(fileops.Cyan, "     eval \"$(ssh-agent -s)\" && ssh-add\n")
-	fileops.ColorPrintln("  2. Automatically add to your shell profile:", fileops.Reset)
-	fileops.ColorPrintfn(fileops.Cyan, "     oh-my-dot feature add ssh-agent\n")
-	fileops.ColorPrintln("  3. Manually add to your shell profile and restart:", fileops.Reset)
-	fileops.ColorPrintfn(fileops.Cyan, "     eval \"$(ssh-agent -s)\" && ssh-add\n")
+	fileops.ColorPrintln("⚠ "+sshAgentHelp(runtime.GOOS), fileops.Yellow)
 
 	if exitOnError {
 		os.Exit(1)
@@ -59,4 +53,29 @@ func CheckRemoteAccessWithHelp(exitOnError bool) {
 			}
 		}
 	}
+}
+
+// sshAgentHelp describes recovery without claiming an unreachable agent is absent.
+func sshAgentHelp(platform string) string {
+	if platform == "windows" {
+		return `SSH agent unavailable; SSH authentication cannot continue.
+Check the service in PowerShell: Get-Service ssh-agent
+If installed, run in an administrator PowerShell:
+  Set-Service -Name ssh-agent -StartupType Manual
+  Start-Service ssh-agent
+Then load your key in your normal PowerShell:
+  ssh-add "$HOME\.ssh\id_ed25519"
+Replace the key path with your existing private key.
+If the service is missing, install the OpenSSH Client in administrator PowerShell:
+  Add-WindowsCapability -Online -Name OpenSSH.Client~~~~0.0.1.0
+Then start the service, load your key, and retry the command.`
+	}
+	return `SSH agent unavailable; SSH authentication cannot continue.
+Check that ssh-agent and ssh-add are installed and your shell can reach the agent.
+In bash or zsh, start an agent and load your existing key:
+  eval "$(ssh-agent -s)"
+  ssh-add ~/.ssh/id_ed25519
+Replace the key path with your existing private key.
+If the commands are missing, install your operating system's OpenSSH client package.
+Then retry the command from the shell connected to the agent.`
 }

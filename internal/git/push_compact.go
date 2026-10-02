@@ -162,7 +162,8 @@ func resolveRemoteBranchHash(r *gogit.Repository, branchName string) (plumbing.H
 	remoteBranchRefName := plumbing.NewRemoteReferenceName("origin", branchName)
 
 	err := r.Fetch(&gogit.FetchOptions{
-		RemoteName: "origin",
+		ClientOptions: repositoryClientOptions(r),
+		RemoteName:    "origin",
 		RefSpecs: []config.RefSpec{
 			config.RefSpec(fmt.Sprintf("+refs/heads/%s:%s", branchName, remoteBranchRefName)),
 		},
@@ -181,7 +182,7 @@ func resolveRemoteBranchHash(r *gogit.Repository, branchName string) (plumbing.H
 		return plumbing.ZeroHash, fmt.Errorf("no remote 'origin' configured: %w", remoteErr)
 	}
 
-	remoteRefs, remoteErr := remote.List(&gogit.ListOptions{})
+	remoteRefs, remoteErr := remote.List(&gogit.ListOptions{ClientOptions: repositoryClientOptions(r)})
 	if remoteErr != nil {
 		return plumbing.ZeroHash, fmt.Errorf("unable to access remote repository: %w", remoteErr)
 	}
