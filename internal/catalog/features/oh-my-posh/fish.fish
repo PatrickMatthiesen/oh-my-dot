@@ -12,7 +12,14 @@ if not test -f "$omd_omp_config"
     end
 end
 
+{{ if .AutoUpgrade }}# Oh My Posh caches update checks according to its configured upgrade interval.
 if test -f "$omd_omp_config"
+    oh-my-posh upgrade --auto --config "$omd_omp_config"; or true
+else
+    oh-my-posh upgrade --auto; or true
+end
+
+{{ end }}if test -f "$omd_omp_config"
     oh-my-posh init fish --config "$omd_omp_config" | source
 else
     oh-my-posh init fish | source

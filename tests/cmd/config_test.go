@@ -211,8 +211,8 @@ func Test_Config_Completion_SetKeysAndValues(t *testing.T) {
 	if !strings.Contains(output, "push-compact") {
 		t.Fatalf("expected set key completion output to contain push-compact, got %q", output)
 	}
-	if strings.Contains(output, "remote-url") {
-		t.Fatalf("expected set key completion output to omit read-only remote-url, got %q", output)
+	if !strings.Contains(output, "remote-url") {
+		t.Fatalf("expected set key completion output to contain writable remote-url, got %q", output)
 	}
 
 	output, err = captureCommandOutput(t, []string{"__complete", "config", "set", "push-compact", ""})

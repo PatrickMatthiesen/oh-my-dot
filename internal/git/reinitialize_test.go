@@ -10,7 +10,7 @@ import (
 )
 
 func TestReinitializeRepository(t *testing.T) {
-	for _, scenario := range []string{"recover empty", "preserve committed files", "reject untracked files", "failed remote", "empty remote"} {
+	for _, scenario := range []string{"recover empty", "preserve committed files", "reject untracked files", "failed remote", "empty remote", "empty remote with files"} {
 		t.Run(scenario, func(t *testing.T) {
 			path := t.TempDir()
 			repo, err := gogit.PlainInit(path, false)
@@ -37,7 +37,12 @@ func TestReinitializeRepository(t *testing.T) {
 				if err := os.WriteFile(filepath.Join(path, "initial.txt"), []byte("keep"), 0644); err != nil {
 					t.Fatal(err)
 				}
-			case "empty remote":
+			case "empty remote", "empty remote with files":
+				if scenario == "empty remote with files" {
+					if err := os.WriteFile(filepath.Join(path, "keep.txt"), []byte("keep"), 0644); err != nil {
+						t.Fatal(err)
+					}
+				}
 				selected = t.TempDir()
 				if _, err := gogit.PlainInit(selected, true); err != nil {
 					t.Fatal(err)
@@ -46,7 +51,7 @@ func TestReinitializeRepository(t *testing.T) {
 				selected = filepath.Join(t.TempDir(), "missing")
 			}
 			err = ReinitializeRepository(path, selected)
-			wantError := scenario == "reject untracked files" || scenario == "failed remote" || scenario == "empty remote"
+			wantError := scenario == "reject untracked files" || scenario == "failed remote"
 			if (err != nil) != wantError {
 				t.Fatalf("reinitialize error = %v, want error %v", err, wantError)
 			}
@@ -72,6 +77,12 @@ func TestReinitializeRepository(t *testing.T) {
 				head, err := repo.Head()
 				if err != nil || head.Name().Short() != "main" {
 					t.Fatalf("default branch = %v, %v", head, err)
+				}
+			}
+			if scenario == "empty remote with files" {
+				data, err := os.ReadFile(filepath.Join(path, "keep.txt"))
+				if err != nil || string(data) != "keep" {
+					t.Fatalf("file changed: %q, %v", data, err)
 				}
 			}
 			if scenario == "preserve committed files" {

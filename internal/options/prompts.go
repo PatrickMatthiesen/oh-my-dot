@@ -1,6 +1,7 @@
 package options
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -60,68 +61,71 @@ func PromptForOptions(metadata catalog.FeatureMetadata) (map[string]any, error) 
 // PromptForOptionsWithOverrides collects user input for feature options interactively,
 // using any provided overrides as fixed values.
 func PromptForOptionsWithOverrides(metadata catalog.FeatureMetadata, overrides map[string]any) (map[string]any, error) {
-	// If no options defined, return empty map
-	if len(metadata.Options) == 0 {
-		return map[string]any{}, nil
-	}
+	return promptForOptions(metadata, overrides, optionPrompter{
+		input:        interactive.PromptInputWithNavigation,
+		confirm:      interactive.ConfirmWithNavigation,
+		selectOption: interactive.PromptSelectWithNavigation,
+	})
+}
 
-	fileops.ColorPrintfn(fileops.Cyan, "\n⚙️  Feature Configuration\n")
+type optionPrompter struct {
+	input        func(string, string) (string, error)
+	confirm      func(string, bool) (bool, error)
+	selectOption func(string, []string, int) (int, error)
+}
 
+func promptForOptions(metadata catalog.FeatureMetadata, overrides map[string]any, prompter optionPrompter) (map[string]any, error) {
 	values := make(map[string]any)
 	for key, value := range overrides {
 		values[key] = value
 	}
-
+	var editable []catalog.OptionMetadata
 	for _, opt := range metadata.Options {
-		if _, hasOverride := values[opt.Name]; hasOverride {
+		if _, fixed := overrides[opt.Name]; !fixed {
+			editable = append(editable, opt)
+		}
+	}
+	for index := 0; index < len(editable); {
+		opt := editable[index]
+		if previous, answered := values[opt.Name]; answered {
+			opt.Default = previous
+		}
+		value, err := prompter.promptOption(opt)
+		if errors.Is(err, interactive.ErrBack) {
+			if index > 0 {
+				index--
+			}
 			continue
 		}
-
-		// For optional options, ask if user wants to configure
-		if !opt.Required {
-			question := fmt.Sprintf("Configure %s?", opt.DisplayName)
-			if opt.Default != nil {
-				question = fmt.Sprintf("%s (default: %v)", question, opt.Default)
-			}
-
-			configure, err := interactive.Confirm(question, false)
-			if err != nil {
-				return nil, fmt.Errorf("prompt cancelled: %w", err)
-			}
-
-			if !configure {
-				// Use default value
-				if opt.Default != nil {
-					values[opt.Name] = opt.Default
-				}
-				continue
-			}
+		if err != nil {
+			return nil, fmt.Errorf("configure %s: %w", opt.DisplayName, err)
 		}
+		if err := validation.ValidateOption(opt, value); err != nil {
+			fileops.ColorPrintfn(fileops.Red, "Validation failed: %v. Please try again.", err)
+			continue
+		}
+		if value == nil {
+			delete(values, opt.Name)
+		} else {
+			values[opt.Name] = value
+		}
+		index++
+	}
+	return values, nil
+}
 
-		// Prompt based on type
-		value, err := promptForOption(opt)
+func (p optionPrompter) promptOption(opt catalog.OptionMetadata) (any, error) {
+	// Booleans are already a yes/no question. Text and paths can be left blank.
+	if !opt.Required && (opt.Type == catalog.OptionTypeInt || opt.Type == catalog.OptionTypeEnum) {
+		configure, err := p.confirm(fmt.Sprintf("Configure %s?", opt.DisplayName), false)
 		if err != nil {
 			return nil, err
 		}
-
-		// Validate
-		if err := validation.ValidateOption(opt, value); err != nil {
-			fileops.ColorPrintfn(fileops.Red, "Validation failed: %v", err)
-			// Retry
-			value, err = promptForOption(opt)
-			if err != nil {
-				return nil, err
-			}
-			// Validate again
-			if err := validation.ValidateOption(opt, value); err != nil {
-				return nil, fmt.Errorf("validation failed for %s: %w", opt.Name, err)
-			}
+		if !configure {
+			return opt.Default, nil
 		}
-
-		values[opt.Name] = value
 	}
-
-	return values, nil
+	return p.promptForOption(opt)
 }
 
 // ResolveOptionsForNonInteractive resolves feature options without prompting.
@@ -196,7 +200,7 @@ func resolveOptionDefault(opt catalog.OptionMetadata) (any, bool, error) {
 }
 
 // promptForOption prompts for a single option based on its type
-func promptForOption(opt catalog.OptionMetadata) (any, error) {
+func (p optionPrompter) promptForOption(opt catalog.OptionMetadata) (any, error) {
 	// Build question with description
 	question := opt.DisplayName
 	if opt.Description != "" {
@@ -204,32 +208,34 @@ func promptForOption(opt catalog.OptionMetadata) (any, error) {
 	}
 	if opt.Required {
 		question = fmt.Sprintf("%s (required)", question)
+	} else if opt.Type == catalog.OptionTypeFile || opt.Type == catalog.OptionTypePath || opt.Type == catalog.OptionTypeString {
+		question += " (Enter to keep default or skip)"
 	}
 
 	switch opt.Type {
 	case catalog.OptionTypeString:
-		return promptString(opt, question)
+		return p.promptString(opt, question)
 	case catalog.OptionTypeInt:
-		return promptInt(opt, question)
+		return p.promptInt(opt, question)
 	case catalog.OptionTypeBool:
-		return promptBool(opt, question)
+		return p.promptBool(opt, question)
 	case catalog.OptionTypeEnum:
-		return promptEnum(opt, question)
+		return p.promptEnum(opt, question)
 	case catalog.OptionTypeFile, catalog.OptionTypePath:
-		return promptPath(opt, question)
+		return p.promptPath(opt, question)
 	default:
 		return nil, fmt.Errorf("unsupported option type: %s", opt.Type)
 	}
 }
 
 // promptString prompts for string input
-func promptString(opt catalog.OptionMetadata, question string) (any, error) {
+func (p optionPrompter) promptString(opt catalog.OptionMetadata, question string) (any, error) {
 	defaultStr := ""
 	if opt.Default != nil {
 		defaultStr = fmt.Sprintf("%v", opt.Default)
 	}
 
-	value, err := interactive.PromptInput(question, defaultStr)
+	value, err := p.input(question, defaultStr)
 	if err != nil {
 		return nil, err
 	}
@@ -239,11 +245,14 @@ func promptString(opt catalog.OptionMetadata, question string) (any, error) {
 		return opt.Default, nil
 	}
 
+	if value == "" && !opt.Required {
+		return nil, nil
+	}
 	return value, nil
 }
 
 // promptInt prompts for integer input
-func promptInt(opt catalog.OptionMetadata, question string) (any, error) {
+func (p optionPrompter) promptInt(opt catalog.OptionMetadata, question string) (any, error) {
 	// Build constraints string
 	var constraints []string
 	if opt.IntMin != nil {
@@ -262,7 +271,7 @@ func promptInt(opt catalog.OptionMetadata, question string) (any, error) {
 	}
 
 	for {
-		value, err := interactive.PromptInput(question, defaultStr)
+		value, err := p.input(question, defaultStr)
 		if err != nil {
 			return nil, err
 		}
@@ -284,7 +293,7 @@ func promptInt(opt catalog.OptionMetadata, question string) (any, error) {
 }
 
 // promptBool prompts for boolean input
-func promptBool(opt catalog.OptionMetadata, question string) (any, error) {
+func (p optionPrompter) promptBool(opt catalog.OptionMetadata, question string) (any, error) {
 	defaultBool := false
 	if opt.Default != nil {
 		if b, ok := opt.Default.(bool); ok {
@@ -292,7 +301,7 @@ func promptBool(opt catalog.OptionMetadata, question string) (any, error) {
 		}
 	}
 
-	value, err := interactive.Confirm(question, defaultBool)
+	value, err := p.confirm(question, defaultBool)
 	if err != nil {
 		return nil, err
 	}
@@ -301,18 +310,20 @@ func promptBool(opt catalog.OptionMetadata, question string) (any, error) {
 }
 
 // promptEnum prompts for enum selection
-func promptEnum(opt catalog.OptionMetadata, question string) (any, error) {
+func (p optionPrompter) promptEnum(opt catalog.OptionMetadata, question string) (any, error) {
 	if len(opt.EnumValues) == 0 {
 		return nil, fmt.Errorf("enum option has no valid values")
 	}
 
-	// Add description as header
-	if opt.Description != "" {
-		fileops.ColorPrintln(opt.Description, fileops.Reset)
-	}
-
 	// Use PromptSelect for single selection
-	selectedIdx, err := interactive.PromptSelect(question, opt.EnumValues)
+	selected := 0
+	for i, value := range opt.EnumValues {
+		if value == opt.Default {
+			selected = i
+			break
+		}
+	}
+	selectedIdx, err := p.selectOption(question, opt.EnumValues, selected)
 	if err != nil {
 		return nil, err
 	}
@@ -321,7 +332,7 @@ func promptEnum(opt catalog.OptionMetadata, question string) (any, error) {
 }
 
 // promptPath prompts for file/path input
-func promptPath(opt catalog.OptionMetadata, question string) (any, error) {
+func (p optionPrompter) promptPath(opt catalog.OptionMetadata, question string) (any, error) {
 	// Add path requirements to question
 	var hints []string
 	if opt.PathMustExist {
@@ -342,7 +353,7 @@ func promptPath(opt catalog.OptionMetadata, question string) (any, error) {
 	// For now, use text input
 	// Future enhancement: use file picker for better UX
 	for {
-		value, err := interactive.PromptInput(question, defaultStr)
+		value, err := p.input(question, defaultStr)
 		if err != nil {
 			return nil, err
 		}
@@ -350,6 +361,10 @@ func promptPath(opt catalog.OptionMetadata, question string) (any, error) {
 		// If empty and has default, use default
 		if value == "" && opt.Default != nil {
 			return opt.Default, nil
+		}
+
+		if strings.TrimSpace(value) == "" && !opt.Required {
+			return nil, nil
 		}
 
 		// Expand and validate path

@@ -4,9 +4,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
+	gogit "github.com/go-git/go-git/v6"
+	gitconfig "github.com/go-git/go-git/v6/config"
+	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 )
 
 func init() {
@@ -69,7 +73,7 @@ type configKeySpec struct {
 var configKeys = []configKeySpec{
 	{Key: "location", Help: "Config file location"},
 	{Key: "dotfiles", Help: "Dotfiles repository path"},
-	{Key: "remote-url", Help: "Remote repository URL"},
+	{Key: "remote-url", Help: "Origin URL (empty to remove origin)", Writable: true},
 	{Key: "initialized", Help: "Whether oh-my-dot has been initialized"},
 	{Key: "allow-gh-auth", Help: "Allow GitHub CLI authentication for update checks", Writable: true, Values: []string{"true", "false"}},
 	{Key: "push-compact", Help: "Push-time duplicate commit compaction mode", Writable: true, Values: []string{"auto", "ask", "off"}},
@@ -107,7 +111,7 @@ func showAllConfig() {
 
 	allowGHAuth := viper.GetBool(allowGHAuthConfigKey)
 	fileops.ColorPrintf(fileops.Blue, "  allow-gh-auth: ")
-	fileops.ColorPrintfn(fileops.Green, "%t", allowGHAuth)
+	fileops.ColorPrintfn(fileops.Green, "%t (update checks only)", allowGHAuth)
 
 	fileops.ColorPrintf(fileops.Blue, "  push-compact: ")
 	fileops.ColorPrintfn(fileops.Green, "%s", pushCompactMode())
@@ -154,6 +158,8 @@ func showConfigValue(key string) {
 
 func updateConfigValue(key, value string) error {
 	switch key {
+	case "remote-url":
+		return updateRemoteURL(strings.TrimSpace(value))
 	case "allow-gh-auth":
 		normalized := strings.TrimSpace(strings.ToLower(value))
 		if normalized != "true" && normalized != "false" {
@@ -200,5 +206,52 @@ func completeConfigValues(key string) []string {
 		return spec.Values
 	}
 
+	return nil
+}
+
+// updateRemoteURL keeps the repository origin and application configuration in sync.
+// It changes configuration only; the next remote operation checks access.
+func updateRemoteURL(value string) error {
+	if strings.ContainsAny(value, "\r\n\x00") {
+		return fmt.Errorf("remote URL must not contain line breaks or NUL characters")
+	}
+	repo, err := gogit.PlainOpen(viper.GetString("repo-path"))
+	if err != nil {
+		return fmt.Errorf("open dotfiles repository: %w", err)
+	}
+	original, err := repo.Config()
+	if err != nil {
+		return fmt.Errorf("read repository configuration: %w", err)
+	}
+	updated, err := repo.Config()
+	if err != nil {
+		return fmt.Errorf("read repository configuration: %w", err)
+	}
+	if value == "" {
+		delete(updated.Remotes, "origin")
+		for _, branch := range updated.Branches {
+			if branch.Remote == "origin" {
+				branch.Remote = ""
+				branch.Merge = plumbing.ReferenceName("")
+			}
+		}
+	} else if origin, exists := updated.Remotes["origin"]; exists {
+		origin.URLs = []string{value}
+	} else {
+		updated.Remotes["origin"] = &gitconfig.RemoteConfig{Name: "origin", URLs: []string{value}, Fetch: []gitconfig.RefSpec{"+refs/heads/*:refs/remotes/origin/*"}}
+	}
+	if err := repo.SetConfig(updated); err != nil {
+		return fmt.Errorf("save origin configuration: %w", err)
+	}
+	previous := viper.GetString("remote-url")
+	viper.Set("remote-url", value)
+	if err := viper.WriteConfig(); err != nil {
+		viper.Set("remote-url", previous)
+		if rollbackErr := repo.SetConfig(original); rollbackErr != nil {
+			return fmt.Errorf("save remote URL: %w; restore origin: %v", err, rollbackErr)
+		}
+		return fmt.Errorf("save remote URL: %w", err)
+	}
+	fileops.ColorPrintfn(fileops.Green, "Updated remote-url")
 	return nil
 }

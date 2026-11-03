@@ -13,7 +13,20 @@ if (-not (Test-Path $omdOmpConfig -PathType Leaf)) {
     }
 }
 
-if (Test-Path $omdOmpConfig -PathType Leaf) {
+{{ if .AutoUpgrade }}# Oh My Posh caches update checks according to its configured upgrade interval.
+try {
+    if (Test-Path $omdOmpConfig -PathType Leaf) {
+        oh-my-posh upgrade --auto --config $omdOmpConfig
+    }
+    else {
+        oh-my-posh upgrade --auto
+    }
+}
+catch {
+    Write-Warning "Oh My Posh auto upgrade failed: $_"
+}
+
+{{ end }}if (Test-Path $omdOmpConfig -PathType Leaf) {
     oh-my-posh init pwsh --config $omdOmpConfig | Invoke-Expression
 }
 else {

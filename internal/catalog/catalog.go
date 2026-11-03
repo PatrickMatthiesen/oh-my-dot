@@ -253,7 +253,7 @@ var Catalog = map[string]FeatureMetadata{
 			{
 				Name:        "auto_upgrade",
 				DisplayName: "Auto Upgrade",
-				Description: "Automatically check for updates on shell start",
+				Description: "Automatically install Oh My Posh updates using its configured check interval",
 				Type:        OptionTypeBool,
 				Required:    false,
 				Default:     false,

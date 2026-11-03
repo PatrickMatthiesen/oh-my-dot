@@ -1,11 +1,15 @@
 package git
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	gogit "github.com/go-git/go-git/v6"
+	"github.com/go-git/go-git/v6/plumbing"
+	"github.com/go-git/go-git/v6/plumbing/object"
 )
 
 func TestInitGitRepoFailurePreservesDestination(t *testing.T) {
@@ -53,16 +57,37 @@ func TestInitFromExistingLocalRepo(t *testing.T) {
 	}
 }
 
-func TestInitGitRepoRejectsEmptyRemote(t *testing.T) {
+func TestInitGitRepoAcceptsEmptyRemote(t *testing.T) {
 	remote := t.TempDir()
 	if _, err := gogit.PlainInit(remote, true); err != nil {
 		t.Fatal(err)
 	}
 	destination := filepath.Join(t.TempDir(), "dotfiles")
-	if _, err := InitGitRepo(destination, remote); err == nil {
-		t.Fatal("empty remote reported success")
+	repo, err := InitGitRepo(destination, remote)
+	if err != nil {
+		t.Fatalf("initialize empty remote: %v", err)
 	}
-	if IsGitRepo(destination) {
-		t.Fatal("empty remote left an initialized repository")
+	origin, err := repo.Remote("origin")
+	if err != nil || origin.Config().URLs[0] != remote {
+		t.Fatalf("origin = %v, %v", origin, err)
+	}
+	if _, err := repo.Head(); !errors.Is(err, plumbing.ErrReferenceNotFound) {
+		t.Fatalf("empty remote HEAD error = %v", err)
+	}
+	worktree, err := repo.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(destination, "first.txt"), []byte("first"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := worktree.Add("first.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := worktree.Commit("First commit", &gogit.CommitOptions{Author: &object.Signature{Name: "Test", Email: "test@example.invalid", When: time.Now()}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := origin.Push(&gogit.PushOptions{}); err != nil {
+		t.Fatalf("first push to empty remote: %v", err)
 	}
 }

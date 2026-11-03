@@ -29,11 +29,11 @@ Adding oh-my-posh to bash...
     dracula
     pure
 
-❯ Configure Config File? (default: <nil>)
-  [No]  [Yes]
+Config File - Path to custom Oh My Posh configuration file (Enter to keep default or skip)
+>
 
-❯ Configure Auto Upgrade? (default: false)
-  [No]  [Yes]
+Auto Upgrade - Automatically check for updates on shell start
+  [Yes]  > [No]
 
 ✓ oh-my-posh configured successfully
 
@@ -98,15 +98,16 @@ Required options **must** be configured before the feature can be added. You'll 
 
 Optional options can be skipped. If you skip an optional option, the feature's default value (if any) will be used.
 
-For optional options, you'll first be asked if you want to configure them:
+Boolean options ask one yes/no question. Enter accepts the displayed default.
+For optional text and file paths, leave the input blank to keep the default or skip the option if it has no default.
 
-```
-❯ Configure Config File? (default: <nil>)
-  [No]  [Yes]
-```
+During feature configuration:
 
-- Select **No** or press Enter to skip and use the default
-- Select **Yes** to provide a custom value
+- Press Ctrl+B to return to the previous option. Previously submitted answers remain available.
+- Press Ctrl+S to skip this feature and continue with the next selected feature.
+- Press Esc or Ctrl+C to cancel the operation. In the catalog wizard, features already added are kept and committed; remaining features are not added.
+
+The catalog marks installed features with their shell names and leaves all features unselected.
 
 ## Option Validation
 

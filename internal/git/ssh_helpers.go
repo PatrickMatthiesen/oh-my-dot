@@ -1,6 +1,7 @@
 package git
 
 import (
+	"github.com/spf13/viper"
 	"os"
 	"runtime"
 
@@ -39,18 +40,9 @@ func CheckRemoteAccessWithHelp(exitOnError bool) {
 	}
 
 	if err := CheckRemotePushPermission(); err != nil {
-		if IsSSHAgentError(err) {
-			DisplaySSHAgentError(exitOnError)
-		} else {
-			// Generic error message for other issues
-			if exitOnError {
-				fileops.ColorPrintfn(fileops.Red, "Error: %s", err)
-				fileops.ColorPrintln("Cannot access remote repository. Please check your credentials and network connection.", fileops.Red)
-				os.Exit(1)
-			} else {
-				fileops.ColorPrintfn(fileops.Yellow, "Warning: Unable to verify remote push access: %s", err)
-				fileops.ColorPrintln("You may not be able to push changes to the remote repository.", fileops.Yellow)
-			}
+		fileops.ColorPrintfn(fileops.Yellow, "Remote access failed: %s\n%s", err, RemoteErrorHelp(err, viper.GetString("remote-url")))
+		if exitOnError {
+			os.Exit(1)
 		}
 	}
 }

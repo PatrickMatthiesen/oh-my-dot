@@ -9,6 +9,7 @@ import (
 	"github.com/go-git/go-git/v6/config"
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/object"
+	"github.com/go-git/go-git/v6/plumbing/transport"
 	"github.com/spf13/viper"
 )
 
@@ -161,15 +162,34 @@ func CompactPushHistory(plan PushCompactionPlan) (PushCompactionPlan, error) {
 func resolveRemoteBranchHash(r *gogit.Repository, branchName string) (plumbing.Hash, error) {
 	remoteBranchRefName := plumbing.NewRemoteReferenceName("origin", branchName)
 
-	err := r.Fetch(&gogit.FetchOptions{
-		ClientOptions: repositoryClientOptions(r),
-		RemoteName:    "origin",
-		RefSpecs: []config.RefSpec{
-			config.RefSpec(fmt.Sprintf("+refs/heads/%s:%s", branchName, remoteBranchRefName)),
-		},
-	})
-	if err != nil && !errors.Is(err, gogit.NoErrAlreadyUpToDate) {
-		return plumbing.ZeroHash, fmt.Errorf("failed to fetch remote branch: %w", err)
+	origin, err := r.Remote("origin")
+	if err != nil {
+		return plumbing.ZeroHash, fmt.Errorf("inspect origin: %w", err)
+	}
+	var fetchErr error
+	if IsSSHRemote(origin.Config().URLs[0]) {
+		worktree, err := r.Worktree()
+		if err != nil {
+			return plumbing.ZeroHash, fmt.Errorf("open worktree: %w", err)
+		}
+		fetchErr = FetchSSH(worktree.Filesystem.Root(), origin.Config().URLs[0], fmt.Sprintf("+refs/heads/%s:%s", branchName, remoteBranchRefName))
+	} else {
+		fetchErr = r.Fetch(&gogit.FetchOptions{
+			ClientOptions: repositoryClientOptions(r),
+			RemoteName:    "origin",
+			RefSpecs: []config.RefSpec{
+				config.RefSpec(fmt.Sprintf("+refs/heads/%s:%s", branchName, remoteBranchRefName)),
+			},
+		})
+	}
+	if fetchErr != nil && !errors.Is(fetchErr, gogit.NoErrAlreadyUpToDate) {
+		// A new remote has no branch to compact against. Native Git reports
+		// this as a failed refspec; list once to distinguish it from lost access.
+		refs, listErr := ListRemote(viper.GetString("repo-path"), origin.Config().URLs[0], 15)
+		if errors.Is(listErr, transport.ErrEmptyRemoteRepository) || listErr == nil && len(refs) == 0 {
+			return plumbing.ZeroHash, fmt.Errorf("%w: %s", errRemoteBranchNotFound, branchName)
+		}
+		return plumbing.ZeroHash, fmt.Errorf("failed to fetch remote branch: %w", fetchErr)
 	}
 
 	remoteRef, err := r.Reference(remoteBranchRefName, true)
@@ -182,7 +202,7 @@ func resolveRemoteBranchHash(r *gogit.Repository, branchName string) (plumbing.H
 		return plumbing.ZeroHash, fmt.Errorf("no remote 'origin' configured: %w", remoteErr)
 	}
 
-	remoteRefs, remoteErr := remote.List(&gogit.ListOptions{ClientOptions: repositoryClientOptions(r)})
+	remoteRefs, remoteErr := ListRemote(viper.GetString("repo-path"), remote.Config().URLs[0], 15)
 	if remoteErr != nil {
 		return plumbing.ZeroHash, fmt.Errorf("unable to access remote repository: %w", remoteErr)
 	}

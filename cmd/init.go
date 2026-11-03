@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -57,6 +58,10 @@ The clone is placed in $HOME/dotfiles by default, but can be changed with --fold
 			if err != nil {
 				return err
 			}
+			selected, err = ResolveInitRemote(cmd, selected)
+			if err != nil {
+				return err
+			}
 			if existing {
 				if err := git.ReinitializeRepository(viper.GetString("repo-path"), selected); err != nil {
 					return fmt.Errorf("reinitialize repository: %w", err)
@@ -68,6 +73,11 @@ The clone is placed in $HOME/dotfiles by default, but can be changed with --fold
 		}
 		if existing {
 			if !force && viper.GetString("remote-url") != "" {
+				remoteURL, err := ResolveInitRemote(cmd, viper.GetString("remote-url"))
+				if err != nil {
+					return err
+				}
+				viper.Set("remote-url", remoteURL)
 				if err := git.ReinitializeRepository(viper.GetString("repo-path"), viper.GetString("remote-url")); err != nil {
 					return fmt.Errorf("initialize existing remote repository: %w", err)
 				}
@@ -80,38 +90,20 @@ The clone is placed in $HOME/dotfiles by default, but can be changed with --fold
 			return nil
 		}
 
-		// allow for the remote url to be set in args
-		if viper.GetString("remote-url") == "" && len(args) > 0 {
-			viper.Set("remote-url", args[0])
+		if viper.GetString("remote-url") == "" && !explicitRemote && !force && interactive.ShouldPrompt(cmd, false) {
+			remoteURL, err := inputInitRemote("Remote repository URL (leave blank for a local repository):", "")
+			if err != nil {
+				return fmt.Errorf("initialization cancelled: %w", err)
+			}
+			viper.Set("remote-url", strings.TrimSpace(remoteURL))
 		}
 
-		// If no remote URL is provided, handle based on mode
-		if viper.GetString("remote-url") == "" {
-			// Check if we should prompt
-			if interactive.ShouldPrompt(cmd, false) {
-				// Ask if user wants to use a remote repository
-				useRemote, err := interactive.PromptConfirm("Do you want to use a remote repository?")
-				if err != nil {
-					return fmt.Errorf("initialization cancelled: %w", err)
-				}
-
-				if useRemote {
-					// Prompt for remote URL
-					remoteURL, err := interactive.PromptInput("Enter remote repository URL:", "")
-					if err != nil {
-						return fmt.Errorf("initialization cancelled: %w", err)
-					}
-					if remoteURL == "" {
-						return fmt.Errorf("no remote URL provided")
-					}
-					viper.Set("remote-url", remoteURL)
-				}
-			} else {
-				// Non-interactive mode: error
-				fileops.ColorPrintln("No remote URL specified", fileops.Red)
-				fileops.ColorPrintln("Use: "+cmd.Root().Name()+" init <url> or set --remote flag", fileops.Yellow)
-				return fmt.Errorf("no remote URL specified")
+		if !force {
+			remoteURL, err := ResolveInitRemote(cmd, viper.GetString("remote-url"))
+			if err != nil {
+				return err
 			}
+			viper.Set("remote-url", remoteURL)
 		}
 
 		_, err := git.InitGitRepo(viper.GetString("repo-path"), viper.GetString("remote-url"))

@@ -1,8 +1,12 @@
 package featurecmd
 
 import (
+	"errors"
 	"fmt"
 	"sort"
+	"strings"
+
+	"github.com/spf13/cobra"
 
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/catalog"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
@@ -10,7 +14,6 @@ import (
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/manifest"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/options"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/shell"
-	"github.com/spf13/cobra"
 )
 
 func (state *commandState) runFeatureAdd(cmd *cobra.Command, args []string) error {
@@ -73,6 +76,14 @@ func (state *commandState) runFeatureAdd(cmd *cobra.Command, args []string) erro
 
 		if isInteractive() {
 			optionValues, err = options.PromptForOptionsWithOverrides(metadata, overrides)
+			if errors.Is(err, interactive.ErrSkip) {
+				fileops.ColorPrintfn(fileops.Yellow, "Skipped %s", featureName)
+				return nil
+			}
+			if errors.Is(err, interactive.ErrCancelled) {
+				fileops.ColorPrintln("Cancelled", fileops.Yellow)
+				return nil
+			}
 			if err != nil {
 				return fmt.Errorf("failed to collect feature options: %w", err)
 			}
@@ -116,8 +127,6 @@ func (state *commandState) runFeatureAdd(cmd *cobra.Command, args []string) erro
 }
 
 func (state *commandState) runInteractiveFeatureAdd(repoPath string) error {
-	alias := state.aliasProvider()
-
 	if !isInteractive() {
 		return fmt.Errorf("cannot run interactive mode in non-interactive environment")
 	}
@@ -158,7 +167,7 @@ func (state *commandState) runInteractiveFeatureAdd(repoPath string) error {
 		func(shellName string) bool { return shellName == currentShell },
 	)
 	if err != nil {
-		if err.Error() == "cancelled" {
+		if errors.Is(err, interactive.ErrCancelled) {
 			fileops.ColorPrintln("Cancelled", fileops.Yellow)
 			return nil
 		}
@@ -176,7 +185,6 @@ func (state *commandState) runInteractiveFeatureAdd(repoPath string) error {
 		return nil
 	}
 
-	installedFeatures := make(map[string]bool)
 	installedFeaturesByShell := make(map[string]map[string]bool, len(selectedShells))
 	for _, shellName := range selectedShells {
 		manifestPath := shell.GetManifestPath(repoPath, shellName)
@@ -188,40 +196,20 @@ func (state *commandState) runInteractiveFeatureAdd(repoPath string) error {
 		}
 
 		for _, feature := range m.Features {
-			installedFeatures[feature.Name] = true
 			installedForShell[feature.Name] = true
 		}
 	}
 
-	type featureOption struct {
-		feature catalog.FeatureMetadata
-		label   string
-	}
-
-	featureOptions := make([]featureOption, len(compatibleFeatures))
 	optionLabels := make([]string, len(compatibleFeatures))
 	labelToFeatureName := make(map[string]string, len(compatibleFeatures))
-
 	for i, feature := range compatibleFeatures {
-		label := fmt.Sprintf("%s - %s [%s]", feature.Name, feature.Description, feature.Category)
-		featureOptions[i] = featureOption{feature: feature, label: label}
+		label := featureInstallLabel(feature, selectedShells, installedFeaturesByShell)
 		optionLabels[i] = label
 		labelToFeatureName[label] = feature.Name
 	}
-
-	selectedLabels, err := interactive.MultiSelect(
-		"Select features to add:",
-		optionLabels,
-		func(label string) bool {
-			featureName, exists := labelToFeatureName[label]
-			if !exists {
-				return false
-			}
-			return installedFeatures[featureName]
-		},
-	)
+	selectedLabels, err := interactive.MultiSelect("Select features to add (installed features are marked):", optionLabels, nil)
 	if err != nil {
-		if err.Error() == "cancelled" {
+		if errors.Is(err, interactive.ErrCancelled) {
 			fileops.ColorPrintln("Cancelled", fileops.Yellow)
 			return nil
 		}
@@ -247,10 +235,32 @@ func (state *commandState) runInteractiveFeatureAdd(repoPath string) error {
 		}
 	}
 
+	return state.addSelectedFeatures(repoPath, selectedShells, selectedFeatures, installedFeaturesByShell, options.PromptForOptions)
+}
+
+func featureInstallLabel(feature catalog.FeatureMetadata, selectedShells []string, installed map[string]map[string]bool) string {
+	label := fmt.Sprintf("%s - %s [%s]", feature.Name, feature.Description, feature.Category)
+	var installedShells []string
+	for _, shellName := range selectedShells {
+		if feature.SupportsShell(shellName) && installed[shellName][feature.Name] {
+			installedShells = append(installedShells, shellName)
+		}
+	}
+	if len(installedShells) > 0 {
+		label += " (installed: " + strings.Join(installedShells, ", ") + ")"
+	}
+	return label
+}
+
+func (state *commandState) addSelectedFeatures(repoPath string, selectedShells []string, selectedFeatures []catalog.FeatureMetadata, installedFeaturesByShell map[string]map[string]bool, promptOptions func(catalog.FeatureMetadata) (map[string]any, error)) error {
+	alias := state.aliasProvider()
 	addedCount := 0
 	skippedCount := 0
+	failedCount := 0
+	cancelled := false
+	remainingCount := 0
 
-	for _, feature := range selectedFeatures {
+	for index, feature := range selectedFeatures {
 		if !hasPendingFeatureInstall(feature, selectedShells, installedFeaturesByShell) {
 			fileops.ColorPrintfn(fileops.Yellow, "Skipping %s (already installed in selected shell(s))", feature.Name)
 			skippedCount++
@@ -261,10 +271,20 @@ func (state *commandState) runInteractiveFeatureAdd(repoPath string) error {
 		if len(feature.Options) > 0 {
 			fileops.ColorPrintfn(fileops.Cyan, "\nConfiguring %s:", feature.Name)
 			var err error
-			optionValues, err = options.PromptForOptions(feature)
+			optionValues, err = promptOptions(feature)
+			if errors.Is(err, interactive.ErrCancelled) {
+				cancelled = true
+				remainingCount = len(selectedFeatures) - index
+				break
+			}
+			if errors.Is(err, interactive.ErrSkip) {
+				fileops.ColorPrintfn(fileops.Yellow, "Skipped %s", feature.Name)
+				skippedCount++
+				continue
+			}
 			if err != nil {
 				fileops.ColorPrintfn(fileops.Red, "  ✗ Failed to collect options: %s", err)
-				skippedCount++
+				failedCount++
 				continue
 			}
 		} else {
@@ -288,10 +308,10 @@ func (state *commandState) runInteractiveFeatureAdd(repoPath string) error {
 
 			fileops.ColorPrintfn(fileops.Cyan, "Adding %s to %s...", feature.Name, shellName)
 
-			err = shell.AddFeatureToShell(repoPath, shellName, feature.Name, state.flagStrategy, state.flagOnCommand, state.flagDisabled, optionValues)
+			err := shell.AddFeatureToShell(repoPath, shellName, feature.Name, state.flagStrategy, state.flagOnCommand, state.flagDisabled, optionValues)
 			if err != nil {
 				fileops.ColorPrintfn(fileops.Red, "  ✗ Failed: %s", err)
-				skippedCount++
+				failedCount++
 				continue
 			}
 
@@ -302,6 +322,12 @@ func (state *commandState) runInteractiveFeatureAdd(repoPath string) error {
 	}
 
 	fmt.Println()
+	if cancelled {
+		fileops.ColorPrintfn(fileops.Yellow, "Cancelled. %d selected feature(s) were not added. Previously added features are kept.", remainingCount)
+	}
+	if failedCount > 0 {
+		fileops.ColorPrintfn(fileops.Red, "Failed to add %d feature(s)", failedCount)
+	}
 	if addedCount > 0 {
 		fileops.ColorPrintfn(fileops.Green, "Successfully added %d feature(s)", addedCount)
 	}
@@ -319,6 +345,9 @@ func (state *commandState) runInteractiveFeatureAdd(repoPath string) error {
 		fileops.ColorPrintfn(fileops.Cyan, "Run '%s push' to push committed changes", alias)
 	}
 
+	if failedCount > 0 {
+		return fmt.Errorf("failed to add %d feature(s); successfully added features were kept", failedCount)
+	}
 	return nil
 }
 

@@ -254,7 +254,10 @@ oh-my-dot doctor --fix
 For GitHub HTTPS repositories, run `gh auth setup-git` after `gh auth login`.
 Clone, push, pull, and remote health checks use Git's configured HTTPS credential
 helpers. The `allow-gh-auth` setting applies only to release update checks.
-SSH URLs still require a configured SSH agent with your key loaded.
+SSH operations use native Git and its SSH configuration, keys, and agents.
+For a GitHub HTTPS URL, init uses a configured Git credential helper or gh's saved
+SSH preference. Otherwise, interactive init lets you choose HTTPS, SSH, or
+GitHub CLI setup before connecting. It saves the selected remote URL.
 
 Initialization reports clone failures without leaving a partial repository.
 `init --force` confirms whether to reuse the current remote or asks for a new URL.
@@ -262,7 +265,10 @@ An explicit URL skips the prompt; non-interactive forced initialization requires
 an explicit URL. Forced initialization validates the selected remote, updates
 origin, and fetches and checks out its default branch when recovering an empty
 repository. Existing commits and files are preserved. Remote initialization
-requires a remote containing commits; unreachable and empty remotes fail.
+accepts reachable empty remotes; unreachable remotes still fail.
+Normal init asks for a URL once. Leave it blank for a local repository.
+Use `oh-my-dot config set remote-url <url>` later to update both origin and
+the saved setting. Use `oh-my-dot config set remote-url ""` to remove origin.
 `status` is an alias for `doctor`.
 
 The doctor checks:
