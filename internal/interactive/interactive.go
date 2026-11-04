@@ -39,35 +39,37 @@ func hasInteractiveTerminal() bool {
 
 // ValidateMode rejects forced interaction when input or output is not a terminal.
 func ValidateMode(cmd *cobra.Command) error {
-	if forced, _ := cmd.Flags().GetBool("interactive"); forced && !hasInteractiveTerminal() {
+	forced, _ := cmd.Flags().GetBool("interactive")
+	disabled, _ := cmd.Flags().GetBool("no-interactive")
+	jsonOutput, _ := cmd.Flags().GetBool("json")
+	if forced && (disabled || jsonOutput) {
+		return fmt.Errorf("--interactive cannot be combined with --no-interactive or --json")
+	}
+	if forced && (os.Getenv("CI") != "" || os.Getenv("OMDOT_NON_INTERACTIVE") != "") {
+		return fmt.Errorf("interactive prompts are disabled by CI or OMDOT_NON_INTERACTIVE; unset them to use --interactive")
+	}
+	if forced && !hasInteractiveTerminal() {
 		return fmt.Errorf("--interactive requires both stdin and stdout to be terminals; use --no-interactive or run in a terminal")
 	}
 	return nil
 }
 
-// GetMode detects the appropriate mode based on flags and environment
+// GetMode selects one interaction policy for every command. Pipes, CI, explicit
+// opt-out and machine-readable output never prompt, including indirect prompts.
 func GetMode(cmd *cobra.Command) Mode {
-	// 1. Explicit flags take precedence
-	if interactive, _ := cmd.Flags().GetBool("interactive"); interactive {
+	disabled, _ := cmd.Flags().GetBool("no-interactive")
+	jsonOutput, _ := cmd.Flags().GetBool("json")
+	if disabled || jsonOutput || os.Getenv("CI") != "" || os.Getenv("OMDOT_NON_INTERACTIVE") != "" {
+		return ModeNonInteractive
+	}
+	if forced, _ := cmd.Flags().GetBool("interactive"); forced {
+		// ValidateMode rejects forced interaction without a terminal before
+		// execution. Keeping the requested mode separate makes helpers testable.
 		return ModeInteractive
 	}
-
-	if noInteractive, _ := cmd.Flags().GetBool("no-interactive"); noInteractive {
-		return ModeNonInteractive
-	}
-
-	// 2. Check environment variables (for CI)
-	if os.Getenv("CI") != "" ||
-		os.Getenv("OMDOT_NON_INTERACTIVE") != "" {
-		return ModeNonInteractive
-	}
-
-	// 3. Check if running in a TTY
 	if !hasInteractiveTerminal() {
 		return ModeNonInteractive
 	}
-
-	// 4. Default: Auto mode (smart behavior)
 	return ModeAuto
 }
 
@@ -90,9 +92,19 @@ func ShouldPrompt(cmd *cobra.Command, hasRequiredInfo bool) bool {
 
 // PromptInput prompts the user for text input
 func PromptInput(question string, defaultValue string) (string, error) {
+	return promptInput(question, defaultValue, false)
+}
+
+// PromptInputWithNavigation collects text and permits going back or skipping a feature.
+func PromptInputWithNavigation(question, defaultValue string) (string, error) {
+	return promptInput(question, defaultValue, true)
+}
+
+func promptInput(question, defaultValue string, navigation bool) (string, error) {
 	m := textInputModel{
-		textInput: textinput.New(),
-		question:  question,
+		textInput:  textinput.New(),
+		question:   question,
+		navigation: promptNavigation{enabled: navigation},
 	}
 	m.textInput.Placeholder = defaultValue
 	m.textInput.Focus()
@@ -106,6 +118,9 @@ func PromptInput(question string, defaultValue string) (string, error) {
 	}
 
 	if finalModel, ok := result.(textInputModel); ok {
+		if finalModel.navigation.err != nil {
+			return "", finalModel.navigation.err
+		}
 		if finalModel.cancelled {
 			return "", ErrCancelled
 		}
@@ -120,9 +135,10 @@ func PromptInput(question string, defaultValue string) (string, error) {
 }
 
 type textInputModel struct {
-	textInput textinput.Model
-	question  string
-	cancelled bool
+	navigation promptNavigation
+	textInput  textinput.Model
+	question   string
+	cancelled  bool
 }
 
 func (m textInputModel) Init() tea.Cmd {
@@ -130,6 +146,9 @@ func (m textInputModel) Init() tea.Cmd {
 }
 
 func (m textInputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.navigation.handle(msg) {
+		return m, tea.Quit
+	}
 	var cmd tea.Cmd
 
 	switch msg := msg.(type) {
@@ -158,7 +177,7 @@ func (m textInputModel) View() tea.View {
 		"%s\n\n%s\n\n%s",
 		lipgloss.NewStyle().Bold(true).Render(m.question),
 		m.textInput.View(),
-		lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(Press Enter to confirm, Esc to cancel)"),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(Press Enter to confirm, Esc to cancel)"+m.navigation.help()),
 	)
 	return tea.NewView(content)
 }
@@ -187,9 +206,10 @@ func PromptConfirm(question string) (bool, error) {
 }
 
 type confirmModel struct {
-	question  string
-	selected  bool
-	cancelled bool
+	navigation promptNavigation
+	question   string
+	selected   bool
+	cancelled  bool
 }
 
 func (m confirmModel) Init() tea.Cmd {
@@ -197,6 +217,9 @@ func (m confirmModel) Init() tea.Cmd {
 }
 
 func (m confirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.navigation.handle(msg) {
+		return m, tea.Quit
+	}
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		switch msg.String() {
@@ -238,31 +261,23 @@ func (m confirmModel) View() tea.View {
 		lipgloss.NewStyle().Bold(true).Render(m.question),
 		yesStyle.Render(yesLabel),
 		noStyle.Render(noLabel),
-		lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(Left: Yes, Right: No; Enter confirms; y/n answers immediately; Esc cancels)"),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(Left: Yes, Right: No; Enter confirms; y/n answers immediately; Esc cancels)"+m.navigation.help()),
 	)
 	return tea.NewView(content)
 }
 
 // PromptSelect prompts the user to select one item from a list
 func PromptSelect(question string, options []string) (int, error) {
-	items := make([]list.Item, len(options))
-	for i, opt := range options {
-		items[i] = item{title: opt, index: i}
-	}
+	return promptSelect(question, options, 0, false)
+}
 
-	const defaultWidth = 50
-	const defaultHeight = 14
+// PromptSelectWithNavigation selects an item and permits going back or skipping a feature.
+func PromptSelectWithNavigation(question string, options []string, selected int) (int, error) {
+	return promptSelect(question, options, selected, true)
+}
 
-	l := list.New(items, itemDelegate{}, defaultWidth, defaultHeight)
-	l.Title = question
-	l.SetShowStatusBar(false)
-	l.SetFilteringEnabled(false)
-	l.Styles.Title = lipgloss.NewStyle().Bold(true).Padding(0, 1)
-
-	m := selectModel{
-		list: l,
-	}
-
+func promptSelect(question string, options []string, selected int, navigation bool) (int, error) {
+	m := newSelectModel(question, options, selected, navigation)
 	p := tea.NewProgram(m)
 	result, err := p.Run()
 	if err != nil {
@@ -270,6 +285,9 @@ func PromptSelect(question string, options []string) (int, error) {
 	}
 
 	if finalModel, ok := result.(selectModel); ok {
+		if finalModel.navigation.err != nil {
+			return -1, finalModel.navigation.err
+		}
 		if finalModel.cancelled {
 			return -1, ErrCancelled
 		}
@@ -279,6 +297,29 @@ func PromptSelect(question string, options []string) (int, error) {
 	}
 
 	return -1, fmt.Errorf("no selection made")
+}
+
+func newSelectModel(question string, options []string, selected int, navigation bool) selectModel {
+	items := make([]list.Item, len(options))
+	for i, opt := range options {
+		items[i] = item{title: opt, index: i}
+	}
+
+	const defaultWidth = 50
+	const defaultHeight = 14
+
+	l := list.New(items, itemDelegate{}, defaultWidth, defaultHeight)
+	l.Select(selected)
+	l.SetShowTitle(false)
+	l.SetShowStatusBar(false)
+	l.SetFilteringEnabled(len(options) > defaultHeight)
+	l.Styles.Title = lipgloss.NewStyle().Bold(true).Padding(0, 1)
+
+	return selectModel{
+		question:   question,
+		navigation: promptNavigation{enabled: navigation},
+		list:       l,
+	}
 }
 
 type item struct {
@@ -318,8 +359,10 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 }
 
 type selectModel struct {
-	list      list.Model
-	cancelled bool
+	question   string
+	navigation promptNavigation
+	list       list.Model
+	cancelled  bool
 }
 
 func (m selectModel) Init() tea.Cmd {
@@ -327,6 +370,9 @@ func (m selectModel) Init() tea.Cmd {
 }
 
 func (m selectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.navigation.handle(msg) {
+		return m, tea.Quit
+	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.list.SetWidth(msg.Width)
@@ -335,8 +381,18 @@ func (m selectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "enter":
-			return m, tea.Quit
-		case "ctrl+c", "esc":
+			if m.list.SelectedItem() == nil {
+				return m, nil
+			}
+			if m.list.FilterState() != list.Filtering {
+				return m, tea.Quit
+			}
+		case "esc":
+			if m.list.FilterState() == list.Unfiltered {
+				m.cancelled = true
+				return m, tea.Quit
+			}
+		case "ctrl+c":
 			m.cancelled = true
 			return m, tea.Quit
 		}
@@ -348,7 +404,8 @@ func (m selectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m selectModel) View() tea.View {
-	return tea.NewView(m.list.View())
+	question := lipgloss.NewStyle().Bold(true).Width(m.list.Width()).Render(m.question)
+	return tea.NewView(question + "\n\n" + m.list.View() + m.navigation.help())
 }
 
 // PromptMultiSelect prompts the user to select multiple items from a list
@@ -485,9 +542,19 @@ func MultiSelect(question string, options []string, defaultSelected func(string)
 
 // Confirm is a convenience wrapper around PromptConfirm with default value support
 func Confirm(question string, defaultYes bool) (bool, error) {
+	return confirm(question, defaultYes, false)
+}
+
+// ConfirmWithNavigation asks a yes/no question and permits going back or skipping a feature.
+func ConfirmWithNavigation(question string, defaultYes bool) (bool, error) {
+	return confirm(question, defaultYes, true)
+}
+
+func confirm(question string, defaultYes, navigation bool) (bool, error) {
 	m := confirmModel{
-		question: question,
-		selected: defaultYes,
+		navigation: promptNavigation{enabled: navigation},
+		question:   question,
+		selected:   defaultYes,
 	}
 
 	p := tea.NewProgram(m)
@@ -497,6 +564,9 @@ func Confirm(question string, defaultYes bool) (bool, error) {
 	}
 
 	if finalModel, ok := result.(confirmModel); ok {
+		if finalModel.navigation.err != nil {
+			return false, finalModel.navigation.err
+		}
 		if finalModel.cancelled {
 			return false, ErrCancelled
 		}

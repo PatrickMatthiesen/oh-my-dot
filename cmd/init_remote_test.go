@@ -8,6 +8,8 @@ import (
 )
 
 func TestSelectForcedInitRemote(t *testing.T) {
+	t.Setenv("CI", "")
+	t.Setenv("OMDOT_NON_INTERACTIVE", "")
 	oldConfirm, oldInput := confirmInitRemote, inputInitRemote
 	t.Cleanup(func() { confirmInitRemote, inputInitRemote = oldConfirm, oldInput })
 	tests := []struct {

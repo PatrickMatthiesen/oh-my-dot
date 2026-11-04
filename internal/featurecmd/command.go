@@ -14,6 +14,8 @@ type commandState struct {
 	flagDisabled    bool
 	flagForce       bool
 	flagInteractive bool
+	flagLocal       bool
+	flagResetOption []string
 }
 
 // NewCommand builds the feature command tree and keeps cmd/feature.go as a thin entrypoint.
@@ -35,8 +37,8 @@ func NewCommand(aliasProvider, repoPathProvider func() string) *cobra.Command {
 		Short: "Add a shell feature",
 		Long: `Add a shell feature to one or more shells.
 
-Interactive mode (-i): Browse and select features from the catalog
-Non-interactive: Specify feature name directly
+Run without a feature in a terminal to browse the catalog.
+For scripts, specify the feature name, --shell (or --all), and required --option values.
 
 The command will intelligently select which shell(s) to add the feature to based on:
 - Feature compatibility (which shells support this feature)
@@ -59,19 +61,21 @@ Examples:
 
 This rewrites the feature file in omd-shells/<shell>/features/ using the current
 built-in template while preserving any stored feature options.
+Use --local to refresh private templates without changing shared files or creating a commit.
+Customized scripts require --force before replacement.
 
-Interactive mode (-i): Browse installed catalog features and refresh selected ones
-Non-interactive: Specify a feature name directly, or use --all to refresh every installed catalog feature
+Run without a feature in a terminal to browse installed catalog features.
+For scripts, specify a feature name, or use --all to refresh every installed catalog feature
 
-The selection modes are mutually exclusive: choose exactly one of a feature name,
--i, or --all.
+Choose a feature name or --all to make the selection explicit.
 
 Examples:
   oh-my-dot feature update -i
   oh-my-dot feature update powershell-aliases
   oh-my-dot feature update powershell-aliases --shell powershell
   oh-my-dot feature update --all
-  oh-my-dot feature update --all --shell powershell`,
+  oh-my-dot feature update --all --shell powershell
+  oh-my-dot feature update --local --all`,
 		Args: state.validateFeatureUpdateArgs,
 		RunE: state.runFeatureUpdate,
 	}
@@ -82,10 +86,12 @@ Examples:
 		Long: `Remove a shell feature from one or more shells.
 
 If this is the last feature in a shell, the shell integration will be automatically
-cleaned up (hooks removed from profile, directory deleted).
+cleaned up while preserving local-only configuration and custom files.
 
-Interactive mode (-i): Browse features to remove
-Non-interactive: Specify feature name directly
+Run without a feature in a terminal to browse installed features.
+For scripts, specify the feature name and --shell (or --all).
+Use --local to remove a private feature or override and its private implementation.
+Removing an override restores the shared settings; shared files are preserved.
 
 Examples:
   oh-my-dot feature remove -i                     # Browse features interactively
@@ -109,19 +115,19 @@ Examples:
 	}
 
 	featureEnableCmd := &cobra.Command{
-		Use:   "enable <feature>",
+		Use:   "enable [feature]",
 		Short: "Enable a disabled feature",
 		Long: `Enable a previously disabled feature without re-adding it.
 
 Examples:
   oh-my-dot feature enable git-prompt
   oh-my-dot feature enable kubectl-completion --shell bash`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(1),
 		RunE: state.runFeatureEnable,
 	}
 
 	featureDisableCmd := &cobra.Command{
-		Use:   "disable <feature>",
+		Use:   "disable [feature]",
 		Short: "Disable a feature without removing it",
 		Long: `Disable a feature without deleting its configuration file.
 This allows you to temporarily turn off a feature.
@@ -129,12 +135,12 @@ This allows you to temporarily turn off a feature.
 Examples:
   oh-my-dot feature disable git-prompt
   oh-my-dot feature disable kubectl-completion --shell bash`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(1),
 		RunE: state.runFeatureDisable,
 	}
 
 	featureInfoCmd := &cobra.Command{
-		Use:   "info <feature>",
+		Use:   "info [feature]",
 		Short: "Show detailed information about a feature",
 		Long: `Display metadata about a feature from the catalog, including:
 - Description
@@ -145,12 +151,37 @@ Examples:
 Examples:
   oh-my-dot feature info git-prompt
   oh-my-dot feature info kubectl-completion`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(1),
 		RunE: state.runFeatureInfo,
 	}
 
-	featureCmd.AddCommand(featureAddCmd, featureUpdateCmd, featureRemoveCmd, featureListCmd, featureEnableCmd, featureDisableCmd, featureInfoCmd)
+	featureConfigureCmd := &cobra.Command{
+		Use: "configure [feature]", Aliases: []string{"config"}, Short: "Change installed feature options safely",
+		Long: `Change an installed catalog feature's saved options and regenerate its implementation.
+Run without --option in a terminal to edit current values. Scripts use --option key=value.
+Changed options are shared unless --local selects private device settings. Customized scripts are preserved unless --force is explicit.
+Local option values that match shared values inherit future shared changes.
 
+Examples:
+  oh-my-dot feature configure
+  oh-my-dot feature configure oh-my-posh --shell powershell --option theme=pure
+  oh-my-dot feature configure oh-my-posh --shell bash --reset-option config_file`,
+		Args: cobra.MaximumNArgs(1), RunE: state.runFeatureConfigure,
+	}
+	featureConfigureCmd.Flags().StringSliceVar(&state.flagShell, "shell", nil, "Configure specific installed shells")
+	featureConfigureCmd.Flags().StringSliceVar(&state.flagOption, "option", nil, "Change an option (key=value); repeatable")
+	featureConfigureCmd.Flags().StringSliceVar(&state.flagResetOption, "reset-option", nil, "Restore the shared value with --local; otherwise restore a catalog default or clear an optional value")
+	featureConfigureCmd.Flags().BoolVar(&state.flagLocal, "local", false, "Change this device only; private options and scripts are never committed")
+	featureConfigureCmd.Flags().BoolVar(&state.flagForce, "force", false, "Replace a customized implementation with the configured catalog template")
+	featureListCmd.Flags().Bool("json", false, "Print versioned JSON with effective options and shared/local origin")
+	featureInfoCmd.Flags().Bool("json", false, "Print catalog metadata and effective installed configuration as JSON")
+	featureInfoCmd.Flags().StringSliceVar(&state.flagShell, "shell", nil, "Filter installed configuration by shell")
+	featureEnableCmd.Flags().BoolVar(&state.flagAll, "all", false, "Enable in every shell where installed")
+	featureEnableCmd.Flags().BoolVar(&state.flagLocal, "local", false, "Set a device-local load override without committing")
+	featureDisableCmd.Flags().BoolVar(&state.flagLocal, "local", false, "Set a device-local load override without committing")
+	featureCmd.AddCommand(featureConfigureCmd, featureAddCmd, featureUpdateCmd, featureRemoveCmd, featureListCmd, featureEnableCmd, featureDisableCmd, featureInfoCmd)
+
+	featureAddCmd.Flags().BoolVar(&state.flagLocal, "local", false, "Install this device only; private configuration and scripts are not committed")
 	featureAddCmd.Flags().BoolVarP(&state.flagInteractive, "interactive", "i", false, "Browse and select features from catalog")
 	featureAddCmd.Flags().StringSliceVar(&state.flagShell, "shell", nil, "Target specific shell(s)")
 	featureAddCmd.Flags().BoolVar(&state.flagAll, "all", false, "Add to all supported shells")
@@ -162,8 +193,11 @@ Examples:
 	featureUpdateCmd.Flags().BoolVarP(&state.flagInteractive, "interactive", "i", false, "Browse and select features to update")
 	featureUpdateCmd.Flags().BoolVar(&state.flagAll, "all", false, "Refresh all installed catalog features")
 	featureUpdateCmd.Flags().StringSliceVar(&state.flagShell, "shell", nil, "Target specific shell(s)")
+	featureUpdateCmd.Flags().BoolVar(&state.flagLocal, "local", false, "Refresh device-local catalog templates without committing")
+	featureUpdateCmd.Flags().BoolVar(&state.flagForce, "force", false, "Replace customized or older implementations with catalog templates")
 
 	featureRemoveCmd.Flags().StringSliceVar(&state.flagShell, "shell", nil, "Target specific shell(s)")
+	featureRemoveCmd.Flags().BoolVar(&state.flagLocal, "local", false, "Remove private features or overrides; restore shared settings without committing")
 	featureRemoveCmd.Flags().BoolVar(&state.flagAll, "all", false, "Remove from all shells")
 	featureRemoveCmd.Flags().BoolVar(&state.flagForce, "force", false, "Skip confirmation prompts")
 	featureRemoveCmd.Flags().BoolVarP(&state.flagInteractive, "interactive", "i", false, "Browse and select features to remove")

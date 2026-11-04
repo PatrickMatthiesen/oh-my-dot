@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
+	"time"
 
 	"github.com/go-git/go-git/v6"
 	"github.com/go-git/go-git/v6/config"
@@ -110,26 +110,56 @@ func InitGitRepo(rootGitRepoPath string, remoteUrl string, opts ...bool) (*git.R
 			return nil, fmt.Errorf("create clone directory: %w", err)
 		}
 		defer os.RemoveAll(temp)
-		cloned, err := git.PlainClone(temp, &git.CloneOptions{
-			URL:           remoteUrl,
-			ClientOptions: RemoteClientOptions(parent, remoteUrl),
-		})
-		if errors.Is(err, transport.ErrEmptyRemoteRepository) {
-			return nil, fmt.Errorf("remote repository has no commits; remote initialization requires a populated repository")
+		var cloned *git.Repository
+		if IsSSHRemote(remoteUrl) {
+			cloned, err = CloneSSH(temp, remoteUrl)
+		} else {
+			cloned, err = clonePreservingUnbornHead(temp, remoteUrl, RemoteClientOptions(parent, remoteUrl))
 		}
 		if err != nil {
-			if IsSSHAgentError(err) {
-				return nil, fmt.Errorf("clone repository: %w\n%s", err, sshAgentHelp(runtime.GOOS))
+			return nil, fmt.Errorf("clone repository: %w\n%s", err, RemoteErrorHelp(err, remoteUrl))
+		}
+		// go-git keeps pack and lazy-index descriptors open until Close. They
+		// prevent moving the verified clone on Windows, and must also close
+		// before a failed attempt's temporary directory is removed.
+		cloneClosed := false
+		defer func() {
+			if !cloneClosed {
+				_ = cloned.Close()
 			}
-			return nil, fmt.Errorf("clone repository (check URL and authentication): %w", err)
-		}
+		}()
 		head, err := cloned.Head()
-		if err != nil {
-			return nil, fmt.Errorf("cloned repository has no checked-out commit: %w", err)
+		if err != nil && !errors.Is(err, plumbing.ErrReferenceNotFound) {
+			return nil, fmt.Errorf("inspect cloned repository HEAD: %w", err)
 		}
-		if _, err := cloned.CommitObject(head.Hash()); err != nil {
-			return nil, fmt.Errorf("verify cloned commit: %w", err)
+		if errors.Is(err, plumbing.ErrReferenceNotFound) {
+			refs, refErr := cloned.References()
+			if refErr != nil {
+				return nil, fmt.Errorf("inspect cloned references: %w", refErr)
+			}
+			populated := false
+			refErr = refs.ForEach(func(ref *plumbing.Reference) error {
+				if ref.Type() == plumbing.HashReference && (ref.Name().IsBranch() || ref.Name().IsRemote()) {
+					populated = true
+				}
+				return nil
+			})
+			if refErr != nil {
+				return nil, fmt.Errorf("inspect cloned references: %w", refErr)
+			}
+			if populated {
+				return nil, fmt.Errorf("remote contains commits but its default branch could not be checked out; repair the remote default branch before retrying")
+			}
 		}
+		if err == nil {
+			if _, err := cloned.CommitObject(head.Hash()); err != nil {
+				return nil, fmt.Errorf("verify cloned commit: %w", err)
+			}
+		}
+		if err := cloned.Close(); err != nil {
+			return nil, fmt.Errorf("close verified clone before moving: %w", err)
+		}
+		cloneClosed = true
 		if err := os.Remove(rootGitRepoPath); err != nil && !os.IsNotExist(err) {
 			return nil, fmt.Errorf("replace empty destination: %w", err)
 		}
@@ -366,6 +396,13 @@ func PushRepo() (bool, error) {
 		return false, err
 	}
 
+	if IsSSHRemote(remote.Config().URLs[0]) {
+		output, pushErr := runRemoteGit(viper.GetString("repo-path"), 2*time.Minute, "push", "--porcelain", "origin", "HEAD")
+		if pushErr != nil {
+			return false, fmt.Errorf("push repository: %w", pushErr)
+		}
+		return !strings.Contains(string(output), "[up to date]"), nil
+	}
 	err = remote.Push(&git.PushOptions{ClientOptions: repositoryClientOptions(r)})
 	if err != nil {
 		if errors.Is(err, git.NoErrAlreadyUpToDate) {
@@ -399,6 +436,20 @@ func PullRepo() (bool, error) {
 		return false, fmt.Errorf("cannot pull from detached HEAD")
 	}
 
+	remote, remoteErr := r.Remote("origin")
+	if remoteErr != nil {
+		return false, fmt.Errorf("inspect origin: %w", remoteErr)
+	}
+	if IsSSHRemote(remote.Config().URLs[0]) {
+		if _, err := runRemoteGit(repoPath, 2*time.Minute, "pull", "--ff-only", "origin", headRef.Name().Short()); err != nil {
+			return false, fmt.Errorf("pull repository: %w", err)
+		}
+		updated, err := r.Head()
+		if err != nil {
+			return false, fmt.Errorf("read updated HEAD: %w", err)
+		}
+		return updated.Hash() != headRef.Hash(), nil
+	}
 	worktree, err := r.Worktree()
 	if err != nil {
 		return false, fmt.Errorf("failed to get worktree: %w", err)
@@ -462,7 +513,7 @@ func GetRemoteSyncState() (RemoteSyncState, error) {
 		return "", fmt.Errorf("no remote 'origin' configured: %w", err)
 	}
 
-	remoteRefs, err := remote.List(&git.ListOptions{ClientOptions: repositoryClientOptions(r)})
+	remoteRefs, err := ListRemote(repoPath, remote.Config().URLs[0], 15)
 	if err != nil {
 		return "", fmt.Errorf("unable to access remote repository: %w", err)
 	}
@@ -689,6 +740,9 @@ func CheckRepoWritePermission() error {
 // Returns true when a commit was created, false when there were no committable changes.
 func StageAndCommitShellFeatureChanges(message string) (bool, error) {
 	repoPath := viper.GetString("repo-path")
+	if err := shell.CheckLocalRuntimeTracking(repoPath); err != nil {
+		return false, err
+	}
 	r, err := GetRepository(repoPath)
 	if err != nil {
 		return false, err
@@ -761,7 +815,7 @@ func StageAndCommitShellFeatureChanges(message string) (bool, error) {
 
 func ensureNoStagedNonShellChanges(status git.Status) error {
 	for path, fileStatus := range status {
-		if fileStatus.Staging == git.Unmodified || isCommittableShellChangePath(path) {
+		if fileStatus.Staging == git.Unmodified || fileStatus.Staging == git.Untracked || isCommittableShellChangePath(path) {
 			continue
 		}
 
@@ -781,13 +835,18 @@ func isCommittableShellChangePath(path string) bool {
 }
 
 func isDeviceLocalShellChangePath(path string) bool {
-	normalizedPath := filepath.ToSlash(filepath.Clean(path))
-	return strings.HasPrefix(normalizedPath, "omd-shells/") &&
-		strings.HasSuffix(normalizedPath, "/"+shell.LocalManifestFileName())
+	if shell.IsDeviceLocalShellPath(path) {
+		return true
+	}
+	localOnly, err := shell.IsLocalOnlyFeaturePath(viper.GetString("repo-path"), path)
+	return err != nil || localOnly
 }
 
 func shouldAmendLastShellFeatureCommit(r *git.Repository) (bool, error) {
 	headRef, err := r.Head()
+	if errors.Is(err, plumbing.ErrReferenceNotFound) {
+		return false, nil
+	}
 	if err != nil {
 		return false, fmt.Errorf("failed to get current branch: %w", err)
 	}
@@ -943,7 +1002,7 @@ func StageAndCommitAgentSkillChanges(message string) (bool, error) {
 
 func ensureNoStagedNonAgentChanges(status git.Status) error {
 	for path, fileStatus := range status {
-		if fileStatus.Staging == git.Unmodified || isCommittableAgentChangePath(path) {
+		if fileStatus.Staging == git.Unmodified || fileStatus.Staging == git.Untracked || isCommittableAgentChangePath(path) {
 			continue
 		}
 
@@ -984,8 +1043,8 @@ func dropAmendedShellFeatureCommit(r *git.Repository) error {
 	return nil
 }
 
-// CheckRemotePushPermission checks if the user has valid git credentials for pushing to the remote repository.
-// It uses the same authentication mechanism as git push (SSH keys, credential helpers, etc.) to verify access.
+// CheckRemotePushPermission checks connectivity and read access to origin.
+// It cannot establish write permission without attempting a push.
 func CheckRemotePushPermission() error {
 	repoPath := viper.GetString("repo-path")
 	if repoPath == "" {
@@ -1005,8 +1064,8 @@ func CheckRemotePushPermission() error {
 	// List references from the remote to check connectivity and credentials.
 	// This is a lightweight operation that verifies we can authenticate without actually pushing.
 	// Uses default git authentication (SSH keys, credential helpers, etc.).
-	_, err = remote.List(&git.ListOptions{ClientOptions: repositoryClientOptions(r)})
-	if err != nil {
+	_, err = ListRemote(repoPath, remote.Config().URLs[0], 15)
+	if err != nil && !errors.Is(err, transport.ErrEmptyRemoteRepository) {
 		return fmt.Errorf("unable to access remote repository (check credentials and network): %w", err)
 	}
 

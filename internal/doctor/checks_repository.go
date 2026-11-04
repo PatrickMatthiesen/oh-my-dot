@@ -13,7 +13,9 @@ import (
 
 // checkRepository runs once, independently of configured shells.
 func checkRepository(ctx context) []result {
-	fileops.ColorPrintfn(fileops.Cyan, "\nChecking repository...")
+	if !ctx.quiet {
+		fileops.ColorPrintfn(fileops.Cyan, "\nChecking repository...")
+	}
 	var results []result
 	repo, err := git.PlainOpen(ctx.repoPath)
 	if err != nil {
@@ -46,11 +48,14 @@ func checkRepository(ctx context) []result {
 		return addResult(results, ctx, warningResult("Git remote", "Origin has no URL configured.", false), nil)
 	}
 
+	if ctx.offline {
+		return addResult(results, ctx, warningResult("Git remote read access", "Skipped (--offline); remote connectivity was not checked.", false), nil)
+	}
 	// Listing refs checks connectivity and read access, not push permission.
 	// Bound the transport check so an unreachable remote cannot wait forever.
 	// An empty remote was reached successfully and is ready for its first push.
-	if _, err := remote.List(&git.ListOptions{Timeout: 10, ClientOptions: internalgit.RemoteClientOptions(ctx.repoPath, remote.Config().URLs[0])}); err != nil && !errors.Is(err, transport.ErrEmptyRemoteRepository) {
-		return addResult(results, ctx, warningResult("Git remote", fmt.Sprintf("Cannot access origin (check its URL, credentials, and network): %v. Local operations can continue. For GitHub HTTPS, run gh auth setup-git. For SSH, configure an SSH agent and add your key, or use an HTTPS origin with a credential helper.", err), false), nil)
+	if _, err := internalgit.ListRemote(ctx.repoPath, remote.Config().URLs[0], 15); err != nil && !errors.Is(err, transport.ErrEmptyRemoteRepository) {
+		return addResult(results, ctx, warningResult("Git remote", fmt.Sprintf("Cannot access origin: %v. Local operations can continue.\n%s", err, internalgit.RemoteErrorHelp(err, remote.Config().URLs[0])), false), nil)
 	}
 	return addResult(results, ctx, okResult("Git remote read access"), nil)
 }

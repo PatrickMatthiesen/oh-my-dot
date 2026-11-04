@@ -1,12 +1,14 @@
 package shell
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 const (
@@ -18,7 +20,15 @@ var (
 	currentGOOS = runtime.GOOS
 	lookPath    = exec.LookPath
 	runCommand  = func(name string, args ...string) ([]byte, error) {
-		return exec.Command(name, args...).Output()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		command := exec.CommandContext(ctx, name, args...)
+		command.WaitDelay = time.Second
+		output, err := command.Output()
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("PowerShell profile query exceeded its five-second limit: %w", ctx.Err())
+		}
+		return output, err
 	}
 )
 
@@ -134,18 +144,9 @@ func ResolveProfilePath(shellConfig ShellConfig) (string, error) {
 
 	// Handle PowerShell $PROFILE variable
 	if path == "$PROFILE" {
-		profilePath := detectPowerShellProfilePath()
-		if profilePath == "" {
-			if currentGOOS != "windows" {
-				return "", fmt.Errorf("powershell profile path is unavailable on %s", currentGOOS)
-			}
-
-			// Fallback to the standard PowerShell profile location on Windows.
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return "", fmt.Errorf("failed to get user home directory: %w", err)
-			}
-			profilePath = filepath.Join(home, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1")
+		profilePath, err := detectPowerShellProfilePath()
+		if err != nil {
+			return "", fmt.Errorf("PowerShell profile discovery failed: %w; run pwsh -NoProfile -Command '$PROFILE.CurrentUserCurrentHost' in your terminal, resolve the error, then retry", err)
 		}
 		return profilePath, nil
 	}
@@ -162,25 +163,33 @@ func ResolveProfilePath(shellConfig ShellConfig) (string, error) {
 	return path, nil
 }
 
-func detectPowerShellProfilePath() string {
+func detectPowerShellProfilePath() (string, error) {
 	for _, executable := range powershellExecutableCandidates() {
 		resolvedPath, err := lookPath(executable)
 		if err != nil {
 			continue
 		}
-
-		output, err := runCommand(resolvedPath, "-NoProfile", "-Command", "$PROFILE.CurrentUserCurrentHost")
+		output, err := runCommand(resolvedPath, "-NoProfile", "-NonInteractive", "-Command", "$PROFILE.CurrentUserCurrentHost")
 		if err != nil {
-			continue
+			return "", fmt.Errorf("query profile with %s: %w", executable, err)
 		}
-
 		profilePath := strings.TrimSpace(string(output))
-		if profilePath != "" {
-			return profilePath
+		if profilePath == "" {
+			return "", fmt.Errorf("%s returned an empty profile path", executable)
 		}
+		if strings.ContainsAny(profilePath, "\r\n\x00") {
+			return "", fmt.Errorf("%s returned an invalid profile path", executable)
+		}
+		absolute := filepath.IsAbs(profilePath)
+		if currentGOOS == "windows" {
+			absolute = strings.HasPrefix(profilePath, `\\`) || len(profilePath) > 2 && profilePath[1] == ':' && (profilePath[2] == '\\' || profilePath[2] == '/')
+		}
+		if !absolute {
+			return "", fmt.Errorf("%s returned a relative profile path", executable)
+		}
+		return profilePath, nil
 	}
-
-	return ""
+	return "", fmt.Errorf("no PowerShell executable found on PATH")
 }
 
 // GetShellDirectory returns the path to the shell directory within omd-shells

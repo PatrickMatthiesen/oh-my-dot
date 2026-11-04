@@ -81,5 +81,39 @@ func openAndValidateConfig(path string) (*os.File, error) {
 }
 
 func writeLocalManifestFile(path string, data []byte, perm os.FileMode) error {
-	return os.WriteFile(path, data, perm)
+	return writePrivateRuntimeFile(path, data, perm, false)
+}
+
+func writePrivateRuntimeFile(path string, data []byte, perm os.FileMode, exclusive bool) error {
+	flags := unix.O_WRONLY | unix.O_CREAT | unix.O_NOFOLLOW | unix.O_CLOEXEC
+	if exclusive {
+		flags |= unix.O_EXCL
+	}
+	fd, err := unix.Open(path, flags, uint32(perm.Perm()))
+	if err != nil {
+		return fmt.Errorf("open private file: %w", err)
+	}
+	file := os.NewFile(uintptr(fd), path)
+	if file == nil {
+		_ = unix.Close(fd)
+		return fmt.Errorf("open private file: os.NewFile failed")
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("inspect opened private file: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("private file must be regular: %s", path)
+	}
+	if err := file.Chmod(perm); err != nil {
+		return fmt.Errorf("restrict private file: %w", err)
+	}
+	if err := file.Truncate(0); err != nil {
+		return fmt.Errorf("truncate private file: %w", err)
+	}
+	if _, err := file.Write(data); err != nil {
+		return fmt.Errorf("write private file: %w", err)
+	}
+	return file.Close()
 }

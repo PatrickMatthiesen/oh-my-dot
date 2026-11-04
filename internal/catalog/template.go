@@ -79,6 +79,10 @@ func WriteFeatureTemplate(repoPath, shellName, featureName string, optionValues 
 	}
 
 	ext := GetShellExtension(shellName)
+	// Embedded Zsh templates use .sh, but the shell runtime loads .zsh files.
+	if shellName == "zsh" {
+		ext = ".zsh"
+	}
 	featurePath := filepath.Join(repoPath, "omd-shells", shellName, "features", featureName+ext)
 
 	// Create directory if needed
@@ -97,8 +101,14 @@ func WriteFeatureTemplate(repoPath, shellName, featureName string, optionValues 
 // RenderFeatureTemplate renders a feature template with shell/option context.
 func RenderFeatureTemplate(content, featureName, shellName string, optionValues map[string]any) (string, error) {
 	context := buildTemplateContext(featureName, shellName, optionValues)
+	if featureName == "oh-my-posh" && (strings.Contains(context.Theme, "..") || strings.IndexFunc(context.Theme, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-' || r == '.')
+	}) >= 0) {
+		return "", fmt.Errorf("theme must contain only letters, numbers, underscores, hyphens and single periods; use config_file for a custom path")
+	}
 
 	templateFuncs := template.FuncMap{
+		"literal": func(value string) string { return shellLiteral(shellName, value) },
 		"hasOption": func(key string) bool {
 			_, ok := context.Options[key]
 			return ok
@@ -119,6 +129,19 @@ func RenderFeatureTemplate(content, featureName, shellName string, optionValues 
 	}
 
 	return rendered.String(), nil
+}
+
+// shellLiteral quotes data without allowing shell interpolation. Generated
+// expressions such as OMD_SHELL_ROOT remain separate from user-provided paths.
+func shellLiteral(shellName, value string) string {
+	switch shellName {
+	case "powershell":
+		return "'" + strings.ReplaceAll(value, "'", "''") + "'"
+	case "fish":
+		return "'" + strings.NewReplacer("\\", "\\\\", "'", "\\'").Replace(value) + "'"
+	default:
+		return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+	}
 }
 
 type featureTemplateContext struct {
@@ -143,9 +166,10 @@ func buildTemplateContext(featureName, shellName string, optionValues map[string
 
 	if featureName == "oh-my-posh" {
 		context.Theme = getOptionString(optionValues, "theme", "jandedobbeleer")
-		context.ThemeURL = fmt.Sprintf("https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/%s.omp.json", context.Theme)
+		themeFile := ohMyPoshThemeFile(context.Theme)
+		context.ThemeURL = "https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/" + themeFile
 		context.ConfigFile = getOptionString(optionValues, "config_file", "")
-		context.DefaultConfigPath = "$OMD_SHELL_ROOT/features/oh-my-posh.omp.json"
+		context.DefaultConfigPath = "$OMD_SHELL_ROOT/.local/cache/oh-my-posh." + themeFile
 		context.AutoUpgrade = getOptionBool(optionValues, "auto_upgrade", false)
 	}
 

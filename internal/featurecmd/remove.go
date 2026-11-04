@@ -1,6 +1,7 @@
 package featurecmd
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -16,8 +17,14 @@ func (state *commandState) runFeatureRemove(cmd *cobra.Command, args []string) e
 	repoPath := state.repoPathProvider()
 	alias := state.aliasProvider()
 
-	if state.flagInteractive {
-		return state.runInteractiveFeatureRemove(repoPath)
+	if err := interactive.ValidateMode(cmd); err != nil {
+		return fmt.Errorf("invalid interaction mode: %w", err)
+	}
+	if state.flagLocal {
+		return state.runLocalFeatureRemove(cmd, args)
+	}
+	if state.flagInteractive || (len(args) == 0 && !state.flagAll && interactive.ShouldPrompt(cmd, false)) {
+		return state.runInteractiveFeatureRemove(cmd, repoPath)
 	}
 
 	if len(args) == 0 {
@@ -38,7 +45,7 @@ func (state *commandState) runFeatureRemove(cmd *cobra.Command, args []string) e
 			targetShells = state.flagShell
 		}
 	} else {
-		if !isInteractive() {
+		if !interactive.ShouldPrompt(cmd, false) {
 			return fmt.Errorf("cannot prompt in non-interactive mode\nPlease specify shell(s) with --shell flag or use --all")
 		}
 
@@ -71,48 +78,62 @@ func (state *commandState) runFeatureRemove(cmd *cobra.Command, args []string) e
 		}
 	}
 
+	if err := preflightFeatureManifests(repoPath, targetShells); err != nil {
+		return err
+	}
+	for _, shellName := range targetShells {
+		if err := shell.ValidateSharedFeatureRemoval(repoPath, shellName, featureName); err != nil {
+			return err
+		}
+	}
+	if err := preflightFeatureMutation(repoPath); err != nil {
+		return err
+	}
+	removedCount := 0
+	var failures []error
 	for _, shellName := range targetShells {
 		fileops.ColorPrintfn(fileops.Cyan, "Removing %s from %s...", featureName, shellName)
-
-		err := shell.RemoveFeatureFromShell(repoPath, shellName, featureName)
-		if err != nil {
-			return fmt.Errorf("failed to remove feature from %s: %w", shellName, err)
+		if err := shell.RemoveFeatureFromShell(repoPath, shellName, featureName); err != nil {
+			failures = append(failures, fmt.Errorf("remove feature from %s: %w", shellName, err))
+			continue
 		}
-
+		removedCount++
 		fileops.ColorPrintfn(fileops.Green, "  ✓ Feature removed")
-
 		needsCleanup, err := shell.NeedsCleanup(repoPath, shellName)
 		if err != nil {
-			return fmt.Errorf("failed to check if cleanup needed: %w", err)
+			failures = append(failures, fmt.Errorf("check cleanup for %s: %w", shellName, err))
+			continue
 		}
-
-		if needsCleanup {
-			fileops.ColorPrintfn(fileops.Yellow, "\nNo features remaining in %s shell", shellName)
-
-			shouldCleanup := state.flagForce
-			if !shouldCleanup && isInteractive() {
-				shouldCleanup, err = interactive.Confirm(
-					fmt.Sprintf("Remove %s shell integration (hooks and directory)?", shellName),
-					true,
-				)
-				if err != nil {
-					return err
+		if !needsCleanup {
+			continue
+		}
+		shouldCleanup := state.flagForce
+		if !shouldCleanup && interactive.ShouldPrompt(cmd, false) {
+			shouldCleanup, err = interactive.Confirm(fmt.Sprintf("Remove unused %s shell integration? Local-only and custom files are preserved.", shellName), true)
+			if err != nil {
+				failures = append(failures, fmt.Errorf("confirm cleanup for %s: %w", shellName, err))
+				if errors.Is(err, interactive.ErrCancelled) {
+					break
 				}
-			}
-
-			if shouldCleanup {
-				if err := shell.CleanupShellDirectory(repoPath, shellName); err != nil {
-					return fmt.Errorf("failed to cleanup shell directory: %w", err)
-				}
-				fileops.ColorPrintfn(fileops.Green, "  ✓ Removed %s shell directory", shellName)
+				continue
 			}
 		}
+		if shouldCleanup {
+			if err := shell.CleanupShellDirectory(repoPath, shellName); err != nil {
+				failures = append(failures, fmt.Errorf("cleanup shell %s: %w", shellName, err))
+				continue
+			}
+			fileops.ColorPrintfn(fileops.Green, "  ✓ Removed unused %s shell integration", shellName)
+		}
 	}
-
-	if err := autoCommitShellFeatureChanges("Remove shell feature: " + featureName); err != nil {
-		return fmt.Errorf("failed to commit shell feature changes: %w", err)
+	if removedCount > 0 {
+		if err := autoCommitShellFeatureChanges("Remove shell feature: " + featureName); err != nil {
+			failures = append(failures, fmt.Errorf("commit successful removals: %w", err))
+		}
 	}
-
+	if len(failures) > 0 {
+		return fmt.Errorf("removed feature from %d shell(s); remaining removals or cleanup failed: %w", removedCount, errors.Join(failures...))
+	}
 	fmt.Println()
 	fileops.ColorPrintfn(fileops.Cyan, "Run '%s apply' to sync changes", alias)
 	fileops.ColorPrintfn(fileops.Cyan, "Run '%s push' to push committed changes", alias)
@@ -120,10 +141,10 @@ func (state *commandState) runFeatureRemove(cmd *cobra.Command, args []string) e
 	return nil
 }
 
-func (state *commandState) runInteractiveFeatureRemove(repoPath string) error {
+func (state *commandState) runInteractiveFeatureRemove(cmd *cobra.Command, repoPath string) error {
 	alias := state.aliasProvider()
 
-	if !isInteractive() {
+	if !interactive.ShouldPrompt(cmd, false) {
 		return fmt.Errorf("cannot run interactive mode in non-interactive environment")
 	}
 
@@ -153,6 +174,9 @@ func (state *commandState) runInteractiveFeatureRemove(repoPath string) error {
 		return nil
 	}
 
+	if err := preflightFeatureManifests(repoPath, selectedShells); err != nil {
+		return err
+	}
 	type featureInfo struct {
 		name   string
 		shells []string
@@ -212,8 +236,20 @@ func (state *commandState) runInteractiveFeatureRemove(repoPath string) error {
 		name := strings.Split(label, " (in ")[0]
 		selectedFeatures = append(selectedFeatures, name)
 	}
+	for _, featureName := range selectedFeatures {
+		for _, shellName := range featureMap[featureName] {
+			if err := shell.ValidateSharedFeatureRemoval(repoPath, shellName, featureName); err != nil {
+				return err
+			}
+		}
+	}
 
+	if err := preflightFeatureMutation(repoPath); err != nil {
+		return err
+	}
 	removedCount := 0
+	var failures []error
+selectedLoop:
 	for _, featureName := range selectedFeatures {
 		shellsWithFeature := featureMap[featureName]
 		for _, shellName := range shellsWithFeature {
@@ -222,6 +258,7 @@ func (state *commandState) runInteractiveFeatureRemove(repoPath string) error {
 			err := shell.RemoveFeatureFromShell(repoPath, shellName, featureName)
 			if err != nil {
 				fileops.ColorPrintfn(fileops.Red, "  ✗ Failed: %s", err)
+				failures = append(failures, fmt.Errorf("remove %s from %s: %w", featureName, shellName, err))
 				continue
 			}
 
@@ -230,6 +267,7 @@ func (state *commandState) runInteractiveFeatureRemove(repoPath string) error {
 
 			needsCleanup, err := shell.NeedsCleanup(repoPath, shellName)
 			if err != nil {
+				failures = append(failures, fmt.Errorf("check cleanup for %s: %w", shellName, err))
 				continue
 			}
 
@@ -240,12 +278,20 @@ func (state *commandState) runInteractiveFeatureRemove(repoPath string) error {
 					fmt.Sprintf("Remove %s shell integration (hooks and directory)?", shellName),
 					true,
 				)
-				if err != nil || !shouldCleanup {
+				if err != nil {
+					failures = append(failures, fmt.Errorf("confirm cleanup for %s: %w", shellName, err))
+					if errors.Is(err, interactive.ErrCancelled) {
+						break selectedLoop
+					}
+					continue
+				}
+				if !shouldCleanup {
 					continue
 				}
 
 				if err := shell.CleanupShellDirectory(repoPath, shellName); err != nil {
 					fileops.ColorPrintfn(fileops.Red, "  ✗ Failed to cleanup: %s", err)
+					failures = append(failures, fmt.Errorf("cleanup %s: %w", shellName, err))
 				} else {
 					fileops.ColorPrintfn(fileops.Green, "  ✓ Removed %s shell directory", shellName)
 				}
@@ -265,6 +311,10 @@ func (state *commandState) runInteractiveFeatureRemove(repoPath string) error {
 		fileops.ColorPrintfn(fileops.Cyan, "Run '%s push' to push committed changes", alias)
 	} else {
 		fileops.ColorPrintln("No features were removed", fileops.Yellow)
+	}
+
+	if len(failures) > 0 {
+		return fmt.Errorf("removed %d feature installation(s); remaining removals or cleanup failed: %w", removedCount, errors.Join(failures...))
 	}
 
 	return nil

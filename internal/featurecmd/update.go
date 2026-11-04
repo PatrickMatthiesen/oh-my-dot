@@ -1,6 +1,7 @@
 package featurecmd
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -8,7 +9,6 @@ import (
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/catalog"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/interactive"
-	"github.com/PatrickMatthiesen/oh-my-dot/internal/manifest"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/shell"
 	"github.com/spf13/cobra"
 )
@@ -37,12 +37,18 @@ func (state *commandState) runFeatureUpdate(cmd *cobra.Command, args []string) e
 	repoPath := state.repoPathProvider()
 	alias := state.aliasProvider()
 
-	if state.flagInteractive {
+	if err := interactive.ValidateMode(cmd); err != nil {
+		return fmt.Errorf("invalid interaction mode: %w", err)
+	}
+	if state.flagLocal {
+		return state.runLocalFeatureUpdate(cmd, args)
+	}
+	if state.flagInteractive || (len(args) == 0 && !state.flagAll && interactive.ShouldPrompt(cmd, false)) {
 		if len(args) > 0 {
 			return fmt.Errorf("interactive mode does not accept a feature name")
 		}
 
-		return state.runInteractiveFeatureUpdate(repoPath)
+		return state.runInteractiveFeatureUpdate(cmd, repoPath)
 	}
 
 	if len(args) == 0 {
@@ -64,18 +70,8 @@ func (state *commandState) runFeatureUpdate(cmd *cobra.Command, args []string) e
 		return fmt.Errorf("feature '%s' is not installed in any shell", featureName)
 	}
 
-	for _, shellName := range targetShells {
-		fileops.ColorPrintfn(fileops.Cyan, "Refreshing %s in %s...", featureName, shellName)
-
-		if err := shell.RefreshFeatureTemplate(repoPath, shellName, featureName); err != nil {
-			return fmt.Errorf("failed to refresh feature in %s: %w", shellName, err)
-		}
-
-		fileops.ColorPrintfn(fileops.Green, "  ✓ Feature file updated")
-	}
-
-	if err := autoCommitShellFeatureChanges("Refresh shell feature: " + featureName); err != nil {
-		return fmt.Errorf("failed to commit shell feature changes: %w", err)
+	if err := refreshFeatureTargets(repoPath, map[string][]string{featureName: targetShells}, "Refresh shell feature: "+featureName, state.flagForce); err != nil {
+		return err
 	}
 
 	fmt.Println()
@@ -93,29 +89,8 @@ func (state *commandState) runAllFeatureUpdates(repoPath, alias string) error {
 		return nil
 	}
 
-	featureNames := make([]string, 0, len(featureMap))
-	for featureName := range featureMap {
-		featureNames = append(featureNames, featureName)
-	}
-	sort.Strings(featureNames)
-
-	for _, featureName := range featureNames {
-		targetShells := featureMap[featureName]
-		sort.Strings(targetShells)
-
-		for _, shellName := range targetShells {
-			fileops.ColorPrintfn(fileops.Cyan, "Refreshing %s in %s...", featureName, shellName)
-
-			if err := shell.RefreshFeatureTemplate(repoPath, shellName, featureName); err != nil {
-				return fmt.Errorf("failed to refresh feature in %s: %w", shellName, err)
-			}
-
-			fileops.ColorPrintfn(fileops.Green, "  ✓ Feature file updated")
-		}
-	}
-
-	if err := autoCommitShellFeatureChanges("Refresh shell features"); err != nil {
-		return fmt.Errorf("failed to commit shell feature changes: %w", err)
+	if err := refreshFeatureTargets(repoPath, featureMap, "Refresh shell features", state.flagForce); err != nil {
+		return err
 	}
 
 	fmt.Println()
@@ -123,8 +98,8 @@ func (state *commandState) runAllFeatureUpdates(repoPath, alias string) error {
 	return nil
 }
 
-func (state *commandState) runInteractiveFeatureUpdate(repoPath string) error {
-	if !isInteractive() {
+func (state *commandState) runInteractiveFeatureUpdate(cmd *cobra.Command, repoPath string) error {
+	if !interactive.ShouldPrompt(cmd, false) {
 		return fmt.Errorf("cannot run interactive mode in non-interactive environment")
 	}
 
@@ -180,23 +155,12 @@ func (state *commandState) runInteractiveFeatureUpdate(repoPath string) error {
 		selectedFeatureNames = append(selectedFeatureNames, labelToFeatureName[label])
 	}
 
+	selectedMap := make(map[string][]string, len(selectedFeatureNames))
 	for _, featureName := range selectedFeatureNames {
-		shellsWithFeature := featureMap[featureName]
-		sort.Strings(shellsWithFeature)
-
-		for _, shellName := range shellsWithFeature {
-			fileops.ColorPrintfn(fileops.Cyan, "Refreshing %s in %s...", featureName, shellName)
-
-			if err := shell.RefreshFeatureTemplate(repoPath, shellName, featureName); err != nil {
-				return fmt.Errorf("failed to refresh feature in %s: %w", shellName, err)
-			}
-
-			fileops.ColorPrintfn(fileops.Green, "  ✓ Feature file updated")
-		}
+		selectedMap[featureName] = featureMap[featureName]
 	}
-
-	if err := autoCommitShellFeatureChanges("Refresh shell features (interactive)"); err != nil {
-		return fmt.Errorf("failed to commit shell feature changes: %w", err)
+	if err := refreshFeatureTargets(repoPath, selectedMap, "Refresh shell features (interactive)", state.flagForce); err != nil {
+		return err
 	}
 
 	fmt.Println()
@@ -205,17 +169,18 @@ func (state *commandState) runInteractiveFeatureUpdate(repoPath string) error {
 }
 
 func collectUpdatableFeatures(repoPath string, candidateShells []string) (map[string][]string, error) {
+	if err := preflightFeatureManifests(repoPath, candidateShells); err != nil {
+		return nil, err
+	}
 	featureMap := make(map[string][]string)
 
 	for _, shellName := range candidateShells {
-		manifestPath := shell.GetManifestPath(repoPath, shellName)
-		localManifestPath := shell.GetLocalManifestPath(repoPath, shellName)
-		merged, err := manifest.ParseManifestWithLocal(manifestPath, localManifestPath)
+		base, _, _, err := readFeatureManifest(repoPath, shellName)
 		if err != nil {
-			continue
+			return nil, err
 		}
 
-		for _, feature := range merged.Features {
+		for _, feature := range base.Features {
 			if !catalog.HasFeatureTemplate(feature.Name, shellName) {
 				continue
 			}
@@ -254,17 +219,21 @@ func (state *commandState) shellsWithFeature(repoPath, featureName string) ([]st
 		candidateShells = allShells
 	}
 
+	if err := preflightFeatureManifests(repoPath, candidateShells); err != nil {
+		return nil, err
+	}
 	installedShells := make([]string, 0, len(candidateShells))
 	for _, shellName := range candidateShells {
-		manifestPath := shell.GetManifestPath(repoPath, shellName)
-		localManifestPath := shell.GetLocalManifestPath(repoPath, shellName)
-		merged, err := manifest.ParseManifestWithLocal(manifestPath, localManifestPath)
+		base, _, merged, err := readFeatureManifest(repoPath, shellName)
 		if err != nil {
-			continue
+			return nil, err
 		}
 
 		for _, feature := range merged.Features {
 			if feature.Name == featureName {
+				if _, err := base.GetFeature(featureName); err != nil {
+					return nil, fmt.Errorf("feature %q is local-only in %s; use feature update %s --shell %s --local", featureName, shellName, featureName, shellName)
+				}
 				installedShells = append(installedShells, shellName)
 				break
 			}
@@ -272,4 +241,64 @@ func (state *commandState) shellsWithFeature(repoPath, featureName string) ([]st
 	}
 
 	return installedShells, nil
+}
+
+// All refresh modes share partial-completion semantics: validate before writing,
+// commit completed refreshes, then return the collected failures.
+func refreshFeatureTargets(repoPath string, featureMap map[string][]string, commitMessage string, force ...bool) error {
+	var featureNames, shellNames []string
+	for featureName, shells := range featureMap {
+		featureNames = append(featureNames, featureName)
+		shellNames = append(shellNames, shells...)
+	}
+	if len(featureNames) == 0 {
+		return nil
+	}
+	if err := preflightFeatureManifests(repoPath, shellNames); err != nil {
+		return err
+	}
+	if err := preflightFeatureMutation(repoPath); err != nil {
+		return err
+	}
+	sort.Strings(featureNames)
+	type target struct {
+		name, shell string
+		plan        *shell.FeatureConfigurationPlan
+	}
+	var targets []target
+	replace := len(force) > 0 && force[0]
+	for _, featureName := range featureNames {
+		targetShells := featureMap[featureName]
+		sort.Strings(targetShells)
+		for _, shellName := range targetShells {
+			plan, err := shell.PrepareFeatureRefresh(repoPath, shellName, featureName, replace)
+			if err != nil {
+				return fmt.Errorf("prepare refresh %s in %s: %w", featureName, shellName, err)
+			}
+			targets = append(targets, target{featureName, shellName, plan})
+		}
+	}
+	updatedCount := 0
+	var failures []error
+	for _, target := range targets {
+		if !target.plan.Changed {
+			continue
+		}
+		fileops.ColorPrintfn(fileops.Cyan, "Refreshing %s in %s...", target.name, target.shell)
+		if err := target.plan.Apply(); err != nil {
+			failures = append(failures, fmt.Errorf("refresh %s in %s: %w", target.name, target.shell, err))
+			continue
+		}
+		updatedCount++
+		fileops.ColorPrintfn(fileops.Green, "  ✓ Feature file updated")
+	}
+	if updatedCount > 0 {
+		if err := autoCommitShellFeatureChanges(commitMessage); err != nil {
+			failures = append(failures, fmt.Errorf("commit successful refreshes: %w", err))
+		}
+	}
+	if len(failures) > 0 {
+		return fmt.Errorf("refreshed %d feature installation(s); remaining refreshes failed: %w", updatedCount, errors.Join(failures...))
+	}
+	return nil
 }

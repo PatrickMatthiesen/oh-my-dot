@@ -87,24 +87,41 @@ func normalizeHookPath(shell, path string) string {
 
 // HasHook checks if a profile file already contains the hook
 func HasHook(profilePath string) (bool, error) {
-	file, err := os.Open(profilePath)
+	content, err := os.ReadFile(profilePath)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
 	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, err
+		return false, fmt.Errorf("read profile: %w", err)
 	}
-	defer file.Close()
+	ranges, err := hookRanges(string(content))
+	return len(ranges) > 0, err
+}
 
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == HookStartMarker {
-			return true, nil
+// hookRanges validates balanced, non-nested markers before any profile mutation.
+// Ranges address SplitAfter lines, preserving all bytes outside valid blocks.
+func hookRanges(content string) ([][2]int, error) {
+	var ranges [][2]int
+	start := -1
+	for index, line := range strings.SplitAfter(content, "\n") {
+		switch strings.TrimSpace(line) {
+		case HookStartMarker:
+			if start >= 0 {
+				return nil, fmt.Errorf("nested oh-my-dot hook markers; repair the profile block manually")
+			}
+			start = index
+		case HookEndMarker:
+			if start < 0 {
+				return nil, fmt.Errorf("oh-my-dot hook end marker has no start; repair the profile block manually")
+			}
+			ranges = append(ranges, [2]int{start, index + 1})
+			start = -1
 		}
 	}
-
-	return false, scanner.Err()
+	if start >= 0 {
+		return nil, fmt.Errorf("oh-my-dot hook start marker has no end; repair the profile block manually")
+	}
+	return ranges, nil
 }
 
 // InsertHook inserts the hook into a profile file (idempotent)
@@ -155,60 +172,36 @@ func InsertHook(profilePath, hookContent string) (bool, error) {
 
 // RemoveHook removes the hook block from a profile file
 func RemoveHook(profilePath string) error {
-	file, err := os.Open(profilePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			// File doesn't exist, nothing to remove
-			return nil
-		}
-		return fmt.Errorf("failed to open profile: %w", err)
-	}
-	defer file.Close()
-
-	var lines []string
-	scanner := bufio.NewScanner(file)
-	inHookBlock := false
-	hookFound := false
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		trimmed := strings.TrimSpace(line)
-
-		if trimmed == HookStartMarker {
-			inHookBlock = true
-			hookFound = true
-			continue
-		}
-
-		if trimmed == HookEndMarker {
-			inHookBlock = false
-			continue
-		}
-
-		if !inHookBlock {
-			lines = append(lines, line)
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("failed to read profile: %w", err)
-	}
-
-	if !hookFound {
-		// No hook found, nothing to do
+	content, err := os.ReadFile(profilePath)
+	if os.IsNotExist(err) {
 		return nil
 	}
-
-	// Write back without the hook block
-	content := strings.Join(lines, "\n")
-	if content != "" && !strings.HasSuffix(content, "\n") {
-		content += "\n"
+	if err != nil {
+		return fmt.Errorf("read profile: %w", err)
 	}
-
-	if err := fileops.WriteTextFileLF(profilePath, content, 0644); err != nil {
-		return fmt.Errorf("failed to write profile: %w", err)
+	ranges, err := hookRanges(string(content))
+	if err != nil {
+		return err
 	}
-
+	if len(ranges) == 0 {
+		return nil
+	}
+	lines := strings.SplitAfter(string(content), "\n")
+	var kept strings.Builder
+	previous := 0
+	for _, block := range ranges {
+		for _, line := range lines[previous:block[0]] {
+			kept.WriteString(line)
+		}
+		previous = block[1]
+	}
+	for _, line := range lines[previous:] {
+		kept.WriteString(line)
+	}
+	// Preserve the user's line endings, final newline, and existing permissions.
+	if err := os.WriteFile(profilePath, []byte(kept.String()), 0644); err != nil {
+		return fmt.Errorf("write profile: %w", err)
+	}
 	return nil
 }
 
@@ -246,4 +239,54 @@ func NeedsBashLoginShim(bashProfilePath string) (bool, error) {
 	}
 
 	return true, scanner.Err()
+}
+
+// HookMatches checks that exactly one well-formed managed block matches the
+// expected hook. Line ending differences alone do not make a hook stale.
+func HookMatches(profilePath, expected string) (bool, error) {
+	data, err := os.ReadFile(profilePath)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read profile: %w", err)
+	}
+	blocks, err := hookRanges(string(data))
+	if err != nil {
+		return false, err
+	}
+	if len(blocks) != 1 {
+		return false, fmt.Errorf("expected one managed hook block in %s; repair duplicate or missing markers", profilePath)
+	}
+	lines := strings.SplitAfter(string(data), "\n")
+	actual := strings.Join(lines[blocks[0][0]:blocks[0][1]], "")
+	normalize := func(s string) string { return strings.TrimSpace(strings.ReplaceAll(s, "\r\n", "\n")) }
+	return normalize(actual) == normalize(expected), nil
+}
+
+// ReplaceHook updates only one validated managed block, preserving every byte
+// outside it. Malformed or ambiguous blocks are never rewritten.
+func ReplaceHook(profilePath, expected string) error {
+	data, err := os.ReadFile(profilePath)
+	if err != nil {
+		return fmt.Errorf("read profile: %w", err)
+	}
+	blocks, err := hookRanges(string(data))
+	if err != nil {
+		return err
+	}
+	if len(blocks) != 1 {
+		return fmt.Errorf("cannot replace ambiguous managed hook in %s", profilePath)
+	}
+	lines := strings.SplitAfter(string(data), "\n")
+	block := blocks[0]
+	replacement := strings.TrimRight(expected, "\r\n") + "\n"
+	if strings.Contains(string(data), "\r\n") {
+		replacement = strings.ReplaceAll(replacement, "\n", "\r\n")
+	}
+	updated := strings.Join(lines[:block[0]], "") + replacement + strings.Join(lines[block[1]:], "")
+	if err := os.WriteFile(profilePath, []byte(updated), 0644); err != nil {
+		return fmt.Errorf("update managed hook: %w", err)
+	}
+	return nil
 }

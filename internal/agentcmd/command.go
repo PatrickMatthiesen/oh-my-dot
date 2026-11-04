@@ -5,9 +5,11 @@ import (
 	"os"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/git"
-	"github.com/spf13/cobra"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/interactive"
 )
 
 type commandState struct {
@@ -47,13 +49,14 @@ into user or project scopes.`,
 	}
 
 	skillsAddCmd := &cobra.Command{
-		Use:   "add <path>",
+		Use:   "add [path]",
 		Short: "Add skills to oh-my-dot management",
 		Long: `Add a skill directory to the managed oh-my-dot agent skills store.
 
 The path may point at a single skill directory containing SKILL.md, at a
 SKILL.md file, or at a parent directory containing immediate child skill directories.
 Use --recurse to discover skill directories below that first level.
+Run without a path in a terminal to enter one. Scripts must supply the path.
 
 Examples:
   oh-my-dot agent skills add ./skills/code-review
@@ -61,17 +64,18 @@ Examples:
   oh-my-dot agent skills add ./skills --recurse
   oh-my-dot agent skills add ./skills/code-review --apply
   oh-my-dot agent skills add ./skills/code-review --apply --scope user`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(1),
 		RunE: silenceUsageOnRun(state.runSkillsAdd),
 	}
 
 	skillsRemoveCmd := &cobra.Command{
-		Use:   "remove <skill>",
+		Use:   "remove [skill]",
 		Short: "Remove a managed agent skill",
 		Long: `Remove a skill from the managed oh-my-dot agent skills store.
 
-This does not unapply already-applied user or project copies.`,
-		Args: cobra.ExactArgs(1),
+This does not unapply already-applied user or project copies.
+Run without a skill in a terminal to select a managed skill.`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: silenceUsageOnRun(state.runSkillsRemove),
 	}
 
@@ -84,40 +88,42 @@ This does not unapply already-applied user or project copies.`,
 	}
 
 	skillsInfoCmd := &cobra.Command{
-		Use:   "info <skill>",
+		Use:   "info [skill]",
 		Short: "Show managed skill information",
-		Long:  `Show the managed path and summary for an agent skill.`,
-		Args:  cobra.ExactArgs(1),
+		Long:  `Show the managed path and summary for an agent skill. Run without a skill in a terminal to select one.`,
+		Args:  cobra.MaximumNArgs(1),
 		RunE:  silenceUsageOnRun(state.runSkillsInfo),
 	}
 
 	skillsApplyCmd := &cobra.Command{
-		Use:   "apply <skill>",
+		Use:   "apply [skill]",
 		Short: "Apply a managed skill into a scope",
 		Long: `Apply a managed skill into a Codex-compatible user or project scope.
 
 Project scope is used by default.
+Run without a skill in a terminal to select one; scripts must supply its name.
 
 Examples:
   oh-my-dot agent skill apply code-review
   oh-my-dot agent skill apply code-review --scope user
   oh-my-dot agent skill apply code-review --scope project --project .`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(1),
 		RunE: silenceUsageOnRun(state.runSkillsApply),
 	}
 
 	skillsUnapplyCmd := &cobra.Command{
-		Use:   "unapply <skill>",
+		Use:   "unapply [skill]",
 		Short: "Unapply a skill from a scope",
 		Long: `Remove an applied skill from a Codex-compatible user or project scope.
 
 Project scope is used by default.
+Run without a skill in a terminal to select one; scripts must supply its name.
 
 Examples:
   oh-my-dot agent skill unapply code-review
   oh-my-dot agent skill unapply code-review --scope user
   oh-my-dot agent skill unapply code-review --scope project --project .`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(1),
 		RunE: silenceUsageOnRun(state.runSkillsUnapply),
 	}
 
@@ -149,14 +155,28 @@ Examples:
 func silenceUsageOnRun(runE func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		cmd.SilenceUsage = true
+		if err := interactive.ValidateMode(cmd); err != nil {
+			return fmt.Errorf("invalid interaction mode: %w", err)
+		}
 		return runE(cmd, args)
 	}
 }
 
 func (state *commandState) runSkillsAdd(cmd *cobra.Command, args []string) error {
 	repoPath := state.repoPathProvider()
-
-	addedSkills, err := AddSkills(repoPath, args[0], state.flagName, state.flagForce, state.flagRecurse)
+	source, err := state.resolveSkillArgument(cmd, args, "add")
+	if err != nil {
+		return err
+	}
+	if state.flagApply {
+		if _, err := targetSkillsDirectory(state.flagScope, state.flagProject); err != nil {
+			return err
+		}
+	}
+	if err := preflightAgentMutation(repoPath, state.flagNoCommit); err != nil {
+		return err
+	}
+	addedSkills, err := AddSkills(repoPath, source, state.flagName, state.flagForce, state.flagRecurse)
 	if err != nil {
 		return err
 	}
@@ -181,23 +201,38 @@ func (state *commandState) runSkillsAdd(cmd *cobra.Command, args []string) error
 		}
 	}
 
-	fileops.ColorPrintfn(fileops.Cyan, "Run '%s push' to push committed changes", state.aliasProvider())
+	if state.flagNoCommit {
+		fileops.ColorPrintln("Managed skill changes were kept without a commit.", fileops.Cyan)
+	} else {
+		fileops.ColorPrintfn(fileops.Cyan, "Run '%s push' to push committed changes", state.aliasProvider())
+	}
 	return nil
 }
 
 func (state *commandState) runSkillsRemove(cmd *cobra.Command, args []string) error {
-	if err := RemoveSkill(state.repoPathProvider(), args[0]); err != nil {
+	skillName, err := state.resolveSkillArgument(cmd, args, "remove")
+	if err != nil {
+		return err
+	}
+	if err := preflightAgentMutation(state.repoPathProvider(), state.flagNoCommit); err != nil {
+		return err
+	}
+	if err := RemoveSkill(state.repoPathProvider(), skillName); err != nil {
 		return err
 	}
 
-	fileops.ColorPrintfn(fileops.Green, "Removed managed agent skill %s", args[0])
+	fileops.ColorPrintfn(fileops.Green, "Removed managed agent skill %s", skillName)
 	if !state.flagNoCommit {
-		if err := autoCommitAgentSkillChanges("Remove agent skill: " + args[0]); err != nil {
+		if err := autoCommitAgentSkillChanges("Remove agent skill: " + skillName); err != nil {
 			return fmt.Errorf("failed to commit agent skill changes: %w", err)
 		}
 	}
 
-	fileops.ColorPrintfn(fileops.Cyan, "Run '%s push' to push committed changes", state.aliasProvider())
+	if state.flagNoCommit {
+		fileops.ColorPrintln("Managed skill changes were kept without a commit.", fileops.Cyan)
+	} else {
+		fileops.ColorPrintfn(fileops.Cyan, "Run '%s push' to push committed changes", state.aliasProvider())
+	}
 	return nil
 }
 
@@ -219,7 +254,11 @@ func (state *commandState) runSkillsList(cmd *cobra.Command, args []string) erro
 }
 
 func (state *commandState) runSkillsInfo(cmd *cobra.Command, args []string) error {
-	skill, err := GetSkill(state.repoPathProvider(), args[0])
+	name, err := state.resolveSkillArgument(cmd, args, "info")
+	if err != nil {
+		return err
+	}
+	skill, err := GetSkill(state.repoPathProvider(), name)
 	if err != nil {
 		return err
 	}
@@ -246,22 +285,30 @@ func (state *commandState) runSkillsInfo(cmd *cobra.Command, args []string) erro
 }
 
 func (state *commandState) runSkillsApply(cmd *cobra.Command, args []string) error {
-	target, err := ApplySkill(state.repoPathProvider(), args[0], state.flagScope, state.flagProject, state.flagForce)
+	skillName, err := state.resolveSkillArgument(cmd, args, "apply")
+	if err != nil {
+		return err
+	}
+	target, err := ApplySkill(state.repoPathProvider(), skillName, state.flagScope, state.flagProject, state.flagForce)
 	if err != nil {
 		return err
 	}
 
-	fileops.ColorPrintfn(fileops.Green, "Applied %s to %s", args[0], target)
+	fileops.ColorPrintfn(fileops.Green, "Applied %s to %s", skillName, target)
 	return nil
 }
 
 func (state *commandState) runSkillsUnapply(cmd *cobra.Command, args []string) error {
-	target, err := UnapplySkill(args[0], state.flagScope, state.flagProject)
+	skillName, err := state.resolveSkillArgument(cmd, args, "unapply")
+	if err != nil {
+		return err
+	}
+	target, err := UnapplySkill(skillName, state.flagScope, state.flagProject)
 	if err != nil {
 		return err
 	}
 
-	fileops.ColorPrintfn(fileops.Green, "Unapplied %s from %s", args[0], target)
+	fileops.ColorPrintfn(fileops.Green, "Unapplied %s from %s", skillName, target)
 	return nil
 }
 

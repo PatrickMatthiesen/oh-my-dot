@@ -5,12 +5,16 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/catalog"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/manifest"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/shell"
 )
+
+var lookupFeatureExecutable = exec.LookPath
 
 func checkDirectoryStructure(ctx context) []result {
 	var results []result
@@ -120,43 +124,89 @@ func checkManifest(ctx context) []result {
 
 func checkFeatureFiles(ctx context) []result {
 	var results []result
-
-	manifestPath := shell.GetManifestPath(ctx.repoPath, ctx.shellName)
-	m, err := manifest.ParseManifest(manifestPath)
+	merged, err := manifest.ParseManifestWithLocal(shell.GetManifestPath(ctx.repoPath, ctx.shellName), shell.GetLocalManifestPath(ctx.repoPath, ctx.shellName))
 	if err != nil {
 		return results
 	}
-
 	missingCount := 0
-	for _, feature := range m.Features {
-		featurePath, err := shell.GetFeatureFilePath(ctx.repoPath, ctx.shellName, feature.Name)
+	for _, feature := range merged.Features {
+		if feature.Name == "oh-my-posh" && !feature.Disabled {
+			if _, err := lookupFeatureExecutable("oh-my-posh"); err != nil {
+				results = addResult(results, ctx, warningResult("Oh My Posh executable", "The feature is configured, but oh-my-posh is not available on PATH. Install Oh My Posh using your package manager, then open a new shell. Configuring a feature does not install its prerequisite.", false), nil)
+			}
+		}
+		featurePath, err := shell.GetEffectiveFeatureFilePath(ctx.repoPath, ctx.shellName, feature.Name)
 		if err != nil {
+			results = addResult(results, ctx, errorResult("Feature file '"+feature.Name+"'", err.Error(), false), nil)
+			missingCount++
 			continue
 		}
-
-		if _, err := os.Stat(featurePath); os.IsNotExist(err) {
-			missingCount++
-			featureName := feature.Name
-			results = addResult(
-				results,
-				ctx,
-				errorResult(fmt.Sprintf("Feature file '%s'", featureName), fmt.Sprintf("File missing: %s", featurePath), true),
-				func() (string, error) {
-					content := "# Feature: " + featureName + "\n"
-					if err := fileops.WriteTextFileLF(featurePath, content, 0644); err != nil {
-						return "", fmt.Errorf("create feature file %q: %w", featureName, err)
-					}
-
-					return fmt.Sprintf("Created %s", featurePath), nil
-				},
-			)
+		info, statErr := os.Lstat(featurePath)
+		if statErr == nil {
+			if !info.Mode().IsRegular() {
+				results = addResult(results, ctx, errorResult(fmt.Sprintf("Feature file '%s'", feature.Name), fmt.Sprintf("Feature must be a regular file: %s", featurePath), false), nil)
+				missingCount++
+			}
+			continue
 		}
+		if !os.IsNotExist(statErr) {
+			results = addResult(results, ctx, errorResult(fmt.Sprintf("Feature file '%s'", feature.Name), fmt.Sprintf("Cannot inspect %s: %v", featurePath, statErr), false), nil)
+			missingCount++
+			continue
+		}
+		missingCount++
+		featureName := feature.Name
+		if !catalog.HasFeatureTemplate(featureName, ctx.shellName) {
+			results = addResult(results, ctx, errorResult(fmt.Sprintf("Feature file '%s'", featureName), fmt.Sprintf("File missing: %s. Restore your custom implementation from Git history or a backup; no catalog template is available.", featurePath), false), nil)
+			continue
+		}
+		featureOptions := feature.Options
+		results = addResult(results, ctx, errorResult(fmt.Sprintf("Feature file '%s'", featureName), fmt.Sprintf("File missing: %s. Restore the catalog version with saved options; custom edits require Git history or a backup.", featurePath), true), func() (string, error) {
+			source, err := catalog.GetFeatureTemplate(featureName, ctx.shellName)
+			if err != nil {
+				return "", fmt.Errorf("read feature template: %w", err)
+			}
+			content, err := catalog.RenderFeatureTemplate(source, featureName, ctx.shellName, featureOptions)
+			if err != nil {
+				return "", fmt.Errorf("render feature template: %w", err)
+			}
+			mode, directoryMode := os.FileMode(0644), os.FileMode(0755)
+			relative, relErr := filepath.Rel(ctx.repoPath, featurePath)
+			if relErr == nil && shell.IsDeviceLocalShellPath(relative) {
+				if err := shell.CheckLocalRuntimeTracking(ctx.repoPath); err != nil {
+					return "", err
+				}
+				if err := shell.ValidateRuntimeScripts(ctx.repoPath, ctx.shellName); err != nil {
+					return "", fmt.Errorf("validate private runtime before repair: %w", err)
+				}
+				mode, directoryMode = 0600, 0700
+			}
+			if err := os.MkdirAll(filepath.Dir(featurePath), directoryMode); err != nil {
+				return "", fmt.Errorf("create feature directory: %w", err)
+			}
+			if mode == 0600 {
+				if err := manifest.CreatePrivateFile(featurePath, []byte(content)); err != nil {
+					return "", fmt.Errorf("restore private catalog version: %w", err)
+				}
+				return fmt.Sprintf("Restored private catalog template %s; customized content requires Git history or a backup.", featurePath), nil
+			}
+			file, err := os.OpenFile(featurePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
+			if err != nil {
+				return "", fmt.Errorf("restore missing feature without replacing existing content: %w", err)
+			}
+			if _, err := file.WriteString(content); err != nil {
+				file.Close()
+				return "", fmt.Errorf("write feature template: %w", err)
+			}
+			if err := file.Close(); err != nil {
+				return "", fmt.Errorf("close restored feature: %w", err)
+			}
+			return fmt.Sprintf("Restored catalog template %s with saved options. This restores the catalog version; customized content must come from Git history or a backup.", featurePath), nil
+		})
 	}
-
-	if missingCount == 0 && len(m.Features) > 0 {
-		results = addResult(results, ctx, okResult(fmt.Sprintf("Feature files (%d)", len(m.Features))), nil)
+	if missingCount == 0 && len(merged.Features) > 0 {
+		results = addResult(results, ctx, okResult(fmt.Sprintf("Feature files (%d)", len(merged.Features))), nil)
 	}
-
 	return results
 }
 

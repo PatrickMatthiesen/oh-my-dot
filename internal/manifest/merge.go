@@ -27,6 +27,7 @@ type MergedManifest struct {
 // Local manifest can:
 // - Override strategy for existing features
 // - Set disabled flag for existing features
+// - Overlay options, using null values to remove inherited option keys
 // - Add new local-only features
 // The merge preserves the order of the base manifest and appends local-only features
 func MergeManifests(base, local *FeatureManifest) *MergedManifest {
@@ -71,8 +72,23 @@ func MergeManifests(base, local *FeatureManifest) *MergedManifest {
 				mergedFeature.OnCommand = localFeature.OnCommand
 			}
 
-			// Always use local disabled flag (explicit override)
-			mergedFeature.Disabled = localFeature.Disabled
+			if localFeature.DisabledSet || localFeature.Disabled {
+				mergedFeature.Disabled = localFeature.Disabled
+				mergedFeature.DisabledSet = true
+			}
+			if localFeature.Options != nil {
+				mergedFeature.Options = make(map[string]any, len(baseFeature.Options)+len(localFeature.Options))
+				for key, value := range baseFeature.Options {
+					mergedFeature.Options[key] = value
+				}
+				for key, value := range localFeature.Options {
+					if value == nil {
+						delete(mergedFeature.Options, key)
+					} else {
+						mergedFeature.Options[key] = value
+					}
+				}
+			}
 
 			merged.Features = append(merged.Features, FeatureWithOverride{
 				FeatureConfig: mergedFeature,
@@ -99,7 +115,19 @@ func MergeManifests(base, local *FeatureManifest) *MergedManifest {
 	}
 
 	// Add remaining local-only features (not in base)
-	for _, localFeature := range localFeatures {
+	for _, localFeature := range local.Features {
+		if _, remaining := localFeatures[localFeature.Name]; !remaining {
+			continue
+		}
+		if localFeature.Options != nil {
+			options := make(map[string]any, len(localFeature.Options))
+			for key, value := range localFeature.Options {
+				if value != nil {
+					options[key] = value
+				}
+			}
+			localFeature.Options = options
+		}
 		merged.Features = append(merged.Features, FeatureWithOverride{
 			FeatureConfig: localFeature,
 			Override: LocalOverride{

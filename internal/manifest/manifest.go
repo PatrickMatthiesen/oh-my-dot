@@ -5,16 +5,57 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"regexp"
 )
 
 // FeatureConfig represents a single feature configuration in enabled.json
 type FeatureConfig struct {
-	Name      string         `json:"name"`
-	Strategy  string         `json:"strategy,omitempty"`  // "eager", "defer", or "on-command"
-	OnCommand []string       `json:"onCommand,omitempty"` // Commands that trigger on-command loading
-	Disabled  bool           `json:"disabled,omitempty"`  // If true, feature is disabled
-	Options   map[string]any `json:"options,omitempty"`   // User-provided option values
+	Name        string         `json:"name"`
+	Strategy    string         `json:"strategy,omitempty"`  // "eager", "defer", or "on-command"
+	OnCommand   []string       `json:"onCommand,omitempty"` // Commands that trigger on-command loading
+	Disabled    bool           `json:"disabled,omitempty"`  // If true, feature is disabled
+	DisabledSet bool           `json:"-"`                   // True when a local disabled field explicitly overrides inherited state
+	Options     map[string]any `json:"options,omitempty"`   // User-provided option values
+}
+
+// UnmarshalJSON preserves whether disabled was supplied, so an options-only
+// local override does not accidentally enable an inherited disabled feature.
+func (f *FeatureConfig) UnmarshalJSON(data []byte) error {
+	type plain FeatureConfig
+	var decoded plain
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	*f = FeatureConfig(decoded)
+	if disabled, exists := fields["disabled"]; exists {
+		if string(disabled) == "null" {
+			return fmt.Errorf("disabled must be true or false")
+		}
+		f.DisabledSet = true
+	}
+	return nil
+}
+
+// MarshalJSON retains an explicit false local disabled override.
+func (f FeatureConfig) MarshalJSON() ([]byte, error) {
+	type encoded struct {
+		Name      string         `json:"name"`
+		Strategy  string         `json:"strategy,omitempty"`
+		OnCommand []string       `json:"onCommand,omitempty"`
+		Disabled  *bool          `json:"disabled,omitempty"`
+		Options   map[string]any `json:"options,omitempty"`
+	}
+	var disabled *bool
+	if f.Disabled || f.DisabledSet {
+		value := f.Disabled
+		disabled = &value
+	}
+	return json.Marshal(encoded{f.Name, f.Strategy, f.OnCommand, disabled, f.Options})
 }
 
 // FeatureManifest represents the enabled.json file structure
@@ -99,7 +140,11 @@ func ParseManifest(path string) (*FeatureManifest, error) {
 	}
 	defer f.Close()
 
-	return ParseManifestReader(f)
+	parsed, err := ParseManifestReader(f)
+	if err != nil {
+		return nil, fmt.Errorf("manifest %s: %w", path, err)
+	}
+	return parsed, nil
 }
 
 // ParseManifestReader reads and parses a manifest from r.
@@ -114,11 +159,16 @@ func ParseManifestReader(r io.Reader) (*FeatureManifest, error) {
 		return nil, fmt.Errorf("failed to parse manifest JSON: %w", err)
 	}
 
-	// Validate all features
+	// A feature has one owner and one load entry in each manifest.
+	names := make(map[string]bool, len(manifest.Features))
 	for i, feature := range manifest.Features {
 		if err := feature.Validate(); err != nil {
 			return nil, fmt.Errorf("feature at index %d: %w", i, err)
 		}
+		if names[feature.Name] {
+			return nil, fmt.Errorf("duplicate feature %q at index %d", feature.Name, i)
+		}
+		names[feature.Name] = true
 	}
 
 	return &manifest, nil
@@ -131,7 +181,44 @@ func WriteManifest(path string, manifest *FeatureManifest) error {
 
 // WriteLocalManifest writes a device-local manifest with restrictive permissions.
 func WriteLocalManifest(path string, manifest *FeatureManifest) error {
-	return writeManifest(path, manifest, 0600, writeLocalManifestFile)
+	return writeManifest(path, manifest, 0600, func(path string, data []byte, _ os.FileMode) error {
+		return WritePrivateFile(path, data)
+	})
+}
+
+// WritePrivateFile writes device-only data with owner-only Unix permissions or
+// a protected Windows DACL for the current user, administrators, and SYSTEM.
+// It refuses symlinks and restricts existing files before writing private bytes.
+func WritePrivateFile(path string, data []byte) error {
+	return writePrivateFile(path, data, false)
+}
+
+// CreatePrivateFile securely creates device-only data and refuses to replace an
+// existing path, including one that appears while a repair is being prepared.
+func CreatePrivateFile(path string, data []byte) error {
+	return writePrivateFile(path, data, true)
+}
+
+func writePrivateFile(path string, data []byte, exclusive bool) error {
+	if info, err := os.Lstat(filepath.Dir(path)); err != nil {
+		return fmt.Errorf("inspect private parent directory: %w", err)
+	} else if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("private parent must be a real directory: %s", filepath.Dir(path))
+	}
+	if info, err := os.Lstat(path); err == nil {
+		if exclusive {
+			return fmt.Errorf("private file already exists %s: %w", path, os.ErrExist)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("private file must be regular: %s", path)
+		}
+	} else if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("inspect private file: %w", err)
+	}
+	if err := writePrivateRuntimeFile(path, data, 0600, exclusive); err != nil {
+		return fmt.Errorf("write private file %s: %w", path, err)
+	}
+	return nil
 }
 
 func writeManifest(path string, manifest *FeatureManifest, perm os.FileMode, writeFile func(string, []byte, os.FileMode) error) error {

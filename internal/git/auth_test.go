@@ -1,8 +1,11 @@
 package git
 
 import (
+	"errors"
+	"io"
 	"net/http"
 	"os/exec"
+	"strings"
 	"testing"
 )
 
@@ -45,5 +48,29 @@ func TestRemoteClientOptionsCredentialHelper(t *testing.T) {
 		if options := RemoteClientOptions(path, remote); len(options) != 0 {
 			t.Fatalf("unexpected authentication for %q", remote)
 		}
+	}
+}
+
+type authResponseTransport struct{ status int }
+
+func (t authResponseTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return &http.Response{StatusCode: t.status, Body: io.NopCloser(strings.NewReader("response"))}, nil
+}
+
+func TestCredentialLookupFailureAllowsPublicAccess(t *testing.T) {
+	for _, status := range []int{http.StatusOK, http.StatusUnauthorized, http.StatusForbidden} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			transport := credentialLookupTransport{base: authResponseTransport{status}, lookupErr: errors.New("helper unavailable")}
+			request, _ := http.NewRequest(http.MethodGet, "https://example.invalid/repo", nil)
+			response, err := transport.RoundTrip(request)
+			if status == http.StatusOK {
+				if err != nil {
+					t.Fatal(err)
+				}
+				response.Body.Close()
+			} else if err == nil || !strings.Contains(err.Error(), "helper unavailable") {
+				t.Fatalf("missing helper diagnosis: %v", err)
+			}
+		})
 	}
 }

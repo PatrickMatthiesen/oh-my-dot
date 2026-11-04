@@ -3,17 +3,9 @@
 $terminalIconsModule = Get-Module -ListAvailable -Name Terminal-Icons
 
 if (-not $terminalIconsModule) {
-    Write-Host "Terminal-Icons module not found. Installing..." -ForegroundColor Yellow
-
-    try {
-        Install-Module Terminal-Icons -Scope CurrentUser -AllowClobber -ErrorAction Stop
-        Write-Host "Terminal-Icons installed successfully" -ForegroundColor Green
-    }
-    catch {
-        Write-Warning "Failed to install Terminal-Icons: $_"
-        Write-Host "To install manually, run: Install-Module Terminal-Icons -Scope CurrentUser" -ForegroundColor Yellow
-        return
-    }
+    # Setup guidance is shown by feature add/configure, apply and doctor.
+    # Opening a shell must not start a package-manager transaction.
+    return
 }
 
 try {

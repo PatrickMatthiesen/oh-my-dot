@@ -1,10 +1,35 @@
 package options
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/catalog"
 )
+
+func TestOhMyPoshThemeOverrides(t *testing.T) {
+	metadata, _ := catalog.GetFeature("oh-my-posh")
+	for _, name := range []string{"agnoster.minimal", "devious-diamonds", "glowsticks", "M365Princess", "atomicBit"} {
+		t.Run(name, func(t *testing.T) {
+			values, err := ParseOptionOverrides(metadata, []string{"theme=" + name})
+			if err != nil {
+				t.Fatal(err)
+			}
+			values, err = ResolveOptionsForNonInteractiveWithOverrides(metadata, values)
+			if err != nil || values["theme"] != name {
+				t.Fatalf("theme=%v error=%v", values["theme"], err)
+			}
+		})
+	}
+	for _, name := range []string{"atomicbit", "m365princess", "../pure", "https://example.com/theme"} {
+		if _, err := ParseOptionOverrides(metadata, []string{"theme=" + name}); err == nil {
+			t.Errorf("unexpectedly accepted %q", name)
+		}
+	}
+	if _, err := ResolveOptionsForNonInteractive(metadata); err == nil || !strings.Contains(err.Error(), "required option") {
+		t.Fatalf("missing theme should still require an explicit value in pipes, got %v", err)
+	}
+}
 
 func TestResolveOptionsForNonInteractive(t *testing.T) {
 	metadata := catalog.FeatureMetadata{

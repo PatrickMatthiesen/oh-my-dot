@@ -2,7 +2,10 @@
 # Displays current directory, git branch, and repository status in your PowerShell prompt
 
 # Cache whether the current session is elevated (recomputed only once)
-$Script:IsAdministrator = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+$Script:IsAdministrator = $false
+if ([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT) {
+    $Script:IsAdministrator = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
 
 # Parse git branch name
 function Get-GitBranch {

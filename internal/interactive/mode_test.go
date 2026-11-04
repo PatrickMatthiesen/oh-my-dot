@@ -58,20 +58,22 @@ func TestInteractionMode(t *testing.T) {
 						cmd.Flags().Bool("interactive", flag.interactive, "")
 						cmd.Flags().Bool("no-interactive", flag.noInteractive, "")
 						want := ModeAuto
-						if flag.interactive {
+						if flag.noInteractive || environment.ci != "" || environment.omd != "" {
+							want = ModeNonInteractive
+						} else if flag.interactive {
 							want = ModeInteractive
-						} else if flag.noInteractive || environment.ci != "" || environment.omd != "" || !stdinTTY || !stdoutTTY {
+						} else if !stdinTTY || !stdoutTTY {
 							want = ModeNonInteractive
 						}
 						if got := GetMode(cmd); got != want {
 							t.Errorf("GetMode() = %v, want %v", got, want)
 						}
 						err := ValidateMode(cmd)
-						wantError := flag.interactive && (!stdinTTY || !stdoutTTY)
+						wantError := flag.interactive && (flag.noInteractive || environment.ci != "" || environment.omd != "" || !stdinTTY || !stdoutTTY)
 						if (err != nil) != wantError {
 							t.Errorf("ValidateMode() error = %v, want error %t", err, wantError)
 						}
-						if wantError && err != nil {
+						if wantError && err != nil && !flag.noInteractive && environment.ci == "" && environment.omd == "" {
 							for _, hint := range []string{"stdin", "stdout", "--no-interactive", "terminal"} {
 								if !strings.Contains(err.Error(), hint) {
 									t.Errorf("validation error %q lacks %q", err, hint)
@@ -88,5 +90,28 @@ func TestInteractionMode(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestJSONSuppressesPromptAndRejectsInteractive(t *testing.T) {
+	original := isTerminal
+	t.Cleanup(func() { isTerminal = original })
+	isTerminal = func(uintptr) bool { return true }
+	t.Setenv("CI", "")
+	t.Setenv("OMDOT_NON_INTERACTIVE", "")
+	command := &cobra.Command{}
+	command.Flags().Bool("json", true, "")
+	command.Flags().Bool("interactive", false, "")
+	if ShouldPrompt(command, false) {
+		t.Fatal("JSON output permitted prompt")
+	}
+	if err := command.Flags().Set("interactive", "true"); err != nil {
+		t.Fatal(err)
+	}
+	if ShouldPrompt(command, false) {
+		t.Fatal("interactive bypassed JSON mode")
+	}
+	if err := ValidateMode(command); err == nil {
+		t.Fatal("conflicting interactive JSON flags accepted")
 	}
 }

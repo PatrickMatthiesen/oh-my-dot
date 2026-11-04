@@ -6,6 +6,7 @@ import (
 
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/git"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/interactive"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -53,6 +54,14 @@ func shouldCheckUpdatesForCommand(cmd *cobra.Command) bool {
 }
 
 func shouldUseAsyncUpdateCheck(cmd *cobra.Command) bool {
+	if cmd == nil || interactive.GetMode(cmd) == interactive.ModeNonInteractive {
+		return false
+	}
+	for _, flag := range []string{"json", "offline", "dry-run"} {
+		if enabled, _ := cmd.Flags().GetBool(flag); enabled {
+			return false
+		}
+	}
 	return shouldCheckUpdatesForCommand(cmd) && topLevelCommandName(cmd) != "push"
 }
 

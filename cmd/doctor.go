@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"encoding/json"
+	"fmt"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -38,6 +40,8 @@ var (
 
 func init() {
 	rootCmd.AddCommand(doctorCmd)
+	doctorCmd.Flags().Bool("json", false, "Print versioned JSON diagnostics without prompts")
+	doctorCmd.Flags().Bool("offline", false, "Check local health without contacting the remote")
 	doctorCmd.Flags().StringSliceVar(&flagDoctorShell, "shell", nil, "Check specific shell(s) only")
 	doctorCmd.Flags().BoolVar(&flagFix, "fix", false, "Attempt to fix issues automatically")
 }
@@ -51,5 +55,14 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	return doctor.Run(repoPath, shellsToCheck, alias, flagFix)
+	offline, _ := cmd.Flags().GetBool("offline")
+	asJSON, _ := cmd.Flags().GetBool("json")
+	if asJSON {
+		report, checkErr := doctor.Inspect(repoPath, shellsToCheck, flagFix, offline)
+		if err := json.NewEncoder(cmd.OutOrStdout()).Encode(report); err != nil {
+			return fmt.Errorf("write doctor JSON: %w", err)
+		}
+		return checkErr
+	}
+	return doctor.RunWithOptions(repoPath, shellsToCheck, alias, flagFix, offline)
 }

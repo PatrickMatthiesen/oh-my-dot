@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -34,7 +35,9 @@ var initcmd = &cobra.Command{
 	Short:        "Initialize dotfiles management",
 	Long: `Initialize dotfiles management.
 Makes a git repository and sets remote origin to the specified URL.
-The clone is placed in $HOME/dotfiles by default, but can be changed with --folder <new path>`,
+The clone is placed in $HOME/dotfiles by default, but can be changed with --folder <new path>.
+Leave the remote URL blank for a local repository. Scripts can run init --no-interactive
+without a URL to create a local repository.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) > 1 {
 			viper.Set("repo-path", args[1])
@@ -57,6 +60,10 @@ The clone is placed in $HOME/dotfiles by default, but can be changed with --fold
 			if err != nil {
 				return err
 			}
+			selected, err = ResolveInitRemote(cmd, selected)
+			if err != nil {
+				return err
+			}
 			if existing {
 				if err := git.ReinitializeRepository(viper.GetString("repo-path"), selected); err != nil {
 					return fmt.Errorf("reinitialize repository: %w", err)
@@ -68,6 +75,11 @@ The clone is placed in $HOME/dotfiles by default, but can be changed with --fold
 		}
 		if existing {
 			if !force && viper.GetString("remote-url") != "" {
+				remoteURL, err := ResolveInitRemote(cmd, viper.GetString("remote-url"))
+				if err != nil {
+					return err
+				}
+				viper.Set("remote-url", remoteURL)
 				if err := git.ReinitializeRepository(viper.GetString("repo-path"), viper.GetString("remote-url")); err != nil {
 					return fmt.Errorf("initialize existing remote repository: %w", err)
 				}
@@ -76,42 +88,25 @@ The clone is placed in $HOME/dotfiles by default, but can be changed with --fold
 			if err := viper.WriteConfig(); err != nil {
 				return fmt.Errorf("save initialization config: %w", err)
 			}
+			offerInitIdentity(cmd)
 			fileops.ColorPrintln("Dotfiles repo initialized 🎉🎉🎉", fileops.Green)
 			return nil
 		}
 
-		// allow for the remote url to be set in args
-		if viper.GetString("remote-url") == "" && len(args) > 0 {
-			viper.Set("remote-url", args[0])
+		if viper.GetString("remote-url") == "" && !explicitRemote && !force && interactive.ShouldPrompt(cmd, false) {
+			remoteURL, err := inputInitRemote("Remote repository URL (leave blank for a local repository):", "")
+			if err != nil {
+				return fmt.Errorf("initialization cancelled: %w", err)
+			}
+			viper.Set("remote-url", strings.TrimSpace(remoteURL))
 		}
 
-		// If no remote URL is provided, handle based on mode
-		if viper.GetString("remote-url") == "" {
-			// Check if we should prompt
-			if interactive.ShouldPrompt(cmd, false) {
-				// Ask if user wants to use a remote repository
-				useRemote, err := interactive.PromptConfirm("Do you want to use a remote repository?")
-				if err != nil {
-					return fmt.Errorf("initialization cancelled: %w", err)
-				}
-
-				if useRemote {
-					// Prompt for remote URL
-					remoteURL, err := interactive.PromptInput("Enter remote repository URL:", "")
-					if err != nil {
-						return fmt.Errorf("initialization cancelled: %w", err)
-					}
-					if remoteURL == "" {
-						return fmt.Errorf("no remote URL provided")
-					}
-					viper.Set("remote-url", remoteURL)
-				}
-			} else {
-				// Non-interactive mode: error
-				fileops.ColorPrintln("No remote URL specified", fileops.Red)
-				fileops.ColorPrintln("Use: "+cmd.Root().Name()+" init <url> or set --remote flag", fileops.Yellow)
-				return fmt.Errorf("no remote URL specified")
+		if !force {
+			remoteURL, err := ResolveInitRemote(cmd, viper.GetString("remote-url"))
+			if err != nil {
+				return err
 			}
+			viper.Set("remote-url", remoteURL)
 		}
 
 		_, err := git.InitGitRepo(viper.GetString("repo-path"), viper.GetString("remote-url"))
@@ -124,6 +119,7 @@ The clone is placed in $HOME/dotfiles by default, but can be changed with --fold
 		if err := viper.WriteConfig(); err != nil {
 			return fmt.Errorf("save initialization config: %w", err)
 		}
+		offerInitIdentity(cmd)
 		fileops.ColorPrintln("Dotfiles repo initialized 🎉🎉🎉", fileops.Green)
 		return nil
 	},
@@ -136,7 +132,7 @@ The clone is placed in $HOME/dotfiles by default, but can be changed with --fold
 			return fmt.Errorf("read force flag: %w", err)
 		}
 
-		if viper.GetBool("initialized") && git.IsGitRepo(viper.GetString("repo-path")) && !force && len(args) < 2 && !cmd.Flags().Changed("folder") {
+		if viper.GetBool("initialized") && git.IsGitRepo(viper.GetString("repo-path")) && !force && len(args) == 0 && !cmd.Flags().Changed("remote") && !cmd.Flags().Changed("folder") {
 			fileops.ColorPrintln("Dotfiles repository has been initialized previously", fileops.Yellow)
 			fileops.ColorPrintln("Use the --force flag to reinitialize the repository", fileops.Blue)
 			os.Exit(0)

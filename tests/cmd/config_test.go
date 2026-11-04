@@ -135,11 +135,9 @@ func Test_Config_Show_Dotfiles(t *testing.T) {
 
 func Test_Config_Unknown_Key(t *testing.T) {
 	setupTestConfig(t)
-	output := captureOutput(t, []string{"config", "unknown-key"})
-
-	// Check that output contains error message
-	if !strings.Contains(output, "Unknown config key") {
-		t.Error("Expected output to contain 'Unknown config key'")
+	output, err := captureCommandOutput(t, []string{"config", "unknown-key"})
+	if err == nil || !strings.Contains(output, "unknown config key") {
+		t.Fatalf("expected actionable failure, got %q, %v", output, err)
 	}
 }
 
@@ -157,8 +155,8 @@ func Test_Config_Show_PushCompactDefault(t *testing.T) {
 	setupTestConfig(t)
 
 	output := strings.TrimSpace(captureOutput(t, []string{"config", "push-compact"}))
-	if output != "auto" {
-		t.Fatalf("expected push-compact output to be auto, got %q", output)
+	if output != "off" {
+		t.Fatalf("expected push-compact output to be off, got %q", output)
 	}
 }
 
@@ -211,8 +209,8 @@ func Test_Config_Completion_SetKeysAndValues(t *testing.T) {
 	if !strings.Contains(output, "push-compact") {
 		t.Fatalf("expected set key completion output to contain push-compact, got %q", output)
 	}
-	if strings.Contains(output, "remote-url") {
-		t.Fatalf("expected set key completion output to omit read-only remote-url, got %q", output)
+	if !strings.Contains(output, "remote-url") {
+		t.Fatalf("expected set key completion output to contain writable remote-url, got %q", output)
 	}
 
 	output, err = captureCommandOutput(t, []string{"__complete", "config", "set", "push-compact", ""})

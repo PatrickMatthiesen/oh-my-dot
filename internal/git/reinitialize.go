@@ -4,11 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"runtime"
 
 	gogit "github.com/go-git/go-git/v6"
 	"github.com/go-git/go-git/v6/config"
 	"github.com/go-git/go-git/v6/plumbing"
+	"github.com/go-git/go-git/v6/plumbing/client"
 	"github.com/go-git/go-git/v6/plumbing/transport"
 )
 
@@ -25,15 +25,25 @@ func ReinitializeRepository(path, remoteURL string) error {
 	options := RemoteClientOptions(path, remoteURL)
 	remoteConfig := &config.RemoteConfig{Name: "origin", URLs: []string{remoteURL}, Fetch: []config.RefSpec{"+refs/heads/*:refs/remotes/origin/*"}}
 	remote := gogit.NewRemote(repo.Storer, remoteConfig)
-	refs, err := remote.List(&gogit.ListOptions{ClientOptions: options, Timeout: 10})
+	var refs []*plumbing.Reference
+	if IsSSHRemote(remoteURL) {
+		refs, err = ListRemote(path, remoteURL, 15)
+	} else {
+		refs, err = remote.List(&gogit.ListOptions{ClientOptions: options, Timeout: 15})
+	}
 	if errors.Is(err, transport.ErrEmptyRemoteRepository) || (err == nil && len(refs) == 0) {
-		return fmt.Errorf("selected remote repository has no commits; remote initialization requires a populated repository")
+		cfg, configErr := repo.Config()
+		if configErr != nil {
+			return fmt.Errorf("read repository configuration: %w", configErr)
+		}
+		cfg.Remotes["origin"] = remoteConfig
+		if configErr := repo.SetConfig(cfg); configErr != nil {
+			return fmt.Errorf("save selected origin: %w", configErr)
+		}
+		return nil
 	}
 	if err != nil {
-		if IsSSHAgentError(err) {
-			return fmt.Errorf("access selected remote: %w\n%s", err, sshAgentHelp(runtime.GOOS))
-		}
-		return fmt.Errorf("access selected remote: %w", err)
+		return fmt.Errorf("access selected remote: %w\n%s", err, RemoteErrorHelp(err, remoteURL))
 	}
 	_, headErr := repo.Head()
 	if headErr != nil && !errors.Is(headErr, plumbing.ErrReferenceNotFound) {
@@ -70,7 +80,7 @@ func ReinitializeRepository(path, remoteURL string) error {
 		if !branch.IsBranch() || hash.IsZero() {
 			return fmt.Errorf("selected remote has no usable default branch")
 		}
-		if err := remote.Fetch(&gogit.FetchOptions{ClientOptions: options}); err != nil && !errors.Is(err, gogit.NoErrAlreadyUpToDate) {
+		if err := fetchSelectedRemote(remote, path, remoteURL, options); err != nil && !errors.Is(err, gogit.NoErrAlreadyUpToDate) {
 			return fmt.Errorf("fetch selected remote: %w", err)
 		}
 		worktree, err := repo.Worktree()
@@ -91,7 +101,7 @@ func ReinitializeRepository(path, remoteURL string) error {
 		}
 		return nil
 	}
-	if err := remote.Fetch(&gogit.FetchOptions{ClientOptions: options}); err != nil && !errors.Is(err, gogit.NoErrAlreadyUpToDate) {
+	if err := fetchSelectedRemote(remote, path, remoteURL, options); err != nil && !errors.Is(err, gogit.NoErrAlreadyUpToDate) {
 		return fmt.Errorf("fetch selected remote: %w", err)
 	}
 	cfg, err := repo.Config()
@@ -103,4 +113,11 @@ func ReinitializeRepository(path, remoteURL string) error {
 		return fmt.Errorf("save selected origin: %w", err)
 	}
 	return nil
+}
+
+func fetchSelectedRemote(remote *gogit.Remote, path, remoteURL string, options []client.Option) error {
+	if IsSSHRemote(remoteURL) {
+		return FetchSSH(path, remoteURL, "+refs/heads/*:refs/remotes/origin/*")
+	}
+	return remote.Fetch(&gogit.FetchOptions{ClientOptions: options})
 }

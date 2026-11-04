@@ -224,22 +224,10 @@ var Catalog = map[string]FeatureMetadata{
 			{
 				Name:        "theme",
 				DisplayName: "Theme",
-				Description: "Oh My Posh theme to use",
+				Description: "Oh My Posh theme. Browse previews at https://ohmyposh.dev/docs/themes/",
 				Type:        OptionTypeEnum,
 				Required:    true,
-				EnumValues: []string{
-					"1_shell",
-					"agnoster",
-					"amro",
-					"atomic",
-					"atomicBit",
-					"dracula",
-					"jandedobbeleer",
-					"paradox",
-					"powerlevel10k_rainbow",
-					"pure",
-					"robbyrussell",
-				},
+				EnumValues:  ohMyPoshThemeNames(),
 			},
 			{
 				Name:          "config_file",
@@ -253,7 +241,7 @@ var Catalog = map[string]FeatureMetadata{
 			{
 				Name:        "auto_upgrade",
 				DisplayName: "Auto Upgrade",
-				Description: "Automatically check for updates on shell start",
+				Description: "Automatically install Oh My Posh updates using its configured check interval",
 				Type:        OptionTypeBool,
 				Required:    false,
 				Default:     false,

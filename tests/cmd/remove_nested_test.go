@@ -219,3 +219,30 @@ func Test_Remove_UnsafeRepositoryPathPreservesLinkedFile(t *testing.T) {
 		t.Errorf("linking changed: %v", remaining)
 	}
 }
+
+func Test_RemoveKeepLinkedMaterializesManagedSymlink(t *testing.T) {
+	repoPath, links := seedNestedRemoval(t, []string{"work/config"})
+	key := "work/config"
+	target := links[key]
+	stored := filepath.Join(repoPath, "files", filepath.FromSlash(key))
+	if err := os.Remove(target); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(stored, target); err != nil {
+		t.Skip(err)
+	}
+	if err := runNestedRemoval(t, key, false); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(target)
+	if err != nil || !info.Mode().IsRegular() {
+		t.Fatalf("kept file is not independent regular file %v %v", info, err)
+	}
+	content, err := os.ReadFile(target)
+	if err != nil || string(content) != key {
+		t.Fatalf("kept local content %q %v", content, err)
+	}
+	if _, err := os.Lstat(stored); !os.IsNotExist(err) {
+		t.Fatalf("repository source remains %v", err)
+	}
+}

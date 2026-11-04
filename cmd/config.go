@@ -4,9 +4,14 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
+	gogit "github.com/go-git/go-git/v6"
+	gitconfig "github.com/go-git/go-git/v6/config"
+	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/interactive"
 )
 
 func init() {
@@ -17,8 +22,19 @@ func init() {
 var configCmd = &cobra.Command{
 	Use:   "config [key]",
 	Short: "Show configuration values",
-	Long:  `Display configuration values for oh-my-dot. Run without arguments to see all config values, or specify a key to see a specific value.`,
-	Args:  cobra.MaximumNArgs(1),
+	Long: `Display configuration values. Run without arguments for current settings.
+
+Readable keys: location, dotfiles, remote-url, initialized, allow-gh-auth, push-compact.
+Writable keys (config set <key> <value>):
+  remote-url      Origin URL; use an empty value to remove origin
+  allow-gh-auth   true/false; controls release update checks only
+  push-compact    auto/ask/off; repeated unpublished commit compaction
+
+Examples:
+  oh-my-dot config remote-url
+  oh-my-dot config set remote-url git@github.com:you/dotfiles.git
+  oh-my-dot config set push-compact ask`,
+	Args: cobra.MaximumNArgs(1),
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		if len(args) > 0 {
 			return nil, cobra.ShellCompDirectiveNoFileComp
@@ -26,24 +42,30 @@ var configCmd = &cobra.Command{
 
 		return completeConfigKeys(false), cobra.ShellCompDirectiveNoFileComp
 	},
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
 			// Show all config values
 			showAllConfig()
-			return
+			return nil
 		}
 
 		// Show specific config value
 		key := args[0]
-		showConfigValue(key)
+		for _, spec := range configKeys {
+			if spec.Key == key {
+				showConfigValue(key)
+				return nil
+			}
+		}
+		return fmt.Errorf("unknown config key %q; run config --help for readable and writable keys", key)
 	},
 }
 
 var configSetCmd = &cobra.Command{
-	Use:     "set <key> <value>",
+	Use:     "set [key] [value]",
 	Aliases: []string{"update"},
 	Short:   "Set a configuration value",
-	Args:    cobra.ExactArgs(2),
+	Args:    cobra.MaximumNArgs(2),
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		switch len(args) {
 		case 0:
@@ -55,7 +77,11 @@ var configSetCmd = &cobra.Command{
 		}
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return updateConfigValue(args[0], args[1])
+		key, value, err := resolveConfigInput(cmd, args)
+		if err != nil {
+			return err
+		}
+		return updateConfigValue(key, value)
 	},
 }
 
@@ -69,7 +95,7 @@ type configKeySpec struct {
 var configKeys = []configKeySpec{
 	{Key: "location", Help: "Config file location"},
 	{Key: "dotfiles", Help: "Dotfiles repository path"},
-	{Key: "remote-url", Help: "Remote repository URL"},
+	{Key: "remote-url", Help: "Origin URL (empty to remove origin)", Writable: true},
 	{Key: "initialized", Help: "Whether oh-my-dot has been initialized"},
 	{Key: "allow-gh-auth", Help: "Allow GitHub CLI authentication for update checks", Writable: true, Values: []string{"true", "false"}},
 	{Key: "push-compact", Help: "Push-time duplicate commit compaction mode", Writable: true, Values: []string{"auto", "ask", "off"}},
@@ -107,7 +133,7 @@ func showAllConfig() {
 
 	allowGHAuth := viper.GetBool(allowGHAuthConfigKey)
 	fileops.ColorPrintf(fileops.Blue, "  allow-gh-auth: ")
-	fileops.ColorPrintfn(fileops.Green, "%t", allowGHAuth)
+	fileops.ColorPrintfn(fileops.Green, "%t (update checks only)", allowGHAuth)
 
 	fileops.ColorPrintf(fileops.Blue, "  push-compact: ")
 	fileops.ColorPrintfn(fileops.Green, "%s", pushCompactMode())
@@ -154,6 +180,8 @@ func showConfigValue(key string) {
 
 func updateConfigValue(key, value string) error {
 	switch key {
+	case "remote-url":
+		return updateRemoteURL(strings.TrimSpace(value))
 	case "allow-gh-auth":
 		normalized := strings.TrimSpace(strings.ToLower(value))
 		if normalized != "true" && normalized != "false" {
@@ -201,4 +229,120 @@ func completeConfigValues(key string) []string {
 	}
 
 	return nil
+}
+
+// updateRemoteURL keeps the repository origin and application configuration in sync.
+// It changes configuration only; the next remote operation checks access.
+func updateRemoteURL(value string) error {
+	if strings.ContainsAny(value, "\r\n\x00") {
+		return fmt.Errorf("remote URL must not contain line breaks or NUL characters")
+	}
+	repo, err := gogit.PlainOpen(viper.GetString("repo-path"))
+	if err != nil {
+		return fmt.Errorf("open dotfiles repository: %w", err)
+	}
+	original, err := repo.Config()
+	if err != nil {
+		return fmt.Errorf("read repository configuration: %w", err)
+	}
+	updated, err := repo.Config()
+	if err != nil {
+		return fmt.Errorf("read repository configuration: %w", err)
+	}
+	if value == "" {
+		delete(updated.Remotes, "origin")
+		for _, branch := range updated.Branches {
+			if branch.Remote == "origin" {
+				branch.Remote = ""
+				branch.Merge = plumbing.ReferenceName("")
+			}
+		}
+	} else if origin, exists := updated.Remotes["origin"]; exists {
+		origin.URLs = []string{value}
+	} else {
+		updated.Remotes["origin"] = &gitconfig.RemoteConfig{Name: "origin", URLs: []string{value}, Fetch: []gitconfig.RefSpec{"+refs/heads/*:refs/remotes/origin/*"}}
+	}
+	if err := repo.SetConfig(updated); err != nil {
+		return fmt.Errorf("save origin configuration: %w", err)
+	}
+	previous := viper.GetString("remote-url")
+	viper.Set("remote-url", value)
+	if err := viper.WriteConfig(); err != nil {
+		viper.Set("remote-url", previous)
+		if rollbackErr := repo.SetConfig(original); rollbackErr != nil {
+			return fmt.Errorf("save remote URL: %w; restore origin: %v", err, rollbackErr)
+		}
+		return fmt.Errorf("save remote URL: %w", err)
+	}
+	fileops.ColorPrintfn(fileops.Green, "Updated remote-url")
+	return nil
+}
+
+var selectConfigKey = interactive.PromptSelect
+var inputConfigValue = interactive.PromptInput
+
+func resolveConfigInput(cmd *cobra.Command, args []string) (string, string, error) {
+	if len(args) == 2 {
+		return args[0], args[1], nil
+	}
+	if !interactive.ShouldPrompt(cmd, false) {
+		return "", "", fmt.Errorf("specify config set <key> <value>; run config --help for writable keys")
+	}
+	key := ""
+	if len(args) == 1 {
+		key = args[0]
+	} else {
+		var keys []string
+		for _, spec := range configKeys {
+			if spec.Writable {
+				keys = append(keys, spec.Key)
+			}
+		}
+		index, err := selectConfigKey("Which setting do you want to change?", keys)
+		if err != nil {
+			return "", "", fmt.Errorf("select setting: %w", err)
+		}
+		if index < 0 || index >= len(keys) {
+			return "", "", fmt.Errorf("invalid setting selection")
+		}
+		key = keys[index]
+	}
+	for _, spec := range configKeys {
+		if spec.Key != key {
+			continue
+		}
+		if !spec.Writable {
+			return "", "", fmt.Errorf("%s is read-only; run config --help for writable keys", key)
+		}
+		if len(spec.Values) > 0 {
+			values := append([]string(nil), spec.Values...)
+			current := viper.GetString(key)
+			if key == "push-compact" {
+				current = pushCompactMode()
+			}
+			if key == "allow-gh-auth" {
+				current = fmt.Sprint(viper.GetBool(allowGHAuthConfigKey))
+			}
+			for index, value := range values {
+				if value == current {
+					values[0], values[index] = values[index], values[0]
+					break
+				}
+			}
+			index, err := selectConfigKey("Choose "+key+" (current: "+current+")", values)
+			if err != nil {
+				return "", "", fmt.Errorf("choose %s: %w", key, err)
+			}
+			if index < 0 || index >= len(values) {
+				return "", "", fmt.Errorf("invalid value selection")
+			}
+			return key, values[index], nil
+		}
+		value, err := inputConfigValue("Remote URL (blank removes origin)", "")
+		if err != nil {
+			return "", "", fmt.Errorf("enter %s: %w", key, err)
+		}
+		return key, value, nil
+	}
+	return "", "", fmt.Errorf("unknown config key %q; run config --help", key)
 }

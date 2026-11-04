@@ -3,8 +3,19 @@ package manifest
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestParseManifestRejectsDuplicateFeatureNames(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "enabled.local.json")
+	if err := os.WriteFile(path, []byte(`{"features":[{"name":"git-prompt"},{"name":"git-prompt","disabled":true}]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParseManifest(path); err == nil || !strings.Contains(err.Error(), "duplicate feature") || !strings.Contains(err.Error(), path) {
+		t.Fatalf("expected a duplicate error identifying the manifest: %v", err)
+	}
+}
 
 func TestValidateFeatureName(t *testing.T) {
 	tests := []struct {

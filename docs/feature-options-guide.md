@@ -29,11 +29,11 @@ Adding oh-my-posh to bash...
     dracula
     pure
 
-❯ Configure Config File? (default: <nil>)
-  [No]  [Yes]
+Config File - Path to custom Oh My Posh configuration file (Enter to keep default or skip)
+>
 
-❯ Configure Auto Upgrade? (default: false)
-  [No]  [Yes]
+Auto Upgrade - Automatically install Oh My Posh updates using its configured check interval
+  [Yes]  > [No]
 
 ✓ oh-my-posh configured successfully
 
@@ -98,15 +98,16 @@ Required options **must** be configured before the feature can be added. You'll 
 
 Optional options can be skipped. If you skip an optional option, the feature's default value (if any) will be used.
 
-For optional options, you'll first be asked if you want to configure them:
+Boolean options ask one yes/no question. Enter accepts the displayed default.
+For optional text and file paths, leave the input blank to keep the default or skip the option if it has no default.
 
-```
-❯ Configure Config File? (default: <nil>)
-  [No]  [Yes]
-```
+During feature configuration:
 
-- Select **No** or press Enter to skip and use the default
-- Select **Yes** to provide a custom value
+- Press Ctrl+B to return to the previous option. Previously submitted answers remain available.
+- Press Ctrl+S to skip this feature and continue with the next selected feature.
+- Press Esc or Ctrl+C to cancel the operation. In the catalog wizard, features already added are kept and committed; remaining features are not added.
+
+The catalog marks installed features with their shell names and leaves all features unselected.
 
 ## Option Validation
 
@@ -163,10 +164,55 @@ Current Configuration:
 
 ## Modifying Options
 
-Currently, to change feature options after initial setup, you need to:
+Use configure to change saved values and regenerate the catalog implementation:
 
-1. Remove the feature: `omdot feature remove oh-my-posh`
-2. Re-add it with new options: `omdot feature add oh-my-posh`
+```sh
+oh-my-dot feature configure oh-my-posh --shell bash --option theme=pure
+oh-my-dot feature configure oh-my-posh --shell bash --reset-option config_file
+```
+
+In a terminal, omit `--option` to edit current values. Enter keeps the displayed
+answer, Ctrl+X clears an optional answer, and Ctrl+B goes back. A boolean has one
+question. Esc or Ctrl+C cancels; Ctrl+S skips a feature during batch addition.
+
+Add `--local` to keep a device-only difference. Local options inherit shared
+values unless they differ. `--reset-option` with `--local` restores inheritance;
+`feature remove <name> --shell <shell> --local` removes the entire override.
+`feature info <name> --shell <shell> --json` reports effective options and origin.
+
+Configure preserves customized scripts unless `--force` explicitly permits their
+replacement. `feature update` refreshes catalog code using saved options;
+`feature update --local` refreshes private implementations without a commit.
+Oh My Posh uses a private theme-specific cache, so changing a theme takes effect
+in the next shell session. Custom `config_file` paths remain user-owned.
+
+## Choosing an Oh My Posh theme
+
+Run `oh-my-dot feature configure oh-my-posh` in a terminal to edit its current
+settings. If it is installed in several shells, select which shells to change.
+The theme picker includes a bundled list of all official themes, so browsing
+the list does not require a network connection. Press `/` to search; Enter
+applies the search, then Enter selects the highlighted theme. Esc clears a
+search before it cancels the picker.
+
+Use the [official theme gallery](https://ohmyposh.dev/docs/themes/) to compare
+screenshots. Copy a theme name into an explicit command:
+
+```sh
+oh-my-dot feature configure oh-my-posh --shell powershell --option theme=agnoster.minimal
+```
+
+Oh My Posh also supports an optional terminal preview:
+
+```sh
+oh-my-posh print preview --config agnoster.minimal
+```
+
+The preview requires Oh My Posh and may download the theme. Rendering depends
+on your terminal and font. oh-my-dot does not run previews or open a browser
+automatically. Theme names select official themes; `config_file` accepts an
+existing local file, not a web link. A theme that has not been cached needs a
+network connection on first use.
 
 ## Example: SSH Agent Feature
 

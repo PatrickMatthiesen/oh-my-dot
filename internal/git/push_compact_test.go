@@ -359,3 +359,74 @@ func fetchOriginMain(t *testing.T, repoPath string) {
 		t.Fatalf("fetch origin main: %v", err)
 	}
 }
+
+func TestCompactionRejectsChangedPlan(t *testing.T) {
+	for _, change := range []string{"new commit", "dirty worktree", "other branch"} {
+		t.Run(change, func(t *testing.T) {
+			path := setupCompactableRepo(t)
+			commitFile(t, path, "first", "repeated")
+			commitFile(t, path, "second", "repeated")
+			plan, err := PlanPushCompaction()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !plan.HasCompaction() {
+				t.Fatal("fixture has no compaction")
+			}
+			repo, err := GetRepository(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			switch change {
+			case "new commit":
+				commitFile(t, path, "important-after-plan", "important change")
+			case "dirty worktree":
+				if err := os.WriteFile(filepath.Join(path, "private"), []byte("uncommitted"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			case "other branch":
+				wt, _ := repo.Worktree()
+				if err := wt.Checkout(&gogit.CheckoutOptions{Branch: plumbing.NewBranchReferenceName("other"), Create: true}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before, err := repo.Head()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := CompactPushHistory(plan); err == nil {
+				t.Fatal("stale plan accepted")
+			}
+			after, err := repo.Head()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if before.Hash() != after.Hash() || before.Name() != after.Name() {
+				t.Fatal("stale plan changed branch")
+			}
+		})
+	}
+}
+
+func TestNewBranchSkipsCompactionAndPushes(t *testing.T) {
+	path := setupCompactableRepo(t)
+	repo, err := GetRepository(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wt, _ := repo.Worktree()
+	if err := wt.Checkout(&gogit.CheckoutOptions{Branch: plumbing.NewBranchReferenceName("new-setup"), Create: true}); err != nil {
+		t.Fatal(err)
+	}
+	commitFile(t, path, "first-branch-file", "first branch commit")
+	plan, err := PlanPushCompaction()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.HasCompaction() || plan.SkippedReason == "" {
+		t.Fatalf("unexpected plan %+v", plan)
+	}
+	if pushed, err := PushRepo(); err != nil || !pushed {
+		t.Fatalf("first push %v %v", pushed, err)
+	}
+}
