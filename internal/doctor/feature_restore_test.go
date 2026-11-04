@@ -29,7 +29,11 @@ func TestDoctorRestoresOnlyMissingCatalogImplementations(t *testing.T) {
 			if scenario == "local catalog" {
 				path = shell.GetLocalManifestPath(root, "bash")
 			}
-			if err := manifest.WriteManifest(path, &manifest.FeatureManifest{Features: []manifest.FeatureConfig{config}}); err != nil {
+			write := manifest.WriteManifest
+			if scenario == "local catalog" {
+				write = manifest.WriteLocalManifest
+			}
+			if err := write(path, &manifest.FeatureManifest{Features: []manifest.FeatureConfig{config}}); err != nil {
 				t.Fatal(err)
 			}
 			if scenario == "local catalog" {
@@ -37,7 +41,7 @@ func TestDoctorRestoresOnlyMissingCatalogImplementations(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			featurePath, err := shell.GetFeatureFilePath(root, "bash", feature)
+			featurePath, err := shell.GetEffectiveFeatureFilePath(root, "bash", feature)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -91,6 +95,29 @@ func TestDoctorDoesNotFollowFeatureSymlink(t *testing.T) {
 	}
 	if _, err := os.Lstat(target); !os.IsNotExist(err) {
 		t.Fatal("doctor wrote through symlink")
+	}
+}
+
+func TestDoctorPrivateRepairRejectsSymlinkedAncestor(t *testing.T) {
+	root := t.TempDir()
+	if err := shell.InitializeShellDirectory(root, "bash"); err != nil {
+		t.Fatal(err)
+	}
+	local := &manifest.FeatureManifest{Features: []manifest.FeatureConfig{{Name: "git-prompt"}}}
+	if err := manifest.WriteLocalManifest(shell.GetLocalManifestPath(root, "bash"), local); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, "omd-shells", "bash", ".local")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	results := checkFeatureFiles(context{repoPath: root, shellName: "bash", fix: true, quiet: true})
+	if len(results) == 0 || results[0].status != statusError {
+		t.Fatalf("unsafe private repair succeeded: %+v", results)
+	}
+	entries, err := os.ReadDir(outside)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("repair wrote through ancestor symlink: %v, %v", entries, err)
 	}
 }
 

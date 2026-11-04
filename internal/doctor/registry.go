@@ -8,6 +8,7 @@ func registeredChecks() []check {
 		{run: checkManifest},
 		{run: checkLocalOverride},
 		{run: checkFeatureFiles},
+		{run: checkModulePrerequisites},
 		{run: checkLineEndings},
 		{run: checkProfileHooks},
 		{run: checkInitScriptSyntax},
@@ -19,7 +20,9 @@ func runChecks(repoPath string, shellsToCheck []string, fix bool) []result {
 }
 
 func runChecksWithOptions(repoPath string, shellsToCheck []string, fix, quiet, offline bool) []result {
-	allResults := checkRepository(context{repoPath: repoPath, fix: fix, quiet: quiet, offline: offline})
+	ctx := context{repoPath: repoPath, fix: fix, quiet: quiet, offline: offline}
+	allResults := checkRepository(ctx)
+	allResults = append(allResults, checkLinkings(ctx)...)
 
 	for _, shellName := range shellsToCheck {
 		if !quiet {

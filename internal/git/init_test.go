@@ -91,3 +91,65 @@ func TestInitGitRepoAcceptsEmptyRemote(t *testing.T) {
 		t.Fatalf("first push to empty remote: %v", err)
 	}
 }
+
+func TestInitEmptyRemotePreservesBranchThroughPushAndReclone(t *testing.T) {
+	for _, branch := range []string{"main", "machines/windows"} {
+		t.Run(branch, func(t *testing.T) {
+			remotePath := t.TempDir()
+			branchRef := plumbing.NewBranchReferenceName(branch)
+			remote, err := gogit.PlainInit(remotePath, true, gogit.WithDefaultBranch(branchRef))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { remote.Close() })
+			destination := filepath.Join(t.TempDir(), "dotfiles")
+			repo, err := InitGitRepo(destination, remotePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { repo.Close() })
+			head, err := repo.Reference(plumbing.HEAD, false)
+			if err != nil || head.Target() != branchRef {
+				t.Fatalf("initial HEAD %v %v; want %s", head, err, branchRef)
+			}
+			if err := os.WriteFile(filepath.Join(destination, "first"), []byte("first commit"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			worktree, err := repo.Worktree()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := worktree.Add("first"); err != nil {
+				t.Fatal(err)
+			}
+			hash, err := worktree.Commit("initial", &gogit.CommitOptions{Author: &object.Signature{Name: "Test", Email: "test@example.invalid", When: time.Now()}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			origin, err := repo.Remote("origin")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := origin.Push(&gogit.PushOptions{}); err != nil {
+				t.Fatal(err)
+			}
+			remoteHead, err := remote.Reference(plumbing.HEAD, false)
+			if err != nil || remoteHead.Target() != branchRef {
+				t.Fatalf("remote HEAD changed: %v %v", remoteHead, err)
+			}
+			secondPath := filepath.Join(t.TempDir(), "second")
+			second, err := InitGitRepo(secondPath, remotePath)
+			if err != nil {
+				t.Fatalf("reclone after first push: %v", err)
+			}
+			t.Cleanup(func() { second.Close() })
+			secondHead, err := second.Head()
+			if err != nil || secondHead.Name() != branchRef || secondHead.Hash() != hash {
+				t.Fatalf("recloned HEAD %v %v", secondHead, err)
+			}
+			if content, err := os.ReadFile(filepath.Join(secondPath, "first")); err != nil || string(content) != "first commit" {
+				t.Fatalf("recloned file %q %v", content, err)
+			}
+		})
+	}
+}

@@ -88,6 +88,7 @@ without a URL to create a local repository.`,
 			if err := viper.WriteConfig(); err != nil {
 				return fmt.Errorf("save initialization config: %w", err)
 			}
+			offerInitIdentity(cmd)
 			fileops.ColorPrintln("Dotfiles repo initialized 🎉🎉🎉", fileops.Green)
 			return nil
 		}
@@ -118,6 +119,7 @@ without a URL to create a local repository.`,
 		if err := viper.WriteConfig(); err != nil {
 			return fmt.Errorf("save initialization config: %w", err)
 		}
+		offerInitIdentity(cmd)
 		fileops.ColorPrintln("Dotfiles repo initialized 🎉🎉🎉", fileops.Green)
 		return nil
 	},

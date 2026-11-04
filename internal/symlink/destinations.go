@@ -102,3 +102,22 @@ func destinationID(destination string) (string, error) {
 		parent = next
 	}
 }
+
+// FindDestinationKey returns the existing registration for a local destination.
+// It compares destination paths without following the final managed symlink.
+func FindDestinationKey(links Linkings, destination string) (string, bool, error) {
+	wanted, err := destinationID(destination)
+	if err != nil {
+		return "", false, fmt.Errorf("resolve destination: %w", err)
+	}
+	for _, key := range sortedLinkKeys(links) {
+		id, err := destinationID(links[key])
+		if err != nil {
+			return "", false, fmt.Errorf("resolve destination for %q: %w", key, err)
+		}
+		if id == wanted {
+			return key, true, nil
+		}
+	}
+	return "", false, nil
+}

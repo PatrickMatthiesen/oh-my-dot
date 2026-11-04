@@ -216,8 +216,15 @@ func TestRefreshFeatureTemplate(t *testing.T) {
 		t.Fatalf("WriteTextFileLF() error = %v", err)
 	}
 
-	if err := shell.RefreshFeatureTemplate(repoPath, "powershell", "powershell-aliases"); err != nil {
-		t.Fatalf("RefreshFeatureTemplate() error = %v", err)
+	if err := shell.RefreshFeatureTemplate(repoPath, "powershell", "powershell-aliases"); err == nil {
+		t.Fatal("customized implementation refreshed without force")
+	}
+	original, err := os.ReadFile(featurePath)
+	if err != nil || string(original) != "custom override\n" {
+		t.Fatal("refusal changed customized implementation")
+	}
+	if err := shell.RefreshFeatureTemplate(repoPath, "powershell", "powershell-aliases", true); err != nil {
+		t.Fatal(err)
 	}
 
 	content, err := os.ReadFile(featurePath)

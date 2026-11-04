@@ -35,23 +35,34 @@ func RemoveLinking(name string) error {
 	return SaveLinkings(links)
 }
 
-func GetLinkings() (Linkings, error) {
-	linkFile := filepath.Join(viper.GetString("repo-path"), "linkings.json")
-	if !fileops.IsFile(linkFile) {
+// GetLinkings reads registrations for the configured repository.
+func GetLinkings() (Linkings, error) { return LoadLinkings(viper.GetString("repo-path")) }
+
+// LoadLinkings reads a repository's registrations without changing configuration.
+// Missing metadata means no registrations; invalid or unreadable metadata fails.
+func LoadLinkings(repoPath string) (Linkings, error) {
+	path := filepath.Join(repoPath, "linkings.json")
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
 		return Linkings{}, nil
 	}
-
-	file, err := os.ReadFile(linkFile)
 	if err != nil {
-		return nil, fmt.Errorf("error reading links file: %w", err)
+		return nil, fmt.Errorf("inspect links file: %w", err)
 	}
-
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("links file %s must be a regular file", path)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read links file: %w", err)
+	}
 	var links Linkings
-	err = json.Unmarshal(file, &links)
-	if err != nil {
-		return nil, fmt.Errorf("error unmarshalling links: %w", err)
+	if err := json.Unmarshal(data, &links); err != nil {
+		return nil, fmt.Errorf("parse links file %s: %w", path, err)
 	}
-
+	if links == nil {
+		return nil, fmt.Errorf("links file %s must contain an object, not null", path)
+	}
 	return links, nil
 }
 

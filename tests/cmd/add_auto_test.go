@@ -101,15 +101,15 @@ func TestAddAutoNamesUseNearestAvailableParent(t *testing.T) {
 	}
 }
 
-func TestAddAutoNamesRejectSameDestination(t *testing.T) {
+func TestAddAutoNamesRetrySameDestination(t *testing.T) {
 	setupNestedAdd(t)
 	source := filepath.Join(t.TempDir(), "parent", "config")
 	writeNestedAddFile(t, source, "original")
 	if output, err := runAutoAdd(t, source); err != nil {
 		t.Fatalf("initial add: %v\n%s", err, output)
 	}
-	if output, err := runAutoAdd(t, source); err == nil {
-		t.Fatalf("re-add unexpectedly succeeded: %s", output)
+	if output, err := runAutoAdd(t, source); err != nil || !strings.Contains(output, "Already managed") {
+		t.Fatalf("re-add was not a harmless no-op: %v\n%s", err, output)
 	}
 	links, err := symlink.GetLinkings()
 	if err != nil || len(links) != 1 {

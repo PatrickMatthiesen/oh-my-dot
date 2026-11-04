@@ -2,264 +2,218 @@ package featurecmd
 
 import (
 	"fmt"
-	"os"
+	"sort"
 	"strings"
 
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/catalog"
-	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
-	"github.com/PatrickMatthiesen/oh-my-dot/internal/manifest"
-	"github.com/PatrickMatthiesen/oh-my-dot/internal/shell"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/git"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/interactive"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 func (state *commandState) runFeatureList(cmd *cobra.Command, args []string) error {
-	repoPath := state.repoPathProvider()
-	alias := state.aliasProvider()
-
-	var targetShells []string
-	if len(state.flagShell) > 0 {
-		targetShells = state.flagShell
-	} else {
-		var err error
-		targetShells, err = shell.ListShellsWithFeatures(repoPath)
-		if err != nil {
-			return fmt.Errorf("failed to list shells: %w", err)
-		}
+	if err := state.checkInspectionRepository(); err != nil {
+		return err
 	}
-
-	if len(targetShells) == 0 {
-		fileops.ColorPrintln("No shell features configured", fileops.Yellow)
-		fileops.ColorPrintfn(fileops.Cyan, "Use '%s feature add <feature>' to add features", alias)
-		fileops.ColorPrintfn(fileops.Cyan, "Use '%s feature add -i' to browse the catalog", alias)
+	records, err := featureRecords(state.repoPathProvider(), state.flagShell)
+	if err != nil {
+		return err
+	}
+	asJSON, _ := cmd.Flags().GetBool("json")
+	if asJSON {
+		return writeFeatureJSON(cmd, featureInventory{SchemaVersion: 1, Features: records})
+	}
+	if len(records) == 0 {
+		fmt.Fprintf(cmd.OutOrStdout(), "No shell features configured. Run '%s feature add' to browse.\n", state.aliasProvider())
 		return nil
 	}
-
-	for _, shellName := range targetShells {
-		manifestPath := shell.GetManifestPath(repoPath, shellName)
-		localManifestPath := shell.GetLocalManifestPath(repoPath, shellName)
-
-		merged, err := manifest.ParseManifestWithLocal(manifestPath, localManifestPath)
-		if err != nil {
-			fileops.ColorPrintfn(fileops.Red, "Error reading %s manifest: %v", shellName, err)
-			continue
+	last := ""
+	for _, record := range records {
+		if record.Shell != last {
+			fmt.Fprintf(cmd.OutOrStdout(), "\n%s:\n", record.Shell)
+			last = record.Shell
 		}
-
-		fileops.ColorPrintfn(fileops.Cyan, "\n%s:", shellName)
-
-		if len(merged.Features) == 0 {
-			fileops.ColorPrintln("  (no features)", fileops.Yellow)
-			continue
+		status := "enabled"
+		if record.Disabled {
+			status = "disabled"
 		}
-
-		for _, featureWithOverride := range merged.Features {
-			feature := featureWithOverride.FeatureConfig
-			override := featureWithOverride.Override
-
-			status := "✓"
-			statusColor := fileops.Green
-			if feature.Disabled {
-				status = "✗"
-				statusColor = fileops.Red
-			}
-
-			strategy := feature.Strategy
-			if strategy == "" {
-				if metadata, ok := catalog.GetFeature(feature.Name); ok {
-					strategy = metadata.DefaultStrategy
-				} else {
-					strategy = "eager"
-				}
-			}
-
-			featureName := feature.Name
-			if override.IsFromLocal {
-				featureName += " (local)"
-			} else if override.IsOverridden {
-				featureName += " (overridden)"
-			}
-
-			fileops.ColorPrintf(statusColor, "  %s %s", status, featureName)
-			fmt.Printf(" (%s", strategy)
-			if len(feature.OnCommand) > 0 {
-				fmt.Printf(": %v", feature.OnCommand)
-			}
-			fmt.Println(")")
-
-			featurePath, err := shell.GetFeatureFilePath(repoPath, shellName, feature.Name)
-			if err == nil {
-				homeDir, _ := os.UserHomeDir()
-				if homeDir != "" && strings.HasPrefix(featurePath, homeDir) {
-					featurePath = "~" + strings.TrimPrefix(featurePath, homeDir)
-				}
-				fileops.ColorPrintf(fileops.Reset, "    %s\n", featurePath)
-			}
+		origin := record.Origin
+		if record.Overridden {
+			origin = "shared, overridden locally"
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "  %s (%s, %s; %s)\n    %s\n", record.Name, status, record.Strategy, origin, record.Path)
+		if len(record.Options) > 0 {
+			fmt.Fprintf(cmd.OutOrStdout(), "    options: %v\n", record.Options)
 		}
 	}
-
-	fmt.Println()
 	return nil
 }
 
-func (state *commandState) runFeatureEnable(cmd *cobra.Command, args []string) error {
-	featureName := args[0]
-	repoPath := state.repoPathProvider()
-	if err := preflightFeatureMutation(repoPath); err != nil {
-		return err
-	}
-
-	targetShells := state.flagShell
-	if len(targetShells) == 0 {
-		currentShell, err := shell.DetectCurrentShell()
-		if err != nil {
-			return fmt.Errorf("could not detect current shell, please specify with --shell flag")
-		}
-		targetShells = []string{currentShell}
-	}
-
-	for _, shellName := range targetShells {
-		if state.flagStrategy != "" || len(state.flagOnCommand) > 0 {
-			if err := shell.EnableFeatureWithOptions(repoPath, shellName, featureName, state.flagStrategy, state.flagOnCommand); err != nil {
-				return fmt.Errorf("failed to enable feature in %s: %w", shellName, err)
-			}
-		} else {
-			if err := shell.EnableFeature(repoPath, shellName, featureName); err != nil {
-				return fmt.Errorf("failed to enable feature in %s: %w", shellName, err)
-			}
-		}
-		fileops.ColorPrintfn(fileops.Green, "Enabled %s in %s", featureName, shellName)
-	}
-
-	if err := autoCommitShellFeatureChanges("Enable shell feature: " + featureName); err != nil {
-		return fmt.Errorf("failed to commit shell feature changes: %w", err)
-	}
-
-	fileops.ColorPrintfn(fileops.Cyan, "\nRun '%s apply' to activate changes", state.aliasProvider())
-	fileops.ColorPrintfn(fileops.Cyan, "Run '%s push' to push committed changes", state.aliasProvider())
-	return nil
+type optionDescription struct {
+	Name        string             `json:"name"`
+	Type        catalog.OptionType `json:"type"`
+	Description string             `json:"description"`
+	Required    bool               `json:"required"`
+	Default     any                `json:"default,omitempty"`
+	Values      []string           `json:"values,omitempty"`
 }
 
-func (state *commandState) runFeatureDisable(cmd *cobra.Command, args []string) error {
-	featureName := args[0]
-	repoPath := state.repoPathProvider()
-	if err := preflightFeatureMutation(repoPath); err != nil {
-		return err
-	}
+type requirementDescription struct {
+	Kind        string `json:"kind"`
+	Name        string `json:"name"`
+	Instruction string `json:"instruction"`
+}
 
-	var targetShells []string
-	if state.flagAll {
-		var err error
-		targetShells, err = shell.ListShellsWithFeatures(repoPath)
-		if err != nil {
-			return fmt.Errorf("failed to list shells: %w", err)
-		}
-	} else if len(state.flagShell) > 0 {
-		targetShells = state.flagShell
-	} else {
-		currentShell, err := shell.DetectCurrentShell()
-		if err != nil {
-			return fmt.Errorf("could not detect current shell, please specify with --shell flag")
-		}
-		targetShells = []string{currentShell}
-	}
+type featureDescription struct {
+	Requirements    map[string][]requirementDescription `json:"requirements,omitempty"`
+	Name            string                              `json:"name"`
+	Description     string                              `json:"description"`
+	Category        string                              `json:"category"`
+	DefaultStrategy string                              `json:"defaultStrategy"`
+	DefaultCommands []string                            `json:"defaultCommands,omitempty"`
+	SupportedShells []string                            `json:"supportedShells"`
+	Options         []optionDescription                 `json:"options"`
+}
 
-	for _, shellName := range targetShells {
-		if err := shell.DisableFeature(repoPath, shellName, featureName); err != nil {
-			return fmt.Errorf("failed to disable feature in %s: %w", shellName, err)
-		}
-		fileops.ColorPrintfn(fileops.Yellow, "Disabled %s in %s", featureName, shellName)
-	}
-
-	if err := autoCommitShellFeatureChanges("Disable shell feature: " + featureName); err != nil {
-		return fmt.Errorf("failed to commit shell feature changes: %w", err)
-	}
-
-	fileops.ColorPrintfn(fileops.Cyan, "\nRun '%s apply' to sync changes", state.aliasProvider())
-	fileops.ColorPrintfn(fileops.Cyan, "Run '%s push' to push committed changes", state.aliasProvider())
-	return nil
+type featureInfoReport struct {
+	SchemaVersion int                 `json:"schemaVersion"`
+	Catalog       *featureDescription `json:"catalog"`
+	Installed     []featureRecord     `json:"installed"`
 }
 
 func (state *commandState) runFeatureInfo(cmd *cobra.Command, args []string) error {
-	featureName := args[0]
-	repoPath := state.repoPathProvider()
-
-	metadata, inCatalog := catalog.GetFeature(featureName)
-	if !inCatalog {
-		return fmt.Errorf("feature '%s' not found in catalog", featureName)
-	}
-
-	fileops.ColorPrintfn(fileops.Cyan, "\n%s", metadata.Name)
-	fmt.Printf("  Category: %s\n", metadata.Category)
-	fmt.Printf("  Description: %s\n", metadata.Description)
-	fmt.Printf("  Default Strategy: %s\n", metadata.DefaultStrategy)
-
-	if len(metadata.DefaultCommands) > 0 {
-		fmt.Printf("  Default Commands: %v\n", metadata.DefaultCommands)
-	}
-
-	fmt.Printf("  Supported Shells: %v\n", metadata.SupportedShells)
-	if len(metadata.Options) > 0 {
-		fmt.Println("\nOptions (pass --option name=value to feature add):")
-		for _, opt := range metadata.Options {
-			requirement := "optional"
-			if opt.Required {
-				requirement = "required"
-			}
-			fmt.Printf("  %s (%s, %s)", opt.Name, opt.Type, requirement)
-			if opt.Default != nil {
-				fmt.Printf("; default: %v", opt.Default)
-			}
-			if len(opt.EnumValues) > 0 {
-				fmt.Printf("; values: %s", strings.Join(opt.EnumValues, ", "))
-			}
-			fmt.Println()
-			if opt.Description != "" {
-				fmt.Printf("    %s\n", opt.Description)
-			}
+	if viper.GetBool("initialized") {
+		if err := state.checkInspectionRepository(); err != nil {
+			return err
 		}
 	}
-
-	fmt.Println("\nCurrent Configuration:")
-
-	allShells, err := shell.ListShellsWithFeatures(repoPath)
+	records, err := configuredRecordsOrEmpty(state.repoPathProvider(), state.flagShell)
 	if err != nil {
-		return fmt.Errorf("failed to list shells: %w", err)
+		return err
 	}
-
-	configured := false
-	for _, shellName := range allShells {
-		manifestPath := shell.GetManifestPath(repoPath, shellName)
-		m, err := manifest.ParseManifest(manifestPath)
+	name := ""
+	if len(args) > 0 {
+		name = args[0]
+	} else {
+		if !interactive.ShouldPrompt(cmd, false) {
+			return fmt.Errorf("feature name required; use feature info <feature> or run in a terminal to browse")
+		}
+		available := make(map[string]bool, len(catalog.Catalog)+len(records))
+		for name := range catalog.Catalog {
+			available[name] = true
+		}
+		for _, record := range records {
+			available[record.Name] = true
+		}
+		names := make([]string, 0, len(available))
+		for name := range available {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		index, err := selectLifecycleFeature("Show information about which feature?", names)
 		if err != nil {
-			continue
+			return err
 		}
-
-		feature, err := m.GetFeature(featureName)
-		if err == nil {
-			configured = true
-			status := "enabled"
-			if feature.Disabled {
-				status = "disabled"
+		name = names[index]
+	}
+	installed := make([]featureRecord, 0)
+	for _, record := range records {
+		if record.Name == name {
+			installed = append(installed, record)
+		}
+	}
+	metadata, ok := catalog.GetFeature(name)
+	if !ok {
+		if len(installed) == 0 {
+			return fmt.Errorf("feature %q is neither installed nor in the catalog", name)
+		}
+		asJSON, _ := cmd.Flags().GetBool("json")
+		if asJSON {
+			return writeFeatureJSON(cmd, featureInfoReport{SchemaVersion: 1, Installed: installed})
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "%s\n  Custom shell feature. Edit its implementation to change its behavior.\n", name)
+		printEffectiveFeatureInfo(cmd, installed)
+		return nil
+	}
+	description := featureDescription{Name: metadata.Name, Description: metadata.Description, Category: metadata.Category, DefaultStrategy: metadata.DefaultStrategy, DefaultCommands: metadata.DefaultCommands, SupportedShells: metadata.SupportedShells, Options: make([]optionDescription, 0, len(metadata.Options))}
+	description.Requirements = make(map[string][]requirementDescription)
+	for _, shellName := range metadata.SupportedShells {
+		for _, requirement := range catalog.Requirements(name, shellName) {
+			description.Requirements[shellName] = append(description.Requirements[shellName], requirementDescription{Kind: requirement.Kind, Name: requirement.Name, Instruction: requirement.Instruction})
+		}
+	}
+	for _, opt := range metadata.Options {
+		description.Options = append(description.Options, optionDescription{Name: opt.Name, Type: opt.Type, Description: opt.Description, Required: opt.Required, Default: opt.Default, Values: opt.EnumValues})
+	}
+	asJSON, _ := cmd.Flags().GetBool("json")
+	if asJSON {
+		return writeFeatureJSON(cmd, featureInfoReport{SchemaVersion: 1, Catalog: &description, Installed: installed})
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "%s\n  %s\n  Category: %s\n  Default strategy: %s\n  Supported shells: %s\n", metadata.Name, metadata.Description, metadata.Category, metadata.DefaultStrategy, strings.Join(metadata.SupportedShells, ", "))
+	if len(description.Options) > 0 {
+		fmt.Fprintln(cmd.OutOrStdout(), "\nOptions (feature add or feature configure --option name=value):")
+		for _, opt := range description.Options {
+			required := "optional"
+			if opt.Required {
+				required = "required"
 			}
-
-			fileops.ColorPrintf(fileops.Cyan, "  %s: ", shellName)
-			fmt.Print(status)
-
-			if feature.Strategy != "" {
-				fmt.Printf(" (%s", feature.Strategy)
-				if len(feature.OnCommand) > 0 {
-					fmt.Printf(": %v", feature.OnCommand)
+			fmt.Fprintf(cmd.OutOrStdout(), "  %s (%s, %s)", opt.Name, opt.Type, required)
+			if opt.Default != nil {
+				fmt.Fprintf(cmd.OutOrStdout(), "; default: %v", opt.Default)
+			}
+			if len(opt.Values) > 0 {
+				fmt.Fprintf(cmd.OutOrStdout(), "; values: %s", strings.Join(opt.Values, ", "))
+			}
+			fmt.Fprintln(cmd.OutOrStdout())
+			if opt.Description != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "    %s\n", opt.Description)
+			}
+		}
+	}
+	if len(description.Requirements) > 0 {
+		fmt.Fprintln(cmd.OutOrStdout(), "\nPrerequisites (configuration does not install these):")
+		seen := map[string]bool{}
+		for _, shellName := range metadata.SupportedShells {
+			for _, requirement := range description.Requirements[shellName] {
+				if !seen[requirement.Instruction] {
+					fmt.Fprintf(cmd.OutOrStdout(), "  %s\n", requirement.Instruction)
+					seen[requirement.Instruction] = true
 				}
-				fmt.Print(")")
 			}
-
-			fmt.Println()
 		}
 	}
-
-	if !configured {
-		fileops.ColorPrintln("  (not installed)", fileops.Yellow)
-	}
-
-	fmt.Println()
+	printEffectiveFeatureInfo(cmd, installed)
 	return nil
+}
+
+func (state *commandState) checkInspectionRepository() error {
+	path := state.repoPathProvider()
+	repo, err := git.GetRepository(path)
+	if err != nil {
+		return fmt.Errorf("inspect configured repository %s: %w", path, err)
+	}
+	return repo.Close()
+}
+
+func printEffectiveFeatureInfo(cmd *cobra.Command, installed []featureRecord) {
+	fmt.Fprintln(cmd.OutOrStdout(), "\nEffective configuration:")
+	if len(installed) == 0 {
+		fmt.Fprintln(cmd.OutOrStdout(), "  (not installed)")
+	}
+	for _, record := range installed {
+		status := "enabled"
+		if record.Disabled {
+			status = "disabled"
+		}
+		origin := record.Origin
+		if record.Overridden {
+			origin = "shared, overridden locally"
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "  %s: %s (%s; %s)\n", record.Shell, status, record.Strategy, origin)
+		fmt.Fprintf(cmd.OutOrStdout(), "    %s\n", record.Path)
+		if len(record.Options) > 0 {
+			fmt.Fprintf(cmd.OutOrStdout(), "    options: %v\n", record.Options)
+		}
+	}
 }

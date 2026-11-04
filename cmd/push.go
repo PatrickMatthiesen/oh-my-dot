@@ -121,7 +121,7 @@ func compactPushHistoryIfEnabled(cmd *cobra.Command) error {
 func pushCompactMode() string {
 	mode := strings.TrimSpace(strings.ToLower(viper.GetString(pushCompactConfigKey)))
 	if mode == "" {
-		return "auto"
+		return "off"
 	}
 	return mode
 }

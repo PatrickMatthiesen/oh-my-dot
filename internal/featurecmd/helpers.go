@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -127,6 +128,17 @@ func preflightFeatureManifests(repoPath string, shellNames []string) error {
 	for _, shellName := range shellNames {
 		if !shell.IsShellSupported(shellName) {
 			return fmt.Errorf("unsupported shell: %s", shellName)
+		}
+		// Check ancestors themselves. On Windows a child of a regular file
+		// can report ErrNotExist, which must not mean an unconfigured shell.
+		for _, directory := range []string{filepath.Join(repoPath, "omd-shells"), shell.GetShellDirectory(repoPath, shellName)} {
+			info, err := os.Stat(directory)
+			if err == nil && !info.IsDir() {
+				return fmt.Errorf("cannot change features in %s; %s is not a directory", shellName, directory)
+			}
+			if err != nil && !errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("inspect shell directory %s: %w", directory, err)
+			}
 		}
 		path := shell.GetManifestPath(repoPath, shellName)
 		if _, err := manifest.ParseManifest(path); err != nil && !errors.Is(err, os.ErrNotExist) {

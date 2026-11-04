@@ -246,6 +246,28 @@ func TestGetFeatureTemplate(t *testing.T) {
 	}
 }
 
+func TestPowerShellPromptLoadsOnHostPlatform(t *testing.T) {
+	pwsh, err := exec.LookPath("pwsh")
+	if err != nil {
+		t.Skip("PowerShell is required")
+	}
+	content, err := GetFeatureTemplate("powershell-prompt", "powershell")
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	path := filepath.Join(root, "prompt.ps1")
+	content = "$ErrorActionPreference = 'Stop'\n" + content + "\nif ((prompt).Length -lt 1) { throw 'empty prompt' }; Write-Output 'ready'\n"
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command(pwsh, "-NoProfile", "-NonInteractive", "-File", path)
+	command.Dir = root
+	if output, err := command.CombinedOutput(); err != nil || strings.TrimSpace(string(output)) != "ready" {
+		t.Fatalf("prompt startup failed on this host: %q, %v", output, err)
+	}
+}
+
 func TestPowerShellAliasesTailSupportsPipelineInput(t *testing.T) {
 	pwshPath, err := exec.LookPath("pwsh")
 	if err != nil {
@@ -574,7 +596,7 @@ func TestRenderFeatureTemplate(t *testing.T) {
 		if !strings.Contains(rendered, "jandedobbeleer.omp.json") {
 			t.Fatalf("expected default theme URL in rendered content, got %q", rendered)
 		}
-		if !strings.Contains(rendered, "$OMD_SHELL_ROOT/features/oh-my-posh.omp.json") {
+		if !strings.Contains(rendered, "$OMD_SHELL_ROOT/.local/cache/oh-my-posh.jandedobbeleer.omp.json") {
 			t.Fatalf("expected default config path in rendered content, got %q", rendered)
 		}
 	})

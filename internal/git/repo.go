@@ -114,15 +114,20 @@ func InitGitRepo(rootGitRepoPath string, remoteUrl string, opts ...bool) (*git.R
 		if IsSSHRemote(remoteUrl) {
 			cloned, err = CloneSSH(temp, remoteUrl)
 		} else {
-			cloned, err = git.PlainClone(temp, &git.CloneOptions{
-				URL:            remoteUrl,
-				AllowEmptyRepo: true,
-				ClientOptions:  RemoteClientOptions(parent, remoteUrl),
-			})
+			cloned, err = clonePreservingUnbornHead(temp, remoteUrl, RemoteClientOptions(parent, remoteUrl))
 		}
 		if err != nil {
 			return nil, fmt.Errorf("clone repository: %w\n%s", err, RemoteErrorHelp(err, remoteUrl))
 		}
+		// go-git keeps pack and lazy-index descriptors open until Close. They
+		// prevent moving the verified clone on Windows, and must also close
+		// before a failed attempt's temporary directory is removed.
+		cloneClosed := false
+		defer func() {
+			if !cloneClosed {
+				_ = cloned.Close()
+			}
+		}()
 		head, err := cloned.Head()
 		if err != nil && !errors.Is(err, plumbing.ErrReferenceNotFound) {
 			return nil, fmt.Errorf("inspect cloned repository HEAD: %w", err)
@@ -151,6 +156,10 @@ func InitGitRepo(rootGitRepoPath string, remoteUrl string, opts ...bool) (*git.R
 				return nil, fmt.Errorf("verify cloned commit: %w", err)
 			}
 		}
+		if err := cloned.Close(); err != nil {
+			return nil, fmt.Errorf("close verified clone before moving: %w", err)
+		}
+		cloneClosed = true
 		if err := os.Remove(rootGitRepoPath); err != nil && !os.IsNotExist(err) {
 			return nil, fmt.Errorf("replace empty destination: %w", err)
 		}
@@ -731,6 +740,9 @@ func CheckRepoWritePermission() error {
 // Returns true when a commit was created, false when there were no committable changes.
 func StageAndCommitShellFeatureChanges(message string) (bool, error) {
 	repoPath := viper.GetString("repo-path")
+	if err := shell.CheckLocalRuntimeTracking(repoPath); err != nil {
+		return false, err
+	}
 	r, err := GetRepository(repoPath)
 	if err != nil {
 		return false, err
@@ -803,7 +815,7 @@ func StageAndCommitShellFeatureChanges(message string) (bool, error) {
 
 func ensureNoStagedNonShellChanges(status git.Status) error {
 	for path, fileStatus := range status {
-		if fileStatus.Staging == git.Unmodified || isCommittableShellChangePath(path) {
+		if fileStatus.Staging == git.Unmodified || fileStatus.Staging == git.Untracked || isCommittableShellChangePath(path) {
 			continue
 		}
 
@@ -823,9 +835,11 @@ func isCommittableShellChangePath(path string) bool {
 }
 
 func isDeviceLocalShellChangePath(path string) bool {
-	normalizedPath := filepath.ToSlash(filepath.Clean(path))
-	return strings.HasPrefix(normalizedPath, "omd-shells/") &&
-		strings.HasSuffix(normalizedPath, "/"+shell.LocalManifestFileName())
+	if shell.IsDeviceLocalShellPath(path) {
+		return true
+	}
+	localOnly, err := shell.IsLocalOnlyFeaturePath(viper.GetString("repo-path"), path)
+	return err != nil || localOnly
 }
 
 func shouldAmendLastShellFeatureCommit(r *git.Repository) (bool, error) {
@@ -988,7 +1002,7 @@ func StageAndCommitAgentSkillChanges(message string) (bool, error) {
 
 func ensureNoStagedNonAgentChanges(status git.Status) error {
 	for path, fileStatus := range status {
-		if fileStatus.Staging == git.Unmodified || isCommittableAgentChangePath(path) {
+		if fileStatus.Staging == git.Unmodified || fileStatus.Staging == git.Untracked || isCommittableAgentChangePath(path) {
 			continue
 		}
 

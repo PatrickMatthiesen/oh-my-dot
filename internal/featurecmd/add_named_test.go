@@ -100,3 +100,25 @@ func TestNamedAddSkipsExistingAndPreflightsBlockedShells(t *testing.T) {
 		})
 	}
 }
+
+func TestPreflightFeatureManifestsRejectsBlockedAncestor(t *testing.T) {
+	for _, blocked := range []string{"omd-shells", filepath.Join("omd-shells", "zsh")} {
+		t.Run(blocked, func(t *testing.T) {
+			root := t.TempDir()
+			path := filepath.Join(root, blocked)
+			if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte("private file"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := preflightFeatureManifests(root, []string{"bash", "zsh"}); err == nil {
+				t.Fatal("blocked shell ancestor treated as missing configuration")
+			}
+			data, err := os.ReadFile(path)
+			if err != nil || string(data) != "private file" {
+				t.Fatalf("blocking file changed: %q %v", data, err)
+			}
+		})
+	}
+}

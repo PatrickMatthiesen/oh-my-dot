@@ -135,8 +135,10 @@ func checkFeatureFiles(ctx context) []result {
 				results = addResult(results, ctx, warningResult("Oh My Posh executable", "The feature is configured, but oh-my-posh is not available on PATH. Install Oh My Posh using your package manager, then open a new shell. Configuring a feature does not install its prerequisite.", false), nil)
 			}
 		}
-		featurePath, err := shell.GetFeatureFilePath(ctx.repoPath, ctx.shellName, feature.Name)
+		featurePath, err := shell.GetEffectiveFeatureFilePath(ctx.repoPath, ctx.shellName, feature.Name)
 		if err != nil {
+			results = addResult(results, ctx, errorResult("Feature file '"+feature.Name+"'", err.Error(), false), nil)
+			missingCount++
 			continue
 		}
 		info, statErr := os.Lstat(featurePath)
@@ -168,10 +170,27 @@ func checkFeatureFiles(ctx context) []result {
 			if err != nil {
 				return "", fmt.Errorf("render feature template: %w", err)
 			}
-			if err := os.MkdirAll(filepath.Dir(featurePath), 0755); err != nil {
+			mode, directoryMode := os.FileMode(0644), os.FileMode(0755)
+			relative, relErr := filepath.Rel(ctx.repoPath, featurePath)
+			if relErr == nil && shell.IsDeviceLocalShellPath(relative) {
+				if err := shell.CheckLocalRuntimeTracking(ctx.repoPath); err != nil {
+					return "", err
+				}
+				if err := shell.ValidateRuntimeScripts(ctx.repoPath, ctx.shellName); err != nil {
+					return "", fmt.Errorf("validate private runtime before repair: %w", err)
+				}
+				mode, directoryMode = 0600, 0700
+			}
+			if err := os.MkdirAll(filepath.Dir(featurePath), directoryMode); err != nil {
 				return "", fmt.Errorf("create feature directory: %w", err)
 			}
-			file, err := os.OpenFile(featurePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+			if mode == 0600 {
+				if err := manifest.CreatePrivateFile(featurePath, []byte(content)); err != nil {
+					return "", fmt.Errorf("restore private catalog version: %w", err)
+				}
+				return fmt.Sprintf("Restored private catalog template %s; customized content requires Git history or a backup.", featurePath), nil
+			}
+			file, err := os.OpenFile(featurePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
 			if err != nil {
 				return "", fmt.Errorf("restore missing feature without replacing existing content: %w", err)
 			}

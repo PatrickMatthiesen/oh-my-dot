@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -13,7 +14,92 @@ import (
 	gogit "github.com/go-git/go-git/v6"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/manifest"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/shell"
 )
+
+func TestApplyRebuildsPrivateRuntimeAfterSharedManifestChanges(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix Bash profile integration")
+	}
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip(err)
+	}
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	repo := filepath.Join(home, "repo")
+	if err := shell.InitializeShellDirectory(repo, "bash"); err != nil {
+		t.Fatal(err)
+	}
+	base := &manifest.FeatureManifest{Features: []manifest.FeatureConfig{{Name: "shared", Strategy: "eager"}}}
+	local := &manifest.FeatureManifest{Features: []manifest.FeatureConfig{{Name: "private", Strategy: "eager"}}}
+	for name, script := range map[string]string{"shared": "export OMD_ACCEPT_SHARED=old", "new-shared": "export OMD_ACCEPT_NEW=loaded", "private": "export OMD_ACCEPT_PRIVATE=loaded"} {
+		path, err := shell.GetFeatureFilePath(repo, "bash", name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(script), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := manifest.WriteManifest(shell.GetManifestPath(repo, "bash"), base); err != nil {
+		t.Fatal(err)
+	}
+	if err := manifest.WriteLocalManifest(shell.GetLocalManifestPath(repo, "bash"), local); err != nil {
+		t.Fatal(err)
+	}
+	if err := shell.RegenerateInitScript(repo, "bash"); err != nil {
+		t.Fatal(err)
+	}
+	// Model pulling another machine's new shared declaration without local generation.
+	base.Features = append(base.Features, manifest.FeatureConfig{Name: "new-shared", Strategy: "eager"})
+	if err := manifest.WriteManifest(shell.GetManifestPath(repo, "bash"), base); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := func() map[string]string {
+		files := map[string]string{}
+		if err := filepath.WalkDir(home, func(path string, entry os.DirEntry, err error) error {
+			if err != nil || entry.IsDir() {
+				return err
+			}
+			data, err := os.ReadFile(path)
+			files[path] = string(data)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return files
+	}
+	viper.Set("repo-path", repo)
+	command := &cobra.Command{}
+	command.Flags().Bool("dry-run", true, "")
+	command.SetOut(&bytes.Buffer{})
+	before := snapshot()
+	if err := runApply(command, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(before, snapshot()) {
+		t.Fatal("apply preview changed files")
+	}
+	if err := command.Flags().Set("dry-run", "false"); err != nil {
+		t.Fatal(err)
+	}
+	if err := runApply(command, nil); err != nil {
+		t.Fatal(err)
+	}
+	init, _ := shell.GetInitScriptPath(repo, "bash")
+	probe := exec.Command("bash", "--noprofile", "--norc", "-c", `. "$1"; printf '%s/%s' "$OMD_ACCEPT_NEW" "$OMD_ACCEPT_PRIVATE"`, "probe", init)
+	if output, err := probe.CombinedOutput(); err != nil || string(output) != "loaded/loaded" {
+		t.Fatalf("updated effective runtime did not load: %q, %v", output, err)
+	}
+	public, err := os.ReadFile(init)
+	if err != nil || strings.Contains(string(public), "/private.sh") {
+		t.Fatalf("private declaration entered public runtime: %s, %v", public, err)
+	}
+}
 
 func TestApplyDistinguishesManagedTargets(t *testing.T) {
 	for _, kind := range []string{"missing", "hard link", "managed symlink", "unrelated regular", "unrelated symlink", "broken symlink"} {

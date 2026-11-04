@@ -22,7 +22,8 @@ func init() {
 	addCommand.Flags().StringP("move-to", "m", "", "Move the file to this path before adding it")
 	addCommand.MarkFlagsMutuallyExclusive("copy-to", "move-to")
 	addCommand.Flags().BoolP("no-commit", "n", false, "Do not commit the changes")
-	addCommand.Flags().Bool("force", false, "Overwrite a copy/move destination; repository entries are never overwritten")
+	addCommand.Flags().Bool("force", false, "Overwrite a copy/move destination without bypassing managed-file safety checks")
+	addCommand.Flags().Bool("update", false, "Capture changes from an already-managed local file without changing its repository name")
 	rootCmd.AddCommand(addCommand)
 }
 
@@ -40,6 +41,15 @@ Run add without a file in a terminal to open the file picker. If no automatic
 name works, a terminal prompts for a name; noninteractive use returns an error.
 Use --as to choose an exact repository name instead:
   oh-my-dot add ~/.ssh/config --as ssh/config
+
+A repeated add of the same managed file is a no-op. If your editor replaces the
+file and breaks its hard link, capture the replacement explicitly:
+  oh-my-dot add ~/.ssh/config --update
+
+--update preserves the existing name and restores the hard link. It refuses to
+replace independently changed repository content. Review and resolve both copies
+first in that case. Ordinary in-place edits already affect the stored hard link;
+--update stages and commits those edits, or use --no-commit to stage them only.
 
 Folders organize stored files; they do not select groups or profiles.`,
 	TraverseChildren: true,
@@ -107,12 +117,19 @@ func processAddFile(cmd *cobra.Command, file string, force bool) error {
 	if err != nil {
 		return fmt.Errorf("inspect source: %w", err)
 	}
-	if !info.Mode().IsRegular() {
+	if !info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0 {
 		return fmt.Errorf("source must be a regular file (resolve symbolic links before adding)")
 	}
 
 	copyTo, _ := cmd.Flags().GetString("copy-to")
 	moveTo, _ := cmd.Flags().GetString("move-to")
+	update, _ := cmd.Flags().GetBool("update")
+	if update && (copyTo != "" || moveTo != "") {
+		return fmt.Errorf("--update cannot be combined with --copy-to or --move-to; pass the managed local file directly")
+	}
+	if (copyTo != "" || moveTo != "") && !info.Mode().IsRegular() {
+		return fmt.Errorf("source must be a regular file (resolve symbolic links before adding)")
+	}
 	destination := file
 	if copyTo != "" || moveTo != "" {
 		target := copyTo
@@ -146,14 +163,30 @@ func processAddFile(cmd *cobra.Command, file string, force bool) error {
 	}
 
 	repoPath := viper.GetString("repo-path")
-	if noCommit, _ := cmd.Flags().GetBool("no-commit"); !noCommit {
-		if err := git.CheckCommitSafety(repoPath); err != nil {
-			return err
-		}
-	}
 	links, err := symlink.GetLinkings()
 	if err != nil {
 		return fmt.Errorf("read linkings: %w", err)
+	}
+	if err := symlink.ValidateLinkings(repoPath, links); err != nil {
+		return fmt.Errorf("validate linkings: %w", err)
+	}
+	if copyTo == "" && moveTo == "" {
+		if err := checkOutsideRepositoryStorage(repoPath, file); err != nil {
+			return err
+		}
+		key, found, err := symlink.FindDestinationKey(links, file)
+		if err != nil {
+			return fmt.Errorf("find managed file: %w", err)
+		}
+		if found {
+			return processManagedAdd(cmd, repoPath, file, key, info, update)
+		}
+		if update {
+			return fmt.Errorf("%s is not a managed destination; add it without --update first", file)
+		}
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("source must be a regular file (resolve symbolic links before adding)")
 	}
 	// Check the destination independently of naming, so retries do not register
 	// the same live file again under progressively longer names.
@@ -174,6 +207,11 @@ func processAddFile(cmd *cobra.Command, file string, force bool) error {
 		return fmt.Errorf("normalize destination: %w", err)
 	}
 
+	if noCommit, _ := cmd.Flags().GetBool("no-commit"); !noCommit {
+		if err := git.CheckCommitSafety(repoPath); err != nil {
+			return err
+		}
+	}
 	if copyTo != "" || moveTo != "" {
 		if fileops.PathExists(destination) && !force {
 			if !interactive.ShouldPrompt(cmd, false) {

@@ -169,7 +169,7 @@ func detectPowerShellProfilePath() (string, error) {
 		if err != nil {
 			continue
 		}
-		output, err := runCommand(resolvedPath, "-NoProfile", "-Command", "$PROFILE.CurrentUserCurrentHost")
+		output, err := runCommand(resolvedPath, "-NoProfile", "-NonInteractive", "-Command", "$PROFILE.CurrentUserCurrentHost")
 		if err != nil {
 			return "", fmt.Errorf("query profile with %s: %w", executable, err)
 		}

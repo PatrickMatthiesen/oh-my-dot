@@ -16,23 +16,22 @@ type FeaturesByStrategy struct {
 	OnCommand map[string][]string // feature name -> trigger commands
 }
 
-// GenerateInitScript generates a complete init script for a shell
-// Supports eager, defer, and on-command loading strategies (Phase 5)
-// Supports local overrides via enabled.local.json (Phase 6)
+// GenerateInitScript generates the shared entry from the base manifest only.
+// It delegates to an ignored effective init when device-local overrides exist.
 func GenerateInitScript(repoPath, shellName string) (string, error) {
-	// Parse manifest with local overrides
-	manifestPath := GetManifestPath(repoPath, shellName)
-	localManifestPath := GetLocalManifestPath(repoPath, shellName)
-
-	merged, err := manifest.ParseManifestWithLocal(manifestPath, localManifestPath)
+	base, err := manifest.ParseManifest(GetManifestPath(repoPath, shellName))
 	if err != nil {
-		return "", fmt.Errorf("failed to parse manifests: %w", err)
+		return "", fmt.Errorf("parse shared manifest: %w", err)
 	}
+	content, err := generateManifestInit(repoPath, shellName, manifest.MergeManifests(base, nil))
+	if err != nil {
+		return "", err
+	}
+	return withLocalDispatch(repoPath, shellName, content), nil
+}
 
-	// Organize features by strategy
+func generateManifestInit(repoPath, shellName string, merged *manifest.MergedManifest) (string, error) {
 	features := categorizeFeaturesMerged(merged)
-
-	// Generate shell-specific init script
 	switch shellName {
 	case "bash":
 		return generateBashInit(features), nil
@@ -534,20 +533,7 @@ end
 // RegenerateInitScript regenerates the init script for a shell
 // This should be called after any manifest changes
 func RegenerateInitScript(repoPath, shellName string) error {
-	// Generate new init script content
-	content, err := GenerateInitScript(repoPath, shellName)
-	if err != nil {
-		return fmt.Errorf("failed to generate init script: %w", err)
-	}
-
-	// Get init script path
-	initPath, err := GetInitScriptPath(repoPath, shellName)
-	if err != nil {
-		return err
-	}
-
-	// Write init script
-	return writeFile(initPath, content)
+	return regenerateRuntimeScripts(repoPath, shellName)
 }
 
 // TODO: Hook up somehow so the user can use it

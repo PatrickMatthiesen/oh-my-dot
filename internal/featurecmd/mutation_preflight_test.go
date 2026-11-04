@@ -2,6 +2,7 @@ package featurecmd
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -54,7 +55,8 @@ func TestInstalledAddValidatesConfigurationBeforeNoOp(t *testing.T) {
 		{name: "invalid enum", options: []string{"theme=missing-theme"}, want: "invalid value"},
 		{name: "invalid strategy", strategy: "later", want: "invalid strategy"},
 		{name: "invalid trigger", strategy: "on-command", commands: []string{"node;exit"}, want: "onCommand"},
-		{name: "explicit options", options: []string{"theme=pure"}, want: "already installed"},
+		{name: "explicit changed options", options: []string{"theme=paradox"}, want: "already installed"},
+		{name: "identical options", options: []string{"theme=pure"}},
 		{name: "explicit disabled", disabled: true, want: "already installed"},
 		{name: "idempotent rerun"},
 	} {
@@ -98,7 +100,7 @@ func TestFeatureMutationPreflightPreservesStagedWork(t *testing.T) {
 	for _, mutation := range []string{"add", "update", "remove", "enable", "disable"} {
 		t.Run(mutation, func(t *testing.T) {
 			path, repo, state, command := setupFeatureMutationFixture(t)
-			if err := shell.AddFeatureToShell(path, "bash", "git-prompt", "", nil, false, nil); err != nil {
+			if err := shell.AddFeatureToShell(path, "bash", "git-prompt", "", nil, mutation == "enable", nil); err != nil {
 				t.Fatal(err)
 			}
 			if err := autoCommitShellFeatureChanges("fixture"); err != nil {
@@ -159,6 +161,50 @@ func TestFeatureMutationPreflightPreservesStagedWork(t *testing.T) {
 	}
 }
 
+func TestFeatureMutationPreservesExistingShellScriptEdits(t *testing.T) {
+	for _, staged := range []bool{false, true} {
+		t.Run(fmt.Sprint("staged=", staged), func(t *testing.T) {
+			path, repo, state, command := setupFeatureMutationFixture(t)
+			if err := shell.AddFeatureToShell(path, "bash", "git-prompt", "", nil, false, nil); err != nil {
+				t.Fatal(err)
+			}
+			if err := autoCommitShellFeatureChanges("fixture"); err != nil {
+				t.Fatal(err)
+			}
+			script, _ := shell.GetFeatureFilePath(path, "bash", "git-prompt")
+			if err := os.WriteFile(script, []byte("# independent user customization\n"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			wt, _ := repo.Worktree()
+			if staged {
+				if _, err := wt.Add("omd-shells/bash/features/git-prompt.sh"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before, _ := repo.Head()
+			statusBefore, _ := wt.Status()
+			if err := state.runFeatureAdd(command, []string{"core-aliases"}); err == nil || !strings.Contains(err.Error(), "pending work") {
+				t.Fatalf("existing shell edit not protected: %v", err)
+			}
+			after, _ := repo.Head()
+			statusAfter, _ := wt.Status()
+			if before.Hash() != after.Hash() || statusBefore.String() != statusAfter.String() {
+				t.Fatal("refused mutation changed HEAD or index")
+			}
+		})
+	}
+}
+
+func TestLocalFirstScaffoldAllowsLaterSharedAdd(t *testing.T) {
+	path, _, _, _ := setupFeatureMutationFixture(t)
+	if _, err := runLifecycleCommand(t, path, "add", "oh-my-posh", "--shell", "bash", "--local", "--option", "theme=paradox"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runLifecycleCommand(t, path, "add", "git-prompt", "--shell", "bash"); err != nil {
+		t.Fatalf("canonical local-first scaffold prevented shared setup: %v", err)
+	}
+}
+
 func TestMalformedSelectedManifestStopsAddBeforeAnyWrite(t *testing.T) {
 	path, repo, state, command := setupFeatureMutationFixture(t)
 	if err := shell.InitializeShellDirectory(path, "zsh"); err != nil {
@@ -200,7 +246,7 @@ func TestMalformedSelectedManifestStopsAddBeforeAnyWrite(t *testing.T) {
 	}
 }
 
-func TestNamedUpdateAndRemoveCommitSuccessfulShells(t *testing.T) {
+func TestNamedUpdateAndRemoveValidateAllShellsBeforeWriting(t *testing.T) {
 	for _, mutation := range []string{"update", "remove"} {
 		t.Run(mutation, func(t *testing.T) {
 			path, repo, state, command := setupFeatureMutationFixture(t)
@@ -245,8 +291,8 @@ func TestNamedUpdateAndRemoveCommitSuccessfulShells(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if before.Hash() == after.Hash() {
-				t.Fatal("successful first-shell change was not committed")
+			if before.Hash() != after.Hash() {
+				t.Fatal("known later-shell failure changed HEAD before validation completed")
 			}
 			wt, _ := repo.Worktree()
 			status, err := wt.Status()
@@ -261,8 +307,8 @@ func TestNamedUpdateAndRemoveCommitSuccessfulShells(t *testing.T) {
 				t.Fatal(err)
 			}
 			_, featureErr := m.GetFeature("oh-my-posh")
-			if mutation == "remove" && featureErr == nil {
-				t.Fatal("successful removal not preserved")
+			if mutation == "remove" && featureErr != nil {
+				t.Fatal("failed batch changed first shell")
 			}
 		})
 	}

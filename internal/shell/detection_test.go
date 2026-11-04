@@ -296,7 +296,8 @@ func TestResolveProfilePath(t *testing.T) {
 
 	t.Run("uses PowerShell-reported profile path on non-windows when available", func(t *testing.T) {
 		t.Setenv("PROFILE", "")
-		resolvedPath := "/usr/bin/pwsh"
+		resolvedPath := filepath.Join(t.TempDir(), "pwsh")
+		expected := filepath.Join(t.TempDir(), ".config", "powershell", "Microsoft.PowerShell_profile.ps1")
 
 		// Save and restore global state modified by this subtest.
 		origGOOS := currentGOOS
@@ -319,7 +320,7 @@ func TestResolveProfilePath(t *testing.T) {
 			if name != resolvedPath {
 				t.Fatalf("unexpected executable: %s", name)
 			}
-			return []byte("/home/pbma/.config/powershell/Microsoft.PowerShell_profile.ps1\n"), nil
+			return []byte(expected + "\n"), nil
 		}
 
 		path, err := ResolveProfilePath(ShellConfig{ProfilePath: "$PROFILE"})
@@ -327,7 +328,6 @@ func TestResolveProfilePath(t *testing.T) {
 			t.Fatalf("ResolveProfilePath returned error: %v", err)
 		}
 
-		expected := "/home/pbma/.config/powershell/Microsoft.PowerShell_profile.ps1"
 		if path != expected {
 			t.Fatalf("ResolveProfilePath returned %q, want %q", path, expected)
 		}

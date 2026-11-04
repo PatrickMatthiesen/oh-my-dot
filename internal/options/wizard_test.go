@@ -3,6 +3,7 @@ package options
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -112,6 +113,7 @@ func TestWizardPreservesSkipAndCancelErrors(t *testing.T) {
 }
 
 func TestBackCanExplicitlyClearOptionalPath(t *testing.T) {
+	previousPath := filepath.Join(t.TempDir(), "previous", "path")
 	metadata := catalog.FeatureMetadata{Options: []catalog.OptionMetadata{
 		{Name: "theme", Type: catalog.OptionTypeEnum, Required: true, EnumValues: []string{"chosen"}},
 		{Name: "path", Type: catalog.OptionTypeFile},
@@ -123,9 +125,9 @@ func TestBackCanExplicitlyClearOptionalPath(t *testing.T) {
 		input: func(_, defaultValue string) (string, error) {
 			inputs++
 			if inputs == 1 {
-				return "/previous/path", nil
+				return previousPath, nil
 			}
-			if defaultValue != "/previous/path" {
+			if defaultValue != previousPath {
 				t.Fatal("back lost previous answer")
 			}
 			return "", interactive.ErrClear

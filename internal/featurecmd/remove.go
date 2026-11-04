@@ -20,6 +20,9 @@ func (state *commandState) runFeatureRemove(cmd *cobra.Command, args []string) e
 	if err := interactive.ValidateMode(cmd); err != nil {
 		return fmt.Errorf("invalid interaction mode: %w", err)
 	}
+	if state.flagLocal {
+		return state.runLocalFeatureRemove(cmd, args)
+	}
 	if state.flagInteractive || (len(args) == 0 && !state.flagAll && interactive.ShouldPrompt(cmd, false)) {
 		return state.runInteractiveFeatureRemove(cmd, repoPath)
 	}
@@ -77,6 +80,11 @@ func (state *commandState) runFeatureRemove(cmd *cobra.Command, args []string) e
 
 	if err := preflightFeatureManifests(repoPath, targetShells); err != nil {
 		return err
+	}
+	for _, shellName := range targetShells {
+		if err := shell.ValidateSharedFeatureRemoval(repoPath, shellName, featureName); err != nil {
+			return err
+		}
 	}
 	if err := preflightFeatureMutation(repoPath); err != nil {
 		return err
@@ -227,6 +235,13 @@ func (state *commandState) runInteractiveFeatureRemove(cmd *cobra.Command, repoP
 	for _, label := range selectedLabels {
 		name := strings.Split(label, " (in ")[0]
 		selectedFeatures = append(selectedFeatures, name)
+	}
+	for _, featureName := range selectedFeatures {
+		for _, shellName := range featureMap[featureName] {
+			if err := shell.ValidateSharedFeatureRemoval(repoPath, shellName, featureName); err != nil {
+				return err
+			}
+		}
 	}
 
 	if err := preflightFeatureMutation(repoPath); err != nil {

@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -32,7 +33,7 @@ func TestLoadConfigPreservesMalformedFile(t *testing.T) {
 				t.Fatal(err)
 			}
 			err := LoadConfig(path, create)
-			if err == nil || !strings.Contains(err.Error(), path) {
+			if err == nil || !strings.Contains(err.Error(), strconv.Quote(path)) {
 				t.Fatalf("missing contextual error: %v", err)
 			}
 			after, err := os.ReadFile(path)

@@ -48,31 +48,19 @@ func openAndValidateConfig(path string) (*os.File, error) {
 	return f, nil
 }
 
-func writeLocalManifestFile(path string, data []byte, perm os.FileMode) error {
-	if err := os.WriteFile(path, data, perm); err != nil {
-		return err
-	}
-
-	if err := applyPrivateACL(path); err != nil {
-		return fmt.Errorf("secure file: %w", err)
-	}
-
-	return nil
-}
-
-func applyPrivateACL(path string) error {
+func privateFileACL() (*windows.ACL, error) {
 	me, err := currentUserSID()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	admins, err := windows.CreateWellKnownSid(windows.WinBuiltinAdministratorsSid)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	system, err := windows.CreateWellKnownSid(windows.WinLocalSystemSid)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	access := []windows.EXPLICIT_ACCESS{
@@ -81,7 +69,70 @@ func applyPrivateACL(path string) error {
 		fullControlAccess(system, windows.TRUSTEE_IS_USER),
 	}
 
-	acl, err := windows.ACLFromEntries(access, nil)
+	return windows.ACLFromEntries(access, nil)
+}
+
+func writeLocalManifestFile(path string, data []byte, perm os.FileMode) error {
+	return writePrivateRuntimeFile(path, data, perm, false)
+}
+
+func writePrivateRuntimeFile(path string, data []byte, _ os.FileMode, exclusive bool) error {
+	acl, err := privateFileACL()
+	if err != nil {
+		return err
+	}
+	descriptor, err := windows.NewSecurityDescriptor()
+	if err != nil {
+		return fmt.Errorf("create private security descriptor: %w", err)
+	}
+	if err := descriptor.SetDACL(acl, true, false); err != nil {
+		return fmt.Errorf("set private DACL: %w", err)
+	}
+	if err := descriptor.SetControl(windows.SE_DACL_PROTECTED, windows.SE_DACL_PROTECTED); err != nil {
+		return fmt.Errorf("protect private DACL: %w", err)
+	}
+	attributes := windows.SecurityAttributes{Length: uint32(unsafe.Sizeof(windows.SecurityAttributes{})), SecurityDescriptor: descriptor}
+	name, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return fmt.Errorf("encode private path: %w", err)
+	}
+	creation := uint32(windows.OPEN_ALWAYS)
+	if exclusive {
+		creation = windows.CREATE_NEW
+	}
+	handle, err := windows.CreateFile(name, windows.GENERIC_WRITE|windows.WRITE_DAC, 0, &attributes, creation, windows.FILE_ATTRIBUTE_NORMAL|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+	if err != nil {
+		return fmt.Errorf("open private file: %w", err)
+	}
+	file := os.NewFile(uintptr(handle), path)
+	if file == nil {
+		_ = windows.CloseHandle(handle)
+		return fmt.Errorf("open private file: os.NewFile failed")
+	}
+	defer file.Close()
+	var information windows.ByHandleFileInformation
+	if err := windows.GetFileInformationByHandle(handle, &information); err != nil {
+		return fmt.Errorf("inspect opened private file: %w", err)
+	}
+	if information.FileAttributes&(windows.FILE_ATTRIBUTE_REPARSE_POINT|windows.FILE_ATTRIBUTE_DIRECTORY) != 0 {
+		return fmt.Errorf("private file must be regular: %s", path)
+	}
+	// Creation uses the protected descriptor. Existing files must be restricted
+	// through their opened handle before any old content is truncated or replaced.
+	if err := windows.SetSecurityInfo(handle, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, acl, nil); err != nil {
+		return fmt.Errorf("secure opened private file: %w", err)
+	}
+	if err := file.Truncate(0); err != nil {
+		return fmt.Errorf("truncate private file: %w", err)
+	}
+	if _, err := file.Write(data); err != nil {
+		return fmt.Errorf("write private file: %w", err)
+	}
+	return file.Close()
+}
+
+func applyPrivateACL(path string) error {
+	acl, err := privateFileACL()
 	if err != nil {
 		return err
 	}

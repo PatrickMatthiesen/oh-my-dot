@@ -9,7 +9,6 @@ import (
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/catalog"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/interactive"
-	"github.com/PatrickMatthiesen/oh-my-dot/internal/manifest"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/shell"
 	"github.com/spf13/cobra"
 )
@@ -41,6 +40,9 @@ func (state *commandState) runFeatureUpdate(cmd *cobra.Command, args []string) e
 	if err := interactive.ValidateMode(cmd); err != nil {
 		return fmt.Errorf("invalid interaction mode: %w", err)
 	}
+	if state.flagLocal {
+		return state.runLocalFeatureUpdate(cmd, args)
+	}
 	if state.flagInteractive || (len(args) == 0 && !state.flagAll && interactive.ShouldPrompt(cmd, false)) {
 		if len(args) > 0 {
 			return fmt.Errorf("interactive mode does not accept a feature name")
@@ -68,7 +70,7 @@ func (state *commandState) runFeatureUpdate(cmd *cobra.Command, args []string) e
 		return fmt.Errorf("feature '%s' is not installed in any shell", featureName)
 	}
 
-	if err := refreshFeatureTargets(repoPath, map[string][]string{featureName: targetShells}, "Refresh shell feature: "+featureName); err != nil {
+	if err := refreshFeatureTargets(repoPath, map[string][]string{featureName: targetShells}, "Refresh shell feature: "+featureName, state.flagForce); err != nil {
 		return err
 	}
 
@@ -87,7 +89,7 @@ func (state *commandState) runAllFeatureUpdates(repoPath, alias string) error {
 		return nil
 	}
 
-	if err := refreshFeatureTargets(repoPath, featureMap, "Refresh shell features"); err != nil {
+	if err := refreshFeatureTargets(repoPath, featureMap, "Refresh shell features", state.flagForce); err != nil {
 		return err
 	}
 
@@ -157,7 +159,7 @@ func (state *commandState) runInteractiveFeatureUpdate(cmd *cobra.Command, repoP
 	for _, featureName := range selectedFeatureNames {
 		selectedMap[featureName] = featureMap[featureName]
 	}
-	if err := refreshFeatureTargets(repoPath, selectedMap, "Refresh shell features (interactive)"); err != nil {
+	if err := refreshFeatureTargets(repoPath, selectedMap, "Refresh shell features (interactive)", state.flagForce); err != nil {
 		return err
 	}
 
@@ -173,14 +175,12 @@ func collectUpdatableFeatures(repoPath string, candidateShells []string) (map[st
 	featureMap := make(map[string][]string)
 
 	for _, shellName := range candidateShells {
-		manifestPath := shell.GetManifestPath(repoPath, shellName)
-		localManifestPath := shell.GetLocalManifestPath(repoPath, shellName)
-		merged, err := manifest.ParseManifestWithLocal(manifestPath, localManifestPath)
+		base, _, _, err := readFeatureManifest(repoPath, shellName)
 		if err != nil {
-			continue
+			return nil, err
 		}
 
-		for _, feature := range merged.Features {
+		for _, feature := range base.Features {
 			if !catalog.HasFeatureTemplate(feature.Name, shellName) {
 				continue
 			}
@@ -224,15 +224,16 @@ func (state *commandState) shellsWithFeature(repoPath, featureName string) ([]st
 	}
 	installedShells := make([]string, 0, len(candidateShells))
 	for _, shellName := range candidateShells {
-		manifestPath := shell.GetManifestPath(repoPath, shellName)
-		localManifestPath := shell.GetLocalManifestPath(repoPath, shellName)
-		merged, err := manifest.ParseManifestWithLocal(manifestPath, localManifestPath)
+		base, _, merged, err := readFeatureManifest(repoPath, shellName)
 		if err != nil {
-			continue
+			return nil, err
 		}
 
 		for _, feature := range merged.Features {
 			if feature.Name == featureName {
+				if _, err := base.GetFeature(featureName); err != nil {
+					return nil, fmt.Errorf("feature %q is local-only in %s; use feature update %s --shell %s --local", featureName, shellName, featureName, shellName)
+				}
 				installedShells = append(installedShells, shellName)
 				break
 			}
@@ -244,7 +245,7 @@ func (state *commandState) shellsWithFeature(repoPath, featureName string) ([]st
 
 // All refresh modes share partial-completion semantics: validate before writing,
 // commit completed refreshes, then return the collected failures.
-func refreshFeatureTargets(repoPath string, featureMap map[string][]string, commitMessage string) error {
+func refreshFeatureTargets(repoPath string, featureMap map[string][]string, commitMessage string, force ...bool) error {
 	var featureNames, shellNames []string
 	for featureName, shells := range featureMap {
 		featureNames = append(featureNames, featureName)
@@ -260,20 +261,36 @@ func refreshFeatureTargets(repoPath string, featureMap map[string][]string, comm
 		return err
 	}
 	sort.Strings(featureNames)
-	updatedCount := 0
-	var failures []error
+	type target struct {
+		name, shell string
+		plan        *shell.FeatureConfigurationPlan
+	}
+	var targets []target
+	replace := len(force) > 0 && force[0]
 	for _, featureName := range featureNames {
 		targetShells := featureMap[featureName]
 		sort.Strings(targetShells)
 		for _, shellName := range targetShells {
-			fileops.ColorPrintfn(fileops.Cyan, "Refreshing %s in %s...", featureName, shellName)
-			if err := shell.RefreshFeatureTemplate(repoPath, shellName, featureName); err != nil {
-				failures = append(failures, fmt.Errorf("refresh %s in %s: %w", featureName, shellName, err))
-				continue
+			plan, err := shell.PrepareFeatureRefresh(repoPath, shellName, featureName, replace)
+			if err != nil {
+				return fmt.Errorf("prepare refresh %s in %s: %w", featureName, shellName, err)
 			}
-			updatedCount++
-			fileops.ColorPrintfn(fileops.Green, "  ✓ Feature file updated")
+			targets = append(targets, target{featureName, shellName, plan})
 		}
+	}
+	updatedCount := 0
+	var failures []error
+	for _, target := range targets {
+		if !target.plan.Changed {
+			continue
+		}
+		fileops.ColorPrintfn(fileops.Cyan, "Refreshing %s in %s...", target.name, target.shell)
+		if err := target.plan.Apply(); err != nil {
+			failures = append(failures, fmt.Errorf("refresh %s in %s: %w", target.name, target.shell, err))
+			continue
+		}
+		updatedCount++
+		fileops.ColorPrintfn(fileops.Green, "  ✓ Feature file updated")
 	}
 	if updatedCount > 0 {
 		if err := autoCommitShellFeatureChanges(commitMessage); err != nil {

@@ -3,6 +3,7 @@ package featurecmd
 import (
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -22,6 +23,9 @@ func (state *commandState) runFeatureAdd(cmd *cobra.Command, args []string) erro
 
 	if err := interactive.ValidateMode(cmd); err != nil {
 		return fmt.Errorf("invalid interaction mode: %w", err)
+	}
+	if state.flagAll && len(state.flagShell) > 0 {
+		return fmt.Errorf("choose --shell or --all, not both")
 	}
 	if len(args) == 0 && interactive.ShouldPrompt(cmd, false) {
 		return state.runInteractiveFeatureAdd(cmd, repoPath)
@@ -96,7 +100,11 @@ func (state *commandState) runFeatureAdd(cmd *cobra.Command, args []string) erro
 	}
 	var pendingShells []string
 	for _, shellName := range targetShells {
-		if isFeatureInstalled(repoPath, shellName, featureName) {
+		installed, err := featurePresent(repoPath, shellName, featureName)
+		if err != nil {
+			return err
+		}
+		if installed {
 			fileops.ColorPrintfn(fileops.Yellow, "Skipping %s in %s (already installed)", featureName, shellName)
 		} else {
 			pendingShells = append(pendingShells, shellName)
@@ -108,12 +116,22 @@ func (state *commandState) runFeatureAdd(cmd *cobra.Command, args []string) erro
 			hasConfiguration = hasConfiguration || cmd.Flags().Changed(name)
 		}
 		if hasConfiguration {
-			return fmt.Errorf("feature %q is already installed; feature add does not change installed settings. Edit its saved options in omd-shells/<shell>/enabled.json, then run '%s feature update %s --shell <shell>' to regenerate the feature file; use feature enable/disable for load settings", featureName, alias, featureName)
+			matches, err := state.installedSettingsMatch(repoPath, featureName, targetShells, metadata, overrides, cmd)
+			if err != nil {
+				return err
+			}
+			if matches {
+				fileops.ColorPrintln("Already installed with the requested settings.", fileops.Cyan)
+				return nil
+			}
+			return fmt.Errorf("feature %q is already installed; feature add does not change installed settings. Run '%s feature configure %s --shell <shell> --option key=value' to change options; use feature enable/disable for load settings", featureName, alias, featureName)
 		}
 		return nil
 	}
-	if err := preflightFeatureMutation(repoPath); err != nil {
-		return err
+	if !state.flagLocal {
+		if err := preflightFeatureMutation(repoPath); err != nil {
+			return err
+		}
 	}
 	targetShells = pendingShells
 	var optionValues map[string]any
@@ -140,19 +158,29 @@ func (state *commandState) runFeatureAdd(cmd *cobra.Command, args []string) erro
 	addedCount := 0
 	var failures []error
 	for _, shellName := range targetShells {
-		if isFeatureInstalled(repoPath, shellName, featureName) {
+		installed, err := featurePresent(repoPath, shellName, featureName)
+		if err != nil {
+			failures = append(failures, err)
+			continue
+		}
+		if installed {
 			fileops.ColorPrintfn(fileops.Yellow, "Skipping %s in %s (already installed)", featureName, shellName)
 			continue
 		}
 		fileops.ColorPrintfn(fileops.Cyan, "Adding %s to %s...", featureName, shellName)
-		if err := shell.AddFeatureToShell(repoPath, shellName, featureName, state.flagStrategy, state.flagOnCommand, state.flagDisabled, optionValues); err != nil {
+		addFeature := shell.AddFeatureToShell
+		if state.flagLocal {
+			addFeature = shell.AddLocalFeatureToShell
+		}
+		if err := addFeature(repoPath, shellName, featureName, state.flagStrategy, state.flagOnCommand, state.flagDisabled, optionValues); err != nil {
 			failures = append(failures, fmt.Errorf("add feature to %s: %w", shellName, err))
 			continue
 		}
 		addedCount++
+		showFeatureRequirements(cmd, repoPath, shellName)
 		fileops.ColorPrintfn(fileops.Green, "  ✓ Feature added")
 	}
-	if addedCount > 0 {
+	if addedCount > 0 && !state.flagLocal {
 		if err := autoCommitShellFeatureChanges("Add shell feature: " + featureName); err != nil {
 			failures = append(failures, fmt.Errorf("commit successful additions: %w", err))
 		}
@@ -165,7 +193,11 @@ func (state *commandState) runFeatureAdd(cmd *cobra.Command, args []string) erro
 	}
 	fmt.Println()
 	fileops.ColorPrintfn(fileops.Cyan, "Run '%s apply' to activate the feature(s)", alias)
-	fileops.ColorPrintfn(fileops.Cyan, "Run '%s push' to push committed changes", alias)
+	if state.flagLocal {
+		fileops.ColorPrintln("Private feature configuration added; no commit was created.", fileops.Cyan)
+	} else {
+		fileops.ColorPrintfn(fileops.Cyan, "Run '%s push' to push committed changes", alias)
+	}
 
 	return nil
 }
@@ -205,11 +237,17 @@ func (state *commandState) runInteractiveFeatureAdd(cmd *cobra.Command, repoPath
 	sort.Strings(remainingShells)
 	availableShells = append(availableShells, remainingShells...)
 
-	selectedShells, err := interactive.MultiSelect(
-		"Select shells to add features to:",
-		availableShells,
-		func(shellName string) bool { return shellName == currentShell },
-	)
+	selectedShells := append([]string(nil), state.flagShell...)
+	var err error
+	if state.flagAll {
+		selectedShells = availableShells
+	} else if len(selectedShells) == 0 {
+		selectedShells, err = interactive.MultiSelect(
+			"Select shells to add features to:",
+			availableShells,
+			func(shellName string) bool { return shellName == currentShell },
+		)
+	}
 	if err != nil {
 		if errors.Is(err, interactive.ErrCancelled) {
 			fileops.ColorPrintln("Cancelled", fileops.Yellow)
@@ -222,6 +260,11 @@ func (state *commandState) runInteractiveFeatureAdd(cmd *cobra.Command, repoPath
 		fileops.ColorPrintln("No shells selected", fileops.Yellow)
 		return nil
 	}
+	for _, shellName := range selectedShells {
+		if !shellSet[shellName] {
+			return fmt.Errorf("unsupported shell: %s", shellName)
+		}
+	}
 
 	compatibleFeatures := filterFeaturesByShells(allFeatures, selectedShells)
 	if len(compatibleFeatures) == 0 {
@@ -231,15 +274,16 @@ func (state *commandState) runInteractiveFeatureAdd(cmd *cobra.Command, repoPath
 
 	installedFeaturesByShell := make(map[string]map[string]bool, len(selectedShells))
 	for _, shellName := range selectedShells {
-		manifestPath := shell.GetManifestPath(repoPath, shellName)
 		installedForShell := make(map[string]bool)
 		installedFeaturesByShell[shellName] = installedForShell
-		m, err := manifest.ParseManifest(manifestPath)
-		if err != nil {
+		if _, err := os.Stat(shell.GetManifestPath(repoPath, shellName)); os.IsNotExist(err) {
 			continue
 		}
-
-		for _, feature := range m.Features {
+		_, _, merged, err := readFeatureManifest(repoPath, shellName)
+		if err != nil {
+			return err
+		}
+		for _, feature := range merged.Features {
 			installedForShell[feature.Name] = true
 		}
 	}
@@ -279,7 +323,24 @@ func (state *commandState) runInteractiveFeatureAdd(cmd *cobra.Command, repoPath
 		}
 	}
 
-	return state.addSelectedFeatures(repoPath, selectedShells, selectedFeatures, installedFeaturesByShell, options.PromptForOptions)
+	// Validate explicitly supplied options for the entire selection before writes.
+	for _, feature := range selectedFeatures {
+		if _, err := options.ParseOptionOverrides(feature, state.flagOption); err != nil {
+			return fmt.Errorf("options for %s: %w", feature.Name, err)
+		}
+	}
+	return state.addSelectedFeatures(repoPath, selectedShells, selectedFeatures, installedFeaturesByShell, func(feature catalog.FeatureMetadata) (map[string]any, error) {
+		overrides, err := options.ParseOptionOverrides(feature, state.flagOption)
+		if err != nil {
+			return nil, err
+		}
+		if len(state.flagOption) > 0 {
+			if values, err := options.ResolveOptionsForNonInteractiveWithOverrides(feature, overrides); err == nil {
+				return values, nil
+			}
+		}
+		return options.PromptForOptionsWithOverrides(feature, overrides)
+	})
 }
 
 func featureInstallLabel(feature catalog.FeatureMetadata, selectedShells []string, installed map[string]map[string]bool) string {
@@ -297,8 +358,10 @@ func featureInstallLabel(feature catalog.FeatureMetadata, selectedShells []strin
 }
 
 func (state *commandState) addSelectedFeatures(repoPath string, selectedShells []string, selectedFeatures []catalog.FeatureMetadata, installedFeaturesByShell map[string]map[string]bool, promptOptions func(catalog.FeatureMetadata) (map[string]any, error)) error {
-	if err := preflightFeatureMutation(repoPath); err != nil {
-		return err
+	if !state.flagLocal {
+		if err := preflightFeatureMutation(repoPath); err != nil {
+			return err
+		}
 	}
 	if err := preflightFeatureManifests(repoPath, selectedShells); err != nil {
 		return err
@@ -358,7 +421,11 @@ func (state *commandState) addSelectedFeatures(repoPath string, selectedShells [
 
 			fileops.ColorPrintfn(fileops.Cyan, "Adding %s to %s...", feature.Name, shellName)
 
-			err := shell.AddFeatureToShell(repoPath, shellName, feature.Name, state.flagStrategy, state.flagOnCommand, state.flagDisabled, optionValues)
+			addFeature := shell.AddFeatureToShell
+			if state.flagLocal {
+				addFeature = shell.AddLocalFeatureToShell
+			}
+			err := addFeature(repoPath, shellName, feature.Name, state.flagStrategy, state.flagOnCommand, state.flagDisabled, optionValues)
 			if err != nil {
 				fileops.ColorPrintfn(fileops.Red, "  ✗ Failed: %s", err)
 				failedCount++
@@ -386,13 +453,26 @@ func (state *commandState) addSelectedFeatures(repoPath string, selectedShells [
 	}
 
 	if addedCount > 0 {
-		if err := autoCommitShellFeatureChanges("Add shell features (interactive)"); err != nil {
-			return fmt.Errorf("failed to commit shell feature changes: %w", err)
+		if !state.flagLocal {
+			if err := autoCommitShellFeatureChanges("Add shell features (interactive)"); err != nil {
+				return fmt.Errorf("failed to commit shell feature changes: %w", err)
+			}
+		}
+		for _, shellName := range selectedShells {
+			if warnings, err := shell.FeatureRequirementWarnings(repoPath, shellName); err == nil {
+				for _, warning := range warnings {
+					fileops.ColorPrintfn(fileops.Yellow, "Warning: %s", warning)
+				}
+			}
 		}
 
 		fmt.Println()
 		fileops.ColorPrintfn(fileops.Cyan, "Run '%s apply' to activate the feature(s)", alias)
-		fileops.ColorPrintfn(fileops.Cyan, "Run '%s push' to push committed changes", alias)
+		if state.flagLocal {
+			fileops.ColorPrintln("Private feature configuration added; no commit was created.", fileops.Cyan)
+		} else {
+			fileops.ColorPrintfn(fileops.Cyan, "Run '%s push' to push committed changes", alias)
+		}
 	}
 
 	if failedCount > 0 {

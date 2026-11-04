@@ -79,15 +79,21 @@ func inspectApplyLink(source, target string, allowOutsideHome bool) applyAction 
 }
 
 func inspectApplyHook(shellName, source, target string) applyAction {
+	return inspectPreparedApplyHook(shellName, source, target, false)
+}
+
+func inspectPreparedApplyHook(shellName, source, target string, prepared bool) applyAction {
 	action := applyAction{kind: "hook", shell: shellName, source: source, target: target, state: "create"}
-	info, err := os.Stat(source)
-	if err != nil {
-		action.err = fmt.Errorf("inspect %s init script: %w", shellName, err)
-		return action
-	}
-	if !info.Mode().IsRegular() {
-		action.err = fmt.Errorf("%s init script is not a regular file", shellName)
-		return action
+	if !prepared {
+		info, err := os.Stat(source)
+		if err != nil {
+			action.err = fmt.Errorf("inspect %s init script: %w", shellName, err)
+			return action
+		}
+		if !info.Mode().IsRegular() {
+			action.err = fmt.Errorf("%s init script is not a regular file", shellName)
+			return action
+		}
 	}
 	exists, err := hooks.HasHook(target)
 	if err != nil {
@@ -168,6 +174,11 @@ func planApply(repoPath string, noShell, allowOutsideHome bool) ([]applyAction, 
 			actions = append(actions, applyAction{kind: "hook", shell: shellName, state: "unavailable", warning: "shell executable is not installed"})
 			continue
 		}
+		if err := shell.ValidateRuntimeScripts(repoPath, shellName); err != nil {
+			actions = append(actions, applyAction{kind: "runtime", shell: shellName, err: fmt.Errorf("prepare %s runtime: %w", shellName, err)})
+			continue
+		}
+		actions = append(actions, applyAction{kind: "runtime", shell: shellName, state: "update"})
 		// PowerShell discovery uses -NoProfile and reads only its profile path. It
 		// never sources the user's profile or any configured feature.
 		target, err := shell.ResolveProfilePath(config)
@@ -180,7 +191,16 @@ func planApply(repoPath string, noShell, allowOutsideHome bool) ([]applyAction, 
 			actions = append(actions, applyAction{kind: "hook", shell: shellName, target: target, err: err})
 			continue
 		}
-		actions = append(actions, inspectApplyHook(shellName, source, target))
+		actions = append(actions, inspectPreparedApplyHook(shellName, source, target, true))
+	}
+	for _, shellName := range shells {
+		warnings, err := shell.FeatureRequirementWarnings(repoPath, shellName)
+		if err != nil {
+			return nil, err
+		}
+		for _, warning := range warnings {
+			actions = append(actions, applyAction{kind: "prerequisite", shell: shellName, state: "not installed", warning: warning})
+		}
 	}
 	return actions, nil
 }
@@ -216,12 +236,23 @@ func runApply(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("apply has %d conflict(s): %w", len(failures), errors.Join(failures...))
 	}
 	if dryRun {
-		fmt.Fprintln(cmd.OutOrStdout(), "Preview complete. No files were changed.")
+		fmt.Fprintln(cmd.OutOrStdout(), "Preview complete. No managed files were changed.")
 		return nil
 	}
 	addedHooks := 0
+	failedRuntime := map[string]bool{}
 	for _, action := range actions {
 		if action.state != "create" && action.state != "update" {
+			continue
+		}
+		if action.kind == "runtime" {
+			if err := shell.RegenerateInitScript(viper.GetString("repo-path"), action.shell); err != nil {
+				failedRuntime[action.shell] = true
+				failures = append(failures, fmt.Errorf("regenerate %s runtime: %w", action.shell, err))
+			}
+			continue
+		}
+		if failedRuntime[action.shell] {
 			continue
 		}
 		if action.kind == "link" {
@@ -271,8 +302,28 @@ func runApply(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("apply completed with %d failure(s); successful changes were kept: %w", len(failures), errors.Join(failures...))
 	}
 	fmt.Fprintln(cmd.OutOrStdout(), "Done!")
-	if addedHooks > 0 {
-		fmt.Fprintln(cmd.OutOrStdout(), "Open a new shell session to load the configured features.")
+	if addedHooks > 0 || hasAvailableHook(actions) {
+		missingPrerequisites := false
+		for _, action := range actions {
+			if action.kind == "prerequisite" {
+				missingPrerequisites = true
+				break
+			}
+		}
+		if missingPrerequisites {
+			fmt.Fprintln(cmd.OutOrStdout(), "Install the listed prerequisites, then open a new shell session. Apply does not install dependencies.")
+		} else {
+			fmt.Fprintln(cmd.OutOrStdout(), "Open a new shell session to load the configured features.")
+		}
 	}
 	return nil
+}
+
+func hasAvailableHook(actions []applyAction) bool {
+	for _, action := range actions {
+		if action.kind == "hook" && action.err == nil && action.state != "unavailable" {
+			return true
+		}
+	}
+	return false
 }

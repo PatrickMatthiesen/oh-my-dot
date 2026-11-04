@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,8 +10,6 @@ import (
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/manifest"
 )
-
-const ohMyPoshThemeFileName = "oh-my-posh.omp.json"
 
 // HelpersFileContent is the template content for the helpers.sh file
 const HelpersFileContent = `#!/usr/bin/env sh
@@ -146,36 +145,15 @@ func AddFeatureToShell(repoPath, shellName, featureName string, strategy string,
 	return nil
 }
 
-// RefreshFeatureTemplate rewrites an installed feature file from the catalog template.
-func RefreshFeatureTemplate(repoPath, shellName, featureName string) error {
-	manifestPath := GetManifestPath(repoPath, shellName)
-	localManifestPath := GetLocalManifestPath(repoPath, shellName)
-
-	merged, err := manifest.ParseManifestWithLocal(manifestPath, localManifestPath)
+// RefreshFeatureTemplate refreshes a shared catalog implementation. Customized
+// or older code requires explicit force; preparation never modifies files.
+func RefreshFeatureTemplate(repoPath, shellName, featureName string, force ...bool) error {
+	replace := len(force) > 0 && force[0]
+	plan, err := PrepareFeatureRefresh(repoPath, shellName, featureName, replace)
 	if err != nil {
-		return fmt.Errorf("failed to parse manifest: %w", err)
+		return err
 	}
-
-	var feature *manifest.FeatureConfig
-	for i := range merged.Features {
-		if merged.Features[i].Name == featureName {
-			feature = &merged.Features[i].FeatureConfig
-			break
-		}
-	}
-	if feature == nil {
-		return fmt.Errorf("feature '%s' is not installed in %s", featureName, shellName)
-	}
-
-	if !catalog.HasFeatureTemplate(featureName, shellName) {
-		return fmt.Errorf("no catalog template available for feature '%s' in shell '%s'", featureName, shellName)
-	}
-
-	if err := catalog.WriteFeatureTemplate(repoPath, shellName, featureName, feature.Options); err != nil {
-		return fmt.Errorf("failed to refresh feature template: %w", err)
-	}
-
-	return nil
+	return plan.Apply()
 }
 
 // generateFeatureTemplate creates a template feature file
@@ -196,7 +174,7 @@ func generateFeatureTemplate(shellName, featureName string, metadata catalog.Fea
 	if len(options) > 0 {
 		template += "# Configured options:\n"
 		for key, value := range options {
-			template += fmt.Sprintf("#   %s: %v\n", key, value)
+			template += fmt.Sprintf("#   %q: %q\n", key, fmt.Sprint(value))
 		}
 		template += "\n"
 	}
@@ -206,8 +184,15 @@ func generateFeatureTemplate(shellName, featureName string, metadata catalog.Fea
 
 // RemoveFeatureFromShell removes a feature from a shell
 func RemoveFeatureFromShell(repoPath, shellName, featureName string) error {
+	if err := ValidateSharedFeatureRemoval(repoPath, shellName, featureName); err != nil {
+		return err
+	}
 	// Load manifest
 	manifestPath := GetManifestPath(repoPath, shellName)
+	originalManifest, err := readRuntimeFile(manifestPath)
+	if err != nil {
+		return err
+	}
 	m, err := manifest.ParseManifest(manifestPath)
 	if err != nil {
 		return fmt.Errorf("failed to parse manifest: %w", err)
@@ -217,47 +202,65 @@ func RemoveFeatureFromShell(repoPath, shellName, featureName string) error {
 	if err := m.RemoveFeature(featureName); err != nil {
 		return fmt.Errorf("failed to remove feature from manifest: %w", err)
 	}
-
-	// Write manifest
-	if err := manifest.WriteManifest(manifestPath, m); err != nil {
-		return fmt.Errorf("failed to write manifest: %w", err)
-	}
-
-	// A local override can retain the feature after its shared entry is removed.
-	// Its implementation and downloaded theme still belong to that local setup.
-	merged, err := manifest.ParseManifestWithLocal(manifestPath, GetLocalManifestPath(repoPath, shellName))
-	if err != nil {
-		return fmt.Errorf("read remaining local features: %w", err)
-	}
-	for _, feature := range merged.Features {
-		if feature.Name == featureName {
-			return RegenerateInitScript(repoPath, shellName)
-		}
-	}
-
-	// Delete feature file
 	featurePath, err := GetFeatureFilePath(repoPath, shellName, featureName)
 	if err != nil {
 		return err
 	}
-
-	if err := os.Remove(featurePath); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to delete feature file: %w", err)
+	originalScript, err := readRuntimeFile(featurePath)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	scriptMode := os.FileMode(0644)
+	if info, err := os.Lstat(featurePath); err == nil {
+		scriptMode = info.Mode().Perm()
+	}
+	restore := func(cause error) error {
+		manifestErr := restoreFeatureSnapshot(manifestPath, originalManifest, 0644)
+		scriptErr := restoreFeatureSnapshot(featurePath, originalScript, scriptMode)
+		return fmt.Errorf("remove shared feature: %w", errors.Join(cause, manifestErr, scriptErr, RegenerateInitScript(repoPath, shellName)))
 	}
 
-	if featureName == "oh-my-posh" {
-		themePath := filepath.Join(GetFeaturesDirectory(repoPath, shellName), ohMyPoshThemeFileName)
-		if err := os.Remove(themePath); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("failed to delete oh-my-posh theme file: %w", err)
-		}
+	// Write manifest
+	if err := manifest.WriteManifest(manifestPath, m); err != nil {
+		return restore(fmt.Errorf("failed to write manifest: %w", err))
+	}
+
+	if err := os.Remove(featurePath); err != nil && !os.IsNotExist(err) {
+		return restore(fmt.Errorf("failed to delete feature file: %w", err))
 	}
 
 	// Regenerate init script to remove the feature
 	if err := RegenerateInitScript(repoPath, shellName); err != nil {
-		return fmt.Errorf("failed to regenerate init script: %w", err)
+		return restore(fmt.Errorf("failed to regenerate init script: %w", err))
 	}
 
 	return nil
+}
+
+// ValidateSharedFeatureRemoval refuses an ambiguous shared-to-local ownership
+// conversion before writes. Remove the private override explicitly first so
+// partial local settings are never silently turned into a standalone feature.
+func ValidateSharedFeatureRemoval(repoPath, shellName, featureName string) error {
+	if err := CheckLocalRuntimeTracking(repoPath); err != nil {
+		return err
+	}
+	base, err := manifest.ParseManifest(GetManifestPath(repoPath, shellName))
+	if err != nil {
+		return err
+	}
+	if _, err := base.GetFeature(featureName); err != nil {
+		return fmt.Errorf("feature %q is not shared in %s; use --local to remove a private feature", featureName, shellName)
+	}
+	local, err := strictLocalManifest(GetLocalManifestPath(repoPath, shellName))
+	if err != nil {
+		return err
+	}
+	if local != nil {
+		if _, err := local.GetFeature(featureName); err == nil {
+			return fmt.Errorf("feature %q has a private override in %s; remove it first with 'oh-my-dot feature remove %s --shell %s --local', then retry shared removal; no files were changed", featureName, shellName, featureName, shellName)
+		}
+	}
+	return ValidateRuntimeScripts(repoPath, shellName)
 }
 
 // NeedsCleanup reports whether a shell has no effective features or user files.

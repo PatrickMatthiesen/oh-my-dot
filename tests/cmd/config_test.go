@@ -155,8 +155,8 @@ func Test_Config_Show_PushCompactDefault(t *testing.T) {
 	setupTestConfig(t)
 
 	output := strings.TrimSpace(captureOutput(t, []string{"config", "push-compact"}))
-	if output != "auto" {
-		t.Fatalf("expected push-compact output to be auto, got %q", output)
+	if output != "off" {
+		t.Fatalf("expected push-compact output to be off, got %q", output)
 	}
 }
 

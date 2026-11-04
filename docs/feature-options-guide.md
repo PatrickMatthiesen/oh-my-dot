@@ -164,10 +164,27 @@ Current Configuration:
 
 ## Modifying Options
 
-Currently, to change feature options after initial setup, you need to:
+Use configure to change saved values and regenerate the catalog implementation:
 
-1. Remove the feature: `omdot feature remove oh-my-posh`
-2. Re-add it with new options: `omdot feature add oh-my-posh`
+```sh
+oh-my-dot feature configure oh-my-posh --shell bash --option theme=pure
+oh-my-dot feature configure oh-my-posh --shell bash --reset-option config_file
+```
+
+In a terminal, omit `--option` to edit current values. Enter keeps the displayed
+answer, Ctrl+X clears an optional answer, and Ctrl+B goes back. A boolean has one
+question. Esc or Ctrl+C cancels; Ctrl+S skips a feature during batch addition.
+
+Add `--local` to keep a device-only difference. Local options inherit shared
+values unless they differ. `--reset-option` with `--local` restores inheritance;
+`feature remove <name> --shell <shell> --local` removes the entire override.
+`feature info <name> --shell <shell> --json` reports effective options and origin.
+
+Configure preserves customized scripts unless `--force` explicitly permits their
+replacement. `feature update` refreshes catalog code using saved options;
+`feature update --local` refreshes private implementations without a commit.
+Oh My Posh uses a private theme-specific cache, so changing a theme takes effect
+in the next shell session. Custom `config_file` paths remain user-owned.
 
 ## Example: SSH Agent Feature
 

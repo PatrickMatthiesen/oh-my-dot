@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/interactive"
 )
 
 func init() {
@@ -61,10 +62,10 @@ Examples:
 }
 
 var configSetCmd = &cobra.Command{
-	Use:     "set <key> <value>",
+	Use:     "set [key] [value]",
 	Aliases: []string{"update"},
 	Short:   "Set a configuration value",
-	Args:    cobra.ExactArgs(2),
+	Args:    cobra.MaximumNArgs(2),
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		switch len(args) {
 		case 0:
@@ -76,7 +77,11 @@ var configSetCmd = &cobra.Command{
 		}
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return updateConfigValue(args[0], args[1])
+		key, value, err := resolveConfigInput(cmd, args)
+		if err != nil {
+			return err
+		}
+		return updateConfigValue(key, value)
 	},
 }
 
@@ -271,4 +276,73 @@ func updateRemoteURL(value string) error {
 	}
 	fileops.ColorPrintfn(fileops.Green, "Updated remote-url")
 	return nil
+}
+
+var selectConfigKey = interactive.PromptSelect
+var inputConfigValue = interactive.PromptInput
+
+func resolveConfigInput(cmd *cobra.Command, args []string) (string, string, error) {
+	if len(args) == 2 {
+		return args[0], args[1], nil
+	}
+	if !interactive.ShouldPrompt(cmd, false) {
+		return "", "", fmt.Errorf("specify config set <key> <value>; run config --help for writable keys")
+	}
+	key := ""
+	if len(args) == 1 {
+		key = args[0]
+	} else {
+		var keys []string
+		for _, spec := range configKeys {
+			if spec.Writable {
+				keys = append(keys, spec.Key)
+			}
+		}
+		index, err := selectConfigKey("Which setting do you want to change?", keys)
+		if err != nil {
+			return "", "", fmt.Errorf("select setting: %w", err)
+		}
+		if index < 0 || index >= len(keys) {
+			return "", "", fmt.Errorf("invalid setting selection")
+		}
+		key = keys[index]
+	}
+	for _, spec := range configKeys {
+		if spec.Key != key {
+			continue
+		}
+		if !spec.Writable {
+			return "", "", fmt.Errorf("%s is read-only; run config --help for writable keys", key)
+		}
+		if len(spec.Values) > 0 {
+			values := append([]string(nil), spec.Values...)
+			current := viper.GetString(key)
+			if key == "push-compact" {
+				current = pushCompactMode()
+			}
+			if key == "allow-gh-auth" {
+				current = fmt.Sprint(viper.GetBool(allowGHAuthConfigKey))
+			}
+			for index, value := range values {
+				if value == current {
+					values[0], values[index] = values[index], values[0]
+					break
+				}
+			}
+			index, err := selectConfigKey("Choose "+key+" (current: "+current+")", values)
+			if err != nil {
+				return "", "", fmt.Errorf("choose %s: %w", key, err)
+			}
+			if index < 0 || index >= len(values) {
+				return "", "", fmt.Errorf("invalid value selection")
+			}
+			return key, values[index], nil
+		}
+		value, err := inputConfigValue("Remote URL (blank removes origin)", "")
+		if err != nil {
+			return "", "", fmt.Errorf("enter %s: %w", key, err)
+		}
+		return key, value, nil
+	}
+	return "", "", fmt.Errorf("unknown config key %q; run config --help", key)
 }

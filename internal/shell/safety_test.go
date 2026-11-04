@@ -7,8 +7,34 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/catalog"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/manifest"
 )
+
+func TestCustomFeatureOptionCommentsCannotExecute(t *testing.T) {
+	bash, err := exec.LookPath("bash")
+	if err != nil || isWslBashLauncher(bash) {
+		t.Skip("native bash unavailable")
+	}
+	root := t.TempDir()
+	content := generateFeatureTemplate("bash", "custom", catalog.FeatureMetadata{}, map[string]any{
+		"key\ntouch OMD_KEY_INJECTED\n#": "value\ntouch OMD_VALUE_INJECTED\n#",
+	})
+	path := filepath.Join(root, "custom.sh")
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command(bash, "--noprofile", "--norc", path)
+	command.Dir = root
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("custom stub failed: %q %v", output, err)
+	}
+	for _, marker := range []string{"OMD_KEY_INJECTED", "OMD_VALUE_INJECTED"} {
+		if _, err := os.Stat(filepath.Join(root, marker)); !os.IsNotExist(err) {
+			t.Fatalf("option comment executed: %s", marker)
+		}
+	}
+}
 
 func TestShellCleanupPreservesLocalAndCustomContent(t *testing.T) {
 	for _, scenario := range []string{"local feature", "local override", "custom file", "empty generated"} {
@@ -25,7 +51,7 @@ func TestShellCleanupPreservesLocalAndCustomContent(t *testing.T) {
 					name = "git-prompt"
 				}
 				local := &manifest.FeatureManifest{Features: []manifest.FeatureConfig{{Name: name, Strategy: "eager"}}}
-				if err := manifest.WriteManifest(GetLocalManifestPath(root, "bash"), local); err != nil {
+				if err := manifest.WriteLocalManifest(GetLocalManifestPath(root, "bash"), local); err != nil {
 					t.Fatal(err)
 				}
 				if err := os.Chmod(GetLocalManifestPath(root, "bash"), 0600); err != nil {
@@ -41,7 +67,11 @@ func TestShellCleanupPreservesLocalAndCustomContent(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if err := RemoveFeatureFromShell(root, "bash", "git-prompt"); err != nil {
+			if err := RemoveFeatureFromShell(root, "bash", "git-prompt"); scenario == "local override" {
+				if err == nil || !strings.Contains(err.Error(), "private override") {
+					t.Fatalf("expected safe ownership refusal: %v", err)
+				}
+			} else if err != nil {
 				t.Fatal(err)
 			}
 			cleanup, err := NeedsCleanup(root, "bash")
@@ -76,8 +106,8 @@ func TestShellCleanupPreservesLocalAndCustomContent(t *testing.T) {
 
 func TestBashEagerFeaturesReapplyOnSource(t *testing.T) {
 	bash, err := exec.LookPath("bash")
-	if err != nil {
-		t.Skip("bash unavailable")
+	if err != nil || isWslBashLauncher(bash) {
+		t.Skip("native bash unavailable; WSL uses a separate filesystem")
 	}
 	root := t.TempDir()
 	if err := os.Mkdir(filepath.Join(root, "features"), 0700); err != nil {
@@ -112,8 +142,8 @@ func TestLazyFeaturesPreserveLoadedFunctions(t *testing.T) {
 					executable = "pwsh"
 				}
 				binary, err := exec.LookPath(executable)
-				if err != nil {
-					t.Skip(executable + " unavailable")
+				if err != nil || isWslBashLauncher(binary) {
+					t.Skip(executable + " unavailable as a native interpreter")
 				}
 				root := t.TempDir()
 				directory := GetShellDirectory(root, shellName)
@@ -208,8 +238,8 @@ func TestLazyFeatureFailureReturnsWithoutCallingLoadedCommand(t *testing.T) {
 				executable = "pwsh"
 			}
 			binary, err := exec.LookPath(executable)
-			if err != nil {
-				t.Skip(executable + " unavailable")
+			if err != nil || isWslBashLauncher(binary) {
+				t.Skip(executable + " unavailable as a native interpreter")
 			}
 			root := t.TempDir()
 			directory := GetShellDirectory(root, shellName)

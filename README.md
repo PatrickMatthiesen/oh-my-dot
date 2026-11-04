@@ -186,7 +186,19 @@ oh-my-dot feature disable kubectl --shell bash
 
 # Show feature info
 oh-my-dot feature info git-prompt
+oh-my-dot feature info oh-my-posh --shell powershell --json
+
+# Change saved options without removing a feature
+oh-my-dot feature configure oh-my-posh --shell powershell --option theme=pure
+
+# Keep a device-only difference; remove it to restore shared settings
+oh-my-dot feature configure oh-my-posh --shell powershell --local --option theme=paradox
+oh-my-dot feature remove oh-my-posh --shell powershell --local
 ```
+
+In a terminal, commands with missing selections open a picker. Complete arguments
+run directly. Scripts can use `--no-interactive` to require explicit inputs.
+Customized feature scripts require `--force` before configure replaces them.
 
 ### Feature Files
 
@@ -356,8 +368,10 @@ remote: github.com/username/dotfiles
 
 ### Feature Commands
 
-- `oh-my-dot feature add [-i] <feature>` - Add shell feature
-- `oh-my-dot feature remove [-i] <feature>` - Remove shell feature
+- `oh-my-dot feature add [feature]` - Add a shell feature or browse in a terminal
+- `oh-my-dot feature configure [feature]` - Change saved options
+- `oh-my-dot feature remove [feature]` - Remove a shell feature
+- `oh-my-dot feature update [feature]` - Refresh a catalog implementation
 - `oh-my-dot feature list` - List all features
 - `oh-my-dot feature enable <feature>` - Enable feature
 - `oh-my-dot feature disable <feature>` - Disable feature
