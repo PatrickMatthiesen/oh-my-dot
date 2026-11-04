@@ -39,7 +39,6 @@ of their outcome. No personal history or credentials are stored here.
 
 | Proposal | Reason |
 | --- | --- |
-| CI action upgrades and immutable workflow pins | Prepared and linted, but GitHub refused the workflow changes because the current OAuth token lacks workflow scope. Existing workflows are preserved; the patch is retained separately for authorized application. |
 | Storage/link-policy migration or recursive adoption | Requires separate migration, editor-save, ACL and cross-filesystem tests. The existing format can be made safer without changing ownership assumptions. |
 | General transaction framework or saved executable plans | Cheap validation and explicit partial completion address observed failures. A broad rollback claim would be misleading across filesystem, Git and profile operations. |
 | Separate agent command tree, jq/template engine or all-command JSON | Existing deterministic commands plus bounded JSON inspection cover the tested workflows with fewer concepts. |
