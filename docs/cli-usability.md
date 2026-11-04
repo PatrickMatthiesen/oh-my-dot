@@ -160,8 +160,11 @@ features, so eager side effects run once. Apply regenerates this output after
 shared manifest changes, including changes received through pull. Preview
 validates the same runtime preparation without creating output or ignore rules.
 
-Compiling everything outside the repository would isolate outputs further,
-but requires migrating hooks and shell-root/helper assumptions. A portable
+Another option was to store generated shell scripts in a persistent local cache
+outside the repository. The source configuration would stay in the repository;
+we would not copy the repository to a temporary folder. Shell profiles and helper
+scripts would need new paths to find the generated scripts. We deferred that
+move to preserve existing profile integration. A portable
 machine document plus recorded deployment baselines would improve whole-machine
 review and two-sided file synchronization, but needs a single source of truth
 and a storage migration. Both remain real alternatives if these explicit

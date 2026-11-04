@@ -22,7 +22,7 @@ func init() {
 	addCommand.Flags().StringP("move-to", "m", "", "Move the file to this path before adding it")
 	addCommand.MarkFlagsMutuallyExclusive("copy-to", "move-to")
 	addCommand.Flags().BoolP("no-commit", "n", false, "Do not commit the changes")
-	addCommand.Flags().Bool("force", false, "Overwrite a copy/move destination without bypassing managed-file safety checks")
+	addCommand.Flags().Bool("force", false, "Overwrite an existing copy/move destination")
 	addCommand.Flags().Bool("update", false, "Capture changes from an already-managed local file without changing its repository name")
 	rootCmd.AddCommand(addCommand)
 }

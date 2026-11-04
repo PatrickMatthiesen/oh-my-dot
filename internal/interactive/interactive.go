@@ -277,26 +277,7 @@ func PromptSelectWithNavigation(question string, options []string, selected int)
 }
 
 func promptSelect(question string, options []string, selected int, navigation bool) (int, error) {
-	items := make([]list.Item, len(options))
-	for i, opt := range options {
-		items[i] = item{title: opt, index: i}
-	}
-
-	const defaultWidth = 50
-	const defaultHeight = 14
-
-	l := list.New(items, itemDelegate{}, defaultWidth, defaultHeight)
-	l.Select(selected)
-	l.Title = question
-	l.SetShowStatusBar(false)
-	l.SetFilteringEnabled(false)
-	l.Styles.Title = lipgloss.NewStyle().Bold(true).Padding(0, 1)
-
-	m := selectModel{
-		navigation: promptNavigation{enabled: navigation},
-		list:       l,
-	}
-
+	m := newSelectModel(question, options, selected, navigation)
 	p := tea.NewProgram(m)
 	result, err := p.Run()
 	if err != nil {
@@ -316,6 +297,29 @@ func promptSelect(question string, options []string, selected int, navigation bo
 	}
 
 	return -1, fmt.Errorf("no selection made")
+}
+
+func newSelectModel(question string, options []string, selected int, navigation bool) selectModel {
+	items := make([]list.Item, len(options))
+	for i, opt := range options {
+		items[i] = item{title: opt, index: i}
+	}
+
+	const defaultWidth = 50
+	const defaultHeight = 14
+
+	l := list.New(items, itemDelegate{}, defaultWidth, defaultHeight)
+	l.Select(selected)
+	l.SetShowTitle(false)
+	l.SetShowStatusBar(false)
+	l.SetFilteringEnabled(len(options) > defaultHeight)
+	l.Styles.Title = lipgloss.NewStyle().Bold(true).Padding(0, 1)
+
+	return selectModel{
+		question:   question,
+		navigation: promptNavigation{enabled: navigation},
+		list:       l,
+	}
 }
 
 type item struct {
@@ -355,6 +359,7 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 }
 
 type selectModel struct {
+	question   string
 	navigation promptNavigation
 	list       list.Model
 	cancelled  bool
@@ -376,8 +381,18 @@ func (m selectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "enter":
-			return m, tea.Quit
-		case "ctrl+c", "esc":
+			if m.list.SelectedItem() == nil {
+				return m, nil
+			}
+			if m.list.FilterState() != list.Filtering {
+				return m, tea.Quit
+			}
+		case "esc":
+			if m.list.FilterState() == list.Unfiltered {
+				m.cancelled = true
+				return m, tea.Quit
+			}
+		case "ctrl+c":
 			m.cancelled = true
 			return m, tea.Quit
 		}
@@ -389,7 +404,8 @@ func (m selectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m selectModel) View() tea.View {
-	return tea.NewView(m.list.View() + m.navigation.help())
+	question := lipgloss.NewStyle().Bold(true).Width(m.list.Width()).Render(m.question)
+	return tea.NewView(question + "\n\n" + m.list.View() + m.navigation.help())
 }
 
 // PromptMultiSelect prompts the user to select multiple items from a list

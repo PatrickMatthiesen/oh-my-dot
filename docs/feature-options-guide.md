@@ -32,7 +32,7 @@ Adding oh-my-posh to bash...
 Config File - Path to custom Oh My Posh configuration file (Enter to keep default or skip)
 >
 
-Auto Upgrade - Automatically check for updates on shell start
+Auto Upgrade - Automatically install Oh My Posh updates using its configured check interval
   [Yes]  > [No]
 
 ✓ oh-my-posh configured successfully
@@ -185,6 +185,34 @@ replacement. `feature update` refreshes catalog code using saved options;
 `feature update --local` refreshes private implementations without a commit.
 Oh My Posh uses a private theme-specific cache, so changing a theme takes effect
 in the next shell session. Custom `config_file` paths remain user-owned.
+
+## Choosing an Oh My Posh theme
+
+Run `oh-my-dot feature configure oh-my-posh` in a terminal to edit its current
+settings. If it is installed in several shells, select which shells to change.
+The theme picker includes a bundled list of all official themes, so browsing
+the list does not require a network connection. Press `/` to search; Enter
+applies the search, then Enter selects the highlighted theme. Esc clears a
+search before it cancels the picker.
+
+Use the [official theme gallery](https://ohmyposh.dev/docs/themes/) to compare
+screenshots. Copy a theme name into an explicit command:
+
+```sh
+oh-my-dot feature configure oh-my-posh --shell powershell --option theme=agnoster.minimal
+```
+
+Oh My Posh also supports an optional terminal preview:
+
+```sh
+oh-my-posh print preview --config agnoster.minimal
+```
+
+The preview requires Oh My Posh and may download the theme. Rendering depends
+on your terminal and font. oh-my-dot does not run previews or open a browser
+automatically. Theme names select official themes; `config_file` accepts an
+existing local file, not a web link. A theme that has not been cached needs a
+network connection on first use.
 
 ## Example: SSH Agent Feature
 

@@ -395,6 +395,9 @@ func matchesGeneratedFeature(actual []byte, expected string, values map[string]a
 		theme = value
 	}
 	current := "$OMD_SHELL_ROOT/.local/cache/oh-my-posh." + theme + ".omp.json"
+	if !strings.Contains(expected, current) {
+		return false
+	}
 	legacy := strings.ReplaceAll(expected, current, "$OMD_SHELL_ROOT/features/oh-my-posh.omp.json")
 	legacy = strings.ReplaceAll(legacy, "  mkdir -p \"$OMD_SHELL_ROOT/.local/cache\" 2>/dev/null || :\n", "")
 	legacy = strings.ReplaceAll(legacy, "    mkdir -p \"$OMD_SHELL_ROOT/.local/cache\" 2>/dev/null; or true\n", "")
