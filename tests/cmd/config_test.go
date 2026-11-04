@@ -135,11 +135,9 @@ func Test_Config_Show_Dotfiles(t *testing.T) {
 
 func Test_Config_Unknown_Key(t *testing.T) {
 	setupTestConfig(t)
-	output := captureOutput(t, []string{"config", "unknown-key"})
-
-	// Check that output contains error message
-	if !strings.Contains(output, "Unknown config key") {
-		t.Error("Expected output to contain 'Unknown config key'")
+	output, err := captureCommandOutput(t, []string{"config", "unknown-key"})
+	if err == nil || !strings.Contains(output, "unknown config key") {
+		t.Fatalf("expected actionable failure, got %q, %v", output, err)
 	}
 }
 

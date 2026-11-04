@@ -15,15 +15,23 @@ func registeredChecks() []check {
 }
 
 func runChecks(repoPath string, shellsToCheck []string, fix bool) []result {
-	allResults := checkRepository(context{repoPath: repoPath, fix: fix})
+	return runChecksWithOptions(repoPath, shellsToCheck, fix, false, false)
+}
+
+func runChecksWithOptions(repoPath string, shellsToCheck []string, fix, quiet, offline bool) []result {
+	allResults := checkRepository(context{repoPath: repoPath, fix: fix, quiet: quiet, offline: offline})
 
 	for _, shellName := range shellsToCheck {
-		fileops.ColorPrintfn(fileops.Cyan, "\nChecking %s shell...", shellName)
+		if !quiet {
+			fileops.ColorPrintfn(fileops.Cyan, "\nChecking %s shell...", shellName)
+		}
 
 		ctx := context{
 			repoPath:  repoPath,
 			shellName: shellName,
 			fix:       fix,
+			quiet:     quiet,
+			offline:   offline,
 		}
 
 		for _, check := range registeredChecks() {

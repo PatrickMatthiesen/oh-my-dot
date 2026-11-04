@@ -223,6 +223,18 @@ func RemoveFeatureFromShell(repoPath, shellName, featureName string) error {
 		return fmt.Errorf("failed to write manifest: %w", err)
 	}
 
+	// A local override can retain the feature after its shared entry is removed.
+	// Its implementation and downloaded theme still belong to that local setup.
+	merged, err := manifest.ParseManifestWithLocal(manifestPath, GetLocalManifestPath(repoPath, shellName))
+	if err != nil {
+		return fmt.Errorf("read remaining local features: %w", err)
+	}
+	for _, feature := range merged.Features {
+		if feature.Name == featureName {
+			return RegenerateInitScript(repoPath, shellName)
+		}
+	}
+
 	// Delete feature file
 	featurePath, err := GetFeatureFilePath(repoPath, shellName, featureName)
 	if err != nil {
@@ -248,21 +260,71 @@ func RemoveFeatureFromShell(repoPath, shellName, featureName string) error {
 	return nil
 }
 
-// NeedsCleanup checks if a shell directory should be cleaned up (no features left)
+// NeedsCleanup reports whether a shell has no effective features or user files.
+// Local manifests and unrecognized files always prevent automatic cleanup.
 func NeedsCleanup(repoPath, shellName string) (bool, error) {
-	manifestPath := GetManifestPath(repoPath, shellName)
-	m, err := manifest.ParseManifest(manifestPath)
+	merged, err := manifest.ParseManifestWithLocal(GetManifestPath(repoPath, shellName), GetLocalManifestPath(repoPath, shellName))
 	if err != nil {
-		return false, fmt.Errorf("failed to parse manifest: %w", err)
+		return false, fmt.Errorf("read effective features: %w", err)
 	}
-
-	return !m.HasFeatures(), nil
+	if len(merged.Features) > 0 {
+		return false, nil
+	}
+	entries, err := os.ReadDir(GetShellDirectory(repoPath, shellName))
+	if err != nil {
+		return false, fmt.Errorf("inspect shell directory: %w", err)
+	}
+	initPath, err := GetInitScriptPath(repoPath, shellName)
+	if err != nil {
+		return false, err
+	}
+	for _, entry := range entries {
+		if entry.Type()&os.ModeSymlink != 0 {
+			return false, nil
+		}
+		switch entry.Name() {
+		case filepath.Base(GetManifestPath(repoPath, shellName)), filepath.Base(initPath):
+			if entry.IsDir() {
+				return false, nil
+			}
+		case "features":
+			if !entry.IsDir() {
+				return false, nil
+			}
+			files, err := os.ReadDir(GetFeaturesDirectory(repoPath, shellName))
+			if err != nil {
+				return false, fmt.Errorf("inspect remaining feature files: %w", err)
+			}
+			if len(files) > 0 {
+				return false, nil
+			}
+		default:
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
-// CleanupShellDirectory removes a shell directory and its contents
+// CleanupShellDirectory removes only an unused generated shell directory.
+// It never recursively deletes files and refuses cleanup if user content exists.
 func CleanupShellDirectory(repoPath, shellName string) error {
-	shellDir := GetShellDirectory(repoPath, shellName)
-	return os.RemoveAll(shellDir)
+	allowed, err := NeedsCleanup(repoPath, shellName)
+	if err != nil {
+		return err
+	}
+	if !allowed {
+		return fmt.Errorf("shell directory contains features or local files; preserving it")
+	}
+	initPath, err := GetInitScriptPath(repoPath, shellName)
+	if err != nil {
+		return err
+	}
+	for _, path := range []string{GetFeaturesDirectory(repoPath, shellName), initPath, GetManifestPath(repoPath, shellName), GetShellDirectory(repoPath, shellName)} {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove unused generated path: %w", err)
+		}
+	}
+	return nil
 }
 
 // EnableFeatureWithOptions enables a disabled feature and optionally updates its configuration

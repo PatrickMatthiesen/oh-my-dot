@@ -35,8 +35,8 @@ func NewCommand(aliasProvider, repoPathProvider func() string) *cobra.Command {
 		Short: "Add a shell feature",
 		Long: `Add a shell feature to one or more shells.
 
-Interactive mode (-i): Browse and select features from the catalog
-Non-interactive: Specify feature name directly
+Run without a feature in a terminal to browse the catalog.
+For scripts, specify the feature name, --shell (or --all), and required --option values.
 
 The command will intelligently select which shell(s) to add the feature to based on:
 - Feature compatibility (which shells support this feature)
@@ -60,11 +60,10 @@ Examples:
 This rewrites the feature file in omd-shells/<shell>/features/ using the current
 built-in template while preserving any stored feature options.
 
-Interactive mode (-i): Browse installed catalog features and refresh selected ones
-Non-interactive: Specify a feature name directly, or use --all to refresh every installed catalog feature
+Run without a feature in a terminal to browse installed catalog features.
+For scripts, specify a feature name, or use --all to refresh every installed catalog feature
 
-The selection modes are mutually exclusive: choose exactly one of a feature name,
--i, or --all.
+Choose a feature name or --all to make the selection explicit.
 
 Examples:
   oh-my-dot feature update -i
@@ -82,10 +81,10 @@ Examples:
 		Long: `Remove a shell feature from one or more shells.
 
 If this is the last feature in a shell, the shell integration will be automatically
-cleaned up (hooks removed from profile, directory deleted).
+cleaned up while preserving local-only configuration and custom files.
 
-Interactive mode (-i): Browse features to remove
-Non-interactive: Specify feature name directly
+Run without a feature in a terminal to browse installed features.
+For scripts, specify the feature name and --shell (or --all).
 
 Examples:
   oh-my-dot feature remove -i                     # Browse features interactively

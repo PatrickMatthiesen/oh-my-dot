@@ -6,7 +6,7 @@ This file provides coding guidelines and commands for AI agents working on the o
 
 **oh-my-dot** is a cross-platform dotfile manager written in Go that uses git for version control. It includes a shell framework feature for managing shell configurations (aliases, prompts, completions) across bash, zsh, fish, PowerShell, and POSIX sh.
 
-- **Language**: Go 1.25.0
+- **Language**: Go 1.27.3
 - **CLI Framework**: Cobra + Viper
 - **Main Binary**: `oh-my-dot`
 - **Module**: `github.com/PatrickMatthiesen/oh-my-dot`

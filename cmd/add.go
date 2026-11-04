@@ -146,6 +146,11 @@ func processAddFile(cmd *cobra.Command, file string, force bool) error {
 	}
 
 	repoPath := viper.GetString("repo-path")
+	if noCommit, _ := cmd.Flags().GetBool("no-commit"); !noCommit {
+		if err := git.CheckCommitSafety(repoPath); err != nil {
+			return err
+		}
+	}
 	links, err := symlink.GetLinkings()
 	if err != nil {
 		return fmt.Errorf("read linkings: %w", err)

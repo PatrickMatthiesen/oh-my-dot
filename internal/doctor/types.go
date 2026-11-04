@@ -12,6 +12,8 @@ type context struct {
 	repoPath  string
 	shellName string
 	fix       bool
+	quiet     bool
+	offline   bool
 }
 
 type check struct {
@@ -21,6 +23,7 @@ type check struct {
 type fixer func() (string, error)
 
 type result struct {
+	shell   string
 	name    string
 	status  string
 	message string
@@ -48,14 +51,21 @@ func errorResult(name, message string, fixable bool) result {
 }
 
 func addResult(results []result, ctx context, item result, applyFix fixer) []result {
-	printCheck(item.name, item.status, item.message)
+	item.shell = ctx.shellName
+	if !ctx.quiet {
+		printCheck(item.name, item.status, item.message)
+	}
 
 	if ctx.fix && item.fixable && applyFix != nil && item.status != statusOK {
 		fixMessage, err := applyFix()
 		if err != nil {
-			fileops.ColorPrintfn(fileops.Red, "  → Error: %v", err)
+			if !ctx.quiet {
+				fileops.ColorPrintfn(fileops.Red, "  → Error: %v", err)
+			}
 		} else {
-			fileops.ColorPrintfn(fileops.Green, "  → Fixed: %s", fixMessage)
+			if !ctx.quiet {
+				fileops.ColorPrintfn(fileops.Green, "  → Fixed: %s", fixMessage)
+			}
 			item.status = statusOK
 			item.message = ""
 		}

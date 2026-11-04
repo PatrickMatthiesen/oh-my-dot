@@ -10,6 +10,8 @@ import (
 )
 
 func TestInitLocalRepository(t *testing.T) {
+	t.Setenv("CI", "")
+	t.Setenv("OMDOT_NON_INTERACTIVE", "")
 	oldInput := inputInitRemote
 	t.Cleanup(func() { inputInitRemote = oldInput; viper.Reset() })
 	for _, scenario := range []string{"noninteractive", "interactive blank", "explicit blank"} {

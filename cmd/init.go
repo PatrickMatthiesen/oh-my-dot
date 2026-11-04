@@ -35,7 +35,9 @@ var initcmd = &cobra.Command{
 	Short:        "Initialize dotfiles management",
 	Long: `Initialize dotfiles management.
 Makes a git repository and sets remote origin to the specified URL.
-The clone is placed in $HOME/dotfiles by default, but can be changed with --folder <new path>`,
+The clone is placed in $HOME/dotfiles by default, but can be changed with --folder <new path>.
+Leave the remote URL blank for a local repository. Scripts can run init --no-interactive
+without a URL to create a local repository.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) > 1 {
 			viper.Set("repo-path", args[1])
@@ -128,7 +130,7 @@ The clone is placed in $HOME/dotfiles by default, but can be changed with --fold
 			return fmt.Errorf("read force flag: %w", err)
 		}
 
-		if viper.GetBool("initialized") && git.IsGitRepo(viper.GetString("repo-path")) && !force && len(args) < 2 && !cmd.Flags().Changed("folder") {
+		if viper.GetBool("initialized") && git.IsGitRepo(viper.GetString("repo-path")) && !force && len(args) == 0 && !cmd.Flags().Changed("remote") && !cmd.Flags().Changed("folder") {
 			fileops.ColorPrintln("Dotfiles repository has been initialized previously", fileops.Yellow)
 			fileops.ColorPrintln("Use the --force flag to reinitialize the repository", fileops.Blue)
 			os.Exit(0)

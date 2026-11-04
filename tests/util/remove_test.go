@@ -34,10 +34,12 @@ func Fuzz_RemoveFile(f *testing.F) {
 		}
 		paddingFile.WriteString("test")
 		w, _ := r.Worktree()
-		w.Add("./files")
+		if _, err := w.Add("files"); err != nil {
+			t.Fatal(err)
+		}
 		_, err = w.Commit("Test commit", &git.CommitOptions{})
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		defer paddingFile.Close()
 

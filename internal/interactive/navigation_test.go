@@ -11,7 +11,7 @@ func TestFeatureNavigationKeys(t *testing.T) {
 	for _, test := range []struct {
 		key  rune
 		want error
-	}{{'b', ErrBack}, {'s', ErrSkip}} {
+	}{{'b', ErrBack}, {'s', ErrSkip}, {'x', ErrClear}} {
 		t.Run(test.want.Error(), func(t *testing.T) {
 			key := tea.KeyPressMsg{Code: test.key, Mod: tea.ModCtrl}
 			models := []tea.Model{

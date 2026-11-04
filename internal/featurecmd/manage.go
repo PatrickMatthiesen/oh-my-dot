@@ -103,6 +103,9 @@ func (state *commandState) runFeatureList(cmd *cobra.Command, args []string) err
 func (state *commandState) runFeatureEnable(cmd *cobra.Command, args []string) error {
 	featureName := args[0]
 	repoPath := state.repoPathProvider()
+	if err := preflightFeatureMutation(repoPath); err != nil {
+		return err
+	}
 
 	targetShells := state.flagShell
 	if len(targetShells) == 0 {
@@ -138,6 +141,9 @@ func (state *commandState) runFeatureEnable(cmd *cobra.Command, args []string) e
 func (state *commandState) runFeatureDisable(cmd *cobra.Command, args []string) error {
 	featureName := args[0]
 	repoPath := state.repoPathProvider()
+	if err := preflightFeatureMutation(repoPath); err != nil {
+		return err
+	}
 
 	var targetShells []string
 	if state.flagAll {
@@ -191,6 +197,27 @@ func (state *commandState) runFeatureInfo(cmd *cobra.Command, args []string) err
 	}
 
 	fmt.Printf("  Supported Shells: %v\n", metadata.SupportedShells)
+	if len(metadata.Options) > 0 {
+		fmt.Println("\nOptions (pass --option name=value to feature add):")
+		for _, opt := range metadata.Options {
+			requirement := "optional"
+			if opt.Required {
+				requirement = "required"
+			}
+			fmt.Printf("  %s (%s, %s)", opt.Name, opt.Type, requirement)
+			if opt.Default != nil {
+				fmt.Printf("; default: %v", opt.Default)
+			}
+			if len(opt.EnumValues) > 0 {
+				fmt.Printf("; values: %s", strings.Join(opt.EnumValues, ", "))
+			}
+			fmt.Println()
+			if opt.Description != "" {
+				fmt.Printf("    %s\n", opt.Description)
+			}
+		}
+	}
+
 	fmt.Println("\nCurrent Configuration:")
 
 	allShells, err := shell.ListShellsWithFeatures(repoPath)

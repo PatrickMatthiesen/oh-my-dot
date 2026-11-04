@@ -4,6 +4,9 @@ A cross-platform dotfile manager with an advanced shell framework written in Go.
 
 Oh-my-dot helps you manage your dotfiles across multiple machines with git integration and provides a powerful shell framework for managing shell configurations (aliases, prompts, completions) across bash, zsh, fish, PowerShell, and POSIX sh.
 
+See [CLI workflows and usability decisions](docs/cli-usability.md) for guided setup,
+headless provisioning, JSON inspection, preview behavior, and safety limits.
+
 ## Features
 
 - **Cross-Platform**: Works on Windows, macOS, and Linux

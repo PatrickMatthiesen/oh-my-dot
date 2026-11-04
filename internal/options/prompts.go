@@ -97,6 +97,15 @@ func promptForOptions(metadata catalog.FeatureMetadata, overrides map[string]any
 			}
 			continue
 		}
+		if errors.Is(err, interactive.ErrClear) {
+			if opt.Required {
+				fileops.ColorPrintfn(fileops.Yellow, "%s is required and cannot be cleared.", opt.DisplayName)
+				continue
+			}
+			delete(values, opt.Name)
+			index++
+			continue
+		}
 		if err != nil {
 			return nil, fmt.Errorf("configure %s: %w", opt.DisplayName, err)
 		}

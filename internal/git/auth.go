@@ -21,8 +21,10 @@ type credentialAuth struct {
 }
 
 func (a credentialAuth) Authorizer(request *http.Request) error {
-	if request.URL.Host == a.host {
+	if request.URL.Scheme == "https" && request.URL.Host == a.host {
 		request.SetBasicAuth(a.username, a.password)
+	} else {
+		request.Header.Del("Authorization")
 	}
 	return nil
 }
@@ -89,7 +91,7 @@ func lookupRemoteClientOptions(repoPath, remoteURL string) ([]client.Option, boo
 	if auth.password == "" {
 		return credentialLookupDiagnostic(fmt.Errorf("helper returned no password or token")), false
 	}
-	return []client.Option{client.WithHTTPAuth(auth)}, true
+	return scopedCredentialOptions(auth), true
 }
 
 func repositoryClientOptions(repo *git.Repository) []client.Option {
@@ -99,7 +101,9 @@ func repositoryClientOptions(repo *git.Repository) []client.Option {
 	}
 	path := ""
 	if worktree, err := repo.Worktree(); err == nil {
-		path = worktree.Filesystem.Root()
+		if rooted, ok := worktree.Filesystem().(interface{ Root() string }); ok {
+			path = rooted.Root()
+		}
 	}
 	return RemoteClientOptions(path, remote.Config().URLs[0])
 }
@@ -130,4 +134,23 @@ func ForgetPreparedCredentials(remoteURL string) {
 	preparedCredentialOptions.Lock()
 	delete(preparedCredentialOptions.values, remoteURL)
 	preparedCredentialOptions.Unlock()
+}
+
+// scopedCredentialTransport reapplies the host boundary after redirects, where
+// net/http can otherwise retain Authorization for a subdomain or another port.
+type scopedCredentialTransport struct {
+	base http.RoundTripper
+	auth credentialAuth
+}
+
+func (t scopedCredentialTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	scoped := request.Clone(request.Context())
+	if err := t.auth.Authorizer(scoped); err != nil {
+		return nil, fmt.Errorf("authorize Git request: %w", err)
+	}
+	return t.base.RoundTrip(scoped)
+}
+
+func scopedCredentialOptions(auth credentialAuth) []client.Option {
+	return []client.Option{client.WithHTTPClient(&http.Client{Transport: scopedCredentialTransport{base: http.DefaultTransport, auth: auth}})}
 }

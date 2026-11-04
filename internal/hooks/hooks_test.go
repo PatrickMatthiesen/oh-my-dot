@@ -3,6 +3,7 @@ package hooks
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -58,5 +59,79 @@ func TestGenerateHookNormalizesShellPaths(t *testing.T) {
 				t.Fatalf("GenerateHook(%q, %q) = %q, want original path preserved", tt.shell, tt.initPath, hook)
 			}
 		})
+	}
+}
+
+func TestMalformedHookNeverChangesProfile(t *testing.T) {
+	for _, content := range []string{
+		"before\n" + HookStartMarker + "\nuser tail\n",
+		"before\n" + HookEndMarker + "\nuser tail\n",
+		HookStartMarker + "\n" + HookStartMarker + "\n" + HookEndMarker + "\nuser tail\n",
+	} {
+		t.Run(content, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "profile")
+			if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if found, err := HasHook(path); err == nil || found {
+				t.Fatal("malformed block reported healthy")
+			}
+			if _, err := InsertHook(path, GenerateHook("bash", "/repo/init")); err == nil {
+				t.Fatal("insert accepted malformed block")
+			}
+			if err := RemoveHook(path); err == nil {
+				t.Fatal("remove accepted malformed block")
+			}
+			data, err := os.ReadFile(path)
+			if err != nil || string(data) != content {
+				t.Fatalf("profile changed: %q %v", data, err)
+			}
+		})
+	}
+}
+
+func TestRemoveHookPreservesOtherBytes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "profile")
+	content := "before\r\n" + HookStartMarker + "\r\nmanaged\r\n" + HookEndMarker + "\r\nuser tail without newline"
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := RemoveHook(path); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != "before\r\nuser tail without newline" {
+		t.Fatalf("outside bytes changed: %q %v", data, err)
+	}
+}
+
+func TestReplaceStaleHookPreservesProfile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "profile")
+	before := "# private prefix\r\n"
+	after := "# private suffix\r\n"
+	old := strings.ReplaceAll(GenerateHook("bash", "/old/init.sh"), "\n", "\r\n")
+	if err := os.WriteFile(path, []byte(before+old+"\r\n"+after), 0600); err != nil {
+		t.Fatal(err)
+	}
+	expected := GenerateHook("bash", "/new/init.sh")
+	if matches, err := HookMatches(path, expected); err != nil || matches {
+		t.Fatalf("stale match %v %v", matches, err)
+	}
+	if err := ReplaceHook(path, expected); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(data), before) || !strings.HasSuffix(string(data), after) {
+		t.Fatal("outside profile content changed")
+	}
+	if matches, err := HookMatches(path, expected); err != nil || !matches {
+		t.Fatalf("updated match %v %v", matches, err)
+	}
+	info, _ := os.Stat(path)
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
+		t.Fatal("profile permissions changed")
 	}
 }

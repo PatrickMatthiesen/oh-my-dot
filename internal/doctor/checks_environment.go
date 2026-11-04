@@ -78,6 +78,23 @@ func checkProfileHooks(ctx context) []result {
 		)
 	}
 
+	initScriptPath, pathErr := shell.GetInitScriptPath(ctx.repoPath, ctx.shellName)
+	if pathErr != nil {
+		return addResult(results, ctx, errorResult("Profile hook", pathErr.Error(), false), nil)
+	}
+	expected := hooks.GenerateHook(ctx.shellName, initScriptPath)
+	matches, matchErr := hooks.HookMatches(profilePath, expected)
+	if matchErr != nil {
+		return addResult(results, ctx, errorResult("Profile hook", matchErr.Error(), false), nil)
+	}
+	if !matches {
+		return addResult(results, ctx, errorResult("Profile hook", "Managed block points to a different init script; run apply to update it.", true), func() (string, error) {
+			if err := hooks.ReplaceHook(profilePath, expected); err != nil {
+				return "", err
+			}
+			return "Updated the managed hook; other profile content was preserved", nil
+		})
+	}
 	return addResult(results, ctx, okResult("Profile hook"), nil)
 }
 

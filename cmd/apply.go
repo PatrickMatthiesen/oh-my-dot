@@ -8,18 +8,12 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
-
-	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
-	"github.com/PatrickMatthiesen/oh-my-dot/internal/hooks"
-	"github.com/PatrickMatthiesen/oh-my-dot/internal/repopath"
-	"github.com/PatrickMatthiesen/oh-my-dot/internal/shell"
-	"github.com/PatrickMatthiesen/oh-my-dot/internal/symlink"
 )
 
 func init() {
 	applyCommand.Flags().BoolP("verbose", "v", false, "Prints more information about the linking process")
 	applyCommand.Flags().Bool("no-shell", false, "Skip shell hook application")
+	applyCommand.Flags().Bool("dry-run", false, "Preview links and shell hooks without changing files")
 	applyCommand.Flags().Bool("allow-outside-home", false, "Allow link targets outside the current user's home directory")
 
 	rootCmd.AddCommand(applyCommand)
@@ -125,186 +119,7 @@ var applyCommand = &cobra.Command{
 	Long:         `Applies the dotfiles to the system and installs shell integration hooks.`,
 	GroupID:      "dotfiles",
 	SilenceUsage: true,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		verbose, verr := cmd.Flags().GetBool("verbose")
-		if verr != nil {
-			return fmt.Errorf("read verbose flag: %w", verr)
-		}
-
-		noShell, _ := cmd.Flags().GetBool("no-shell")
-		allowOutsideHome, _ := cmd.Flags().GetBool("allow-outside-home")
-		repoPath := viper.GetString("repo-path")
-
-		// Apply dotfiles
-		fileops.ColorPrintln("Applying dotfiles...", fileops.Cyan)
-		linkings, err := symlink.GetLinkings()
-		if err != nil {
-			return fmt.Errorf("retrieve linkings: %w", err)
-		}
-
-		if err := symlink.ValidateLinkings(repoPath, linkings); err != nil {
-			return fmt.Errorf("validate linkings: %w", err)
-		}
-
-		missingFiles := 0
-		linkedFiles := 0
-
-		for file, link := range linkings {
-			file, err = repopath.Resolve(repoPath, file)
-			if err != nil {
-				return fmt.Errorf("resolve repository file: %w", err)
-			}
-			if !fileops.IsFile(file) {
-				missingFiles++
-				fileops.ColorPrintfn(fileops.Red, "  Error: file %s does not exist", file)
-				continue
-			}
-
-			// Expand normalized path (e.g., ~/... to /home/user/...)
-			expandedLink, err := fileops.ExpandPath(link)
-			if err != nil {
-				missingFiles++
-				fileops.ColorPrintfn(fileops.Red, "  Error expanding path %s: %s", link, err)
-				continue
-			}
-
-			if fileops.IsFile(expandedLink) {
-				if verbose {
-					fileops.ColorPrintfn(fileops.Reset, "  Skipping %s: link already exists", expandedLink)
-				}
-				linkedFiles++
-				continue
-			}
-
-			if !fileops.PathExists(filepath.Dir(expandedLink)) {
-				missingFiles++
-				fileops.ColorPrintfn(fileops.Red, "  Error: target directory '%s' does not exist for link %s -> %s", filepath.Dir(expandedLink), expandedLink, file)
-				continue
-			}
-
-			warnings, err := applyTargetWarnings(expandedLink)
-			if err != nil {
-				missingFiles++
-				fileops.ColorPrintfn(fileops.Red, "  Error checking target %s: %s", expandedLink, err)
-				continue
-			}
-			if len(warnings) > 0 {
-				if !allowOutsideHome && containsApplyWarning(warnings, "target is outside your home directory") {
-					missingFiles++
-					fileops.ColorPrintfn(fileops.Red, "  Error: refusing to link %s -> %s (%s). Use --allow-outside-home to allow this target.", expandedLink, file, strings.Join(warnings, "; "))
-					continue
-				}
-				fileops.ColorPrintfn(fileops.Yellow, "  Warning: %s -> %s (%s)", expandedLink, file, strings.Join(warnings, "; "))
-			}
-
-			err = createDotfileLink(file, expandedLink)
-			if err != nil {
-				missingFiles++
-				fileops.ColorPrintfn(fileops.Red, "  Error creating link %s -> %s: %s", expandedLink, file, err)
-				continue
-			}
-			linkedFiles++
-		}
-
-		if linkedFiles > 0 {
-			fileops.ColorPrintfn(fileops.Green, "  ✓ %d files linked", linkedFiles)
-		}
-
-		if missingFiles > 0 {
-			fileops.ColorPrintfn(fileops.Yellow, "  ✗ %d files could not be applied", missingFiles)
-		}
-
-		// Apply shell hooks if not disabled
-		if !noShell {
-			fmt.Println()
-			fileops.ColorPrintln("Applying shell integration...", fileops.Cyan)
-
-			shellsWithFeatures, err := shell.ListShellsWithFeatures(repoPath)
-			if err != nil {
-				return fmt.Errorf("list shells: %w", err)
-			}
-
-			if len(shellsWithFeatures) == 0 {
-				fileops.ColorPrintln("  (no shell features configured)", fileops.Yellow)
-			} else {
-				addedHooks := 0
-				existingHooks := 0
-				for _, shellName := range shellsWithFeatures {
-					shellConfig, ok := shell.GetShellConfig(shellName)
-					if !ok {
-						if verbose {
-							fileops.ColorPrintfn(fileops.Yellow, "  Skipping unsupported shell: %s", shellName)
-						}
-						continue
-					}
-
-					if !shell.IsShellExecutableAvailable(shellName) {
-						if verbose {
-							fileops.ColorPrintfn(fileops.Yellow, "  Skipping %s: executable not found", shellConfig.Name)
-						}
-						continue
-					}
-
-					// Resolve profile path
-					profilePath, err := shell.ResolveProfilePath(shellConfig)
-					if err != nil {
-						fileops.ColorPrintfn(fileops.Red, "  Error resolving profile path for %s: %s", shellName, err)
-						continue
-					}
-
-					// Get init script path
-					initScriptPath, err := shell.GetInitScriptPath(repoPath, shellName)
-					if err != nil {
-						fileops.ColorPrintfn(fileops.Red, "  Error getting init script path for %s: %s", shellName, err)
-						continue
-					}
-
-					// Generate hook content
-					hookContent := hooks.GenerateHook(shellName, initScriptPath)
-					if hookContent == "" {
-						if verbose {
-							fileops.ColorPrintfn(fileops.Yellow, "  Skipping %s: no hook template", shellName)
-						}
-						continue
-					}
-
-					// Insert hook
-					added, err := hooks.InsertHook(profilePath, hookContent)
-					if err != nil {
-						fileops.ColorPrintfn(fileops.Red, "  Error inserting hook for %s: %s", shellName, err)
-						continue
-					}
-
-					if added {
-						fileops.ColorPrintfn(fileops.Green, "  %s: Hook added to %s ✓", shellName, profilePath)
-						addedHooks++
-					} else {
-						if verbose {
-							// Print full message about existing hook
-							fileops.ColorPrintfn(fileops.Reset, "  Skipping %s: hook already present in %s", shellName, profilePath)
-						} else {
-							// Just print shell name with checkmark
-							fileops.ColorPrintfn(fileops.Green, "  ✓ %s", shellName)
-						}
-						existingHooks++
-					}
-				}
-				// Summary
-				if existingHooks > 0 && verbose {
-					fileops.ColorPrintfn(fileops.Green, "  ✓ %d shell hooks already present", existingHooks)
-				}
-
-				// No summary needed since we show status per shell
-			}
-		}
-
-		if missingFiles > 0 {
-			return fmt.Errorf("%d files could not be applied", missingFiles)
-		}
-		fmt.Println()
-		fileops.ColorPrintln("Done!", fileops.Green)
-		return nil
-	},
+	RunE:         runApply,
 }
 
 func containsApplyWarning(warnings []string, warning string) bool {

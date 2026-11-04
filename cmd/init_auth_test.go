@@ -24,6 +24,8 @@ func TestGithubSSHURL(t *testing.T) {
 }
 
 func TestInitAuthSelectsOnceWithoutNetworkRetries(t *testing.T) {
+	t.Setenv("CI", "")
+	t.Setenv("OMDOT_NON_INTERACTIVE", "")
 	oldOutput, oldSelect, oldPrepare := initAuthOutput, selectInitAuth, prepareInitCredentials
 	t.Cleanup(func() { initAuthOutput, selectInitAuth, prepareInitCredentials = oldOutput, oldSelect, oldPrepare })
 	for _, tt := range []struct {

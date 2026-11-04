@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -36,7 +37,11 @@ func runRemoteGit(path string, timeout time.Duration, args ...string) ([]byte, e
 	command := exec.CommandContext(ctx, "git", args...)
 	command.Dir = path
 	command.WaitDelay = time.Second
-	command.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=never", "GIT_SSH_COMMAND="+batchSSHCommand(path))
+	sshCommand := batchSSHCommand(path)
+	if conflictingBatchMode.MatchString(sshCommand) {
+		return nil, fmt.Errorf("custom SSH command enables interactive prompts (BatchMode=no); remove that option or configure an SSH agent before retrying")
+	}
+	command.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=never", "GIT_SSH_COMMAND="+sshCommand)
 	var stderr strings.Builder
 	command.Stderr = &stderr
 	output, err := command.Output()
@@ -132,3 +137,7 @@ func batchSSHCommand(path string) string {
 	}
 	return command + " -oBatchMode=yes"
 }
+
+// OpenSSH takes the first command-line value. Appending BatchMode=yes cannot
+// override an explicit no, so reject that conflict instead of silently prompting.
+var conflictingBatchMode = regexp.MustCompile(`(?i)batchmode[\s='"]+no(?:[\s;'"\x60]|$)`)

@@ -45,7 +45,7 @@ oh-my-dot uses git to manage your dotfiles, so you can easily push and pull your
 		}
 
 		cmdName := topLevelCommandName(cmd)
-		if !viper.IsSet("initialized") && !(cmdName == "init" || cmdName == "help" || cmdName == "config" || cmdName == "version" || cmdName == "update" || cmdName == cobra.ShellCompRequestCmd) {
+		if !viper.GetBool("initialized") && !(cmdName == "feature" && cmd.Name() == "info") && !(cmdName == "init" || cmdName == "help" || cmdName == "config" || cmdName == "version" || cmdName == "update" || cmdName == cobra.ShellCompRequestCmd) {
 			return fmt.Errorf("dotfiles repository has not been initialized; run %s init to initialize your dotfiles repository", cmd.Root().Name())
 		}
 
@@ -94,12 +94,12 @@ func assumedAlias() string {
 
 func Execute(funcs ...func(*cobra.Command)) error {
 	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			// Config file not found; ignore error if desired
-		} else {
-			// Config file was found but another error was produced
+		_, notConfigured := err.(viper.ConfigFileNotFoundError)
+		if !notConfigured && !os.IsNotExist(err) {
+			configErr := fmt.Errorf("read configuration %q: %w; repair this file before retrying", viper.ConfigFileUsed(), err)
+			fmt.Fprintf(os.Stderr, "Error: %v\n", configErr)
+			return configErr
 		}
-		// CreateConfigFile()
 	}
 
 	invokedAs := detectInvokedName()
@@ -192,8 +192,7 @@ func Execute(funcs ...func(*cobra.Command)) error {
 	}
 	if err != nil {
 		if shouldPrintCommandError(executedCmd) {
-			fileops.ColorPrint("Error", fileops.Red)
-			fmt.Printf(": %s\n\n", err)
+			fmt.Fprintf(rootCmd.ErrOrStderr(), "%s: %s\n\n", fileops.SColorPrint("Error", fileops.Red), err)
 		}
 
 		if shouldPrintCommandUsage(executedCmd) {

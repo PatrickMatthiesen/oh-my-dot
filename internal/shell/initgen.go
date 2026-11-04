@@ -93,7 +93,7 @@ func generateBashInit(features FeaturesByStrategy) string {
 if [ "${OMD_BASH_LOADED:-}" = "1" ]; then
   # If already loaded, just re-apply eager features that modify environment
   # This handles the case where .bashrc is re-sourced and resets PS1
-  if [ -n "${_omd_load_eager_features:-}" ] && type -t _omd_load_eager_features >/dev/null 2>&1; then
+  if type -t _omd_load_eager_features >/dev/null 2>&1; then
     _omd_load_eager_features
   fi
   return 0
@@ -140,49 +140,11 @@ fi
 		sb.WriteString("}\n\n")
 	}
 
-	// On-command loading
+	// Register wrappers that remove themselves before loading so feature-defined
+	// functions remain available after the first invocation.
 	if len(features.OnCommand) > 0 {
-		sb.WriteString("# Register on-command features\n")
 		sb.WriteString("_omd_register_oncommand_features() {\n")
-
-		for featureName, commands := range features.OnCommand {
-			// Group commands that share the same feature
-			if len(commands) == 1 {
-				// Single command - simple wrapper
-				cmd := commands[0]
-				sb.WriteString(fmt.Sprintf(`  %s() {
-    unset -f %s
-    local feature_file="$OMD_SHELL_ROOT/features/%s.sh"
-    if [ -r "$feature_file" ]; then
-      . "$feature_file"
-    fi
-    if command -v %s >/dev/null 2>&1; then
-      command %s "$@"
-    else
-      echo "oh-my-dot: %s command not found after loading feature" >&2
-      return 127
-    fi
-  }
-`, cmd, cmd, featureName, cmd, cmd, cmd))
-			} else {
-				// Multiple commands - use helper function
-				loaderFunc := fmt.Sprintf("__omd_load_%s", featureName)
-				sb.WriteString(fmt.Sprintf(`  %s() {
-    local feature_file="$OMD_SHELL_ROOT/features/%s.sh"
-    [ -r "$feature_file" ] && . "$feature_file"
-  }
-`, loaderFunc, featureName))
-
-				// Create wrappers for each command
-				for _, cmd := range commands {
-					allCommands := strings.Join(commands, " ")
-					sb.WriteString(fmt.Sprintf(`  %s() { %s; unset -f %s %s; command %s "$@"; }
-`, cmd, loaderFunc, allCommands, loaderFunc, cmd))
-				}
-			}
-			sb.WriteString("\n")
-		}
-
+		writeOnCommandWrappers(&sb, "bash", features.OnCommand)
 		sb.WriteString("}\n\n")
 	}
 
@@ -270,46 +232,11 @@ fi
 		sb.WriteString("}\n\n")
 	}
 
-	// On-command loading
+	// Register wrappers that remove themselves before loading so feature-defined
+	// functions remain available after the first invocation.
 	if len(features.OnCommand) > 0 {
-		sb.WriteString("# Register on-command features\n")
 		sb.WriteString("_omd_register_oncommand_features() {\n")
-
-		for featureName, commands := range features.OnCommand {
-			if len(commands) == 1 {
-				// Single command - simple wrapper
-				cmd := commands[0]
-				sb.WriteString(fmt.Sprintf(`  %s() {
-    unfunction %s
-    local feature_file="$OMD_SHELL_ROOT/features/%s.zsh"
-    [[ -r "$feature_file" ]] && . "$feature_file"
-    if (( $+commands[%s] )); then
-      %s "$@"
-    else
-      echo "oh-my-dot: %s command not found after loading feature" >&2
-      return 127
-    fi
-  }
-`, cmd, cmd, featureName, cmd, cmd, cmd))
-			} else {
-				// Multiple commands - use helper function
-				loaderFunc := fmt.Sprintf("__omd_load_%s", featureName)
-				sb.WriteString(fmt.Sprintf(`  %s() {
-    local feature_file="$OMD_SHELL_ROOT/features/%s.zsh"
-    [[ -r "$feature_file" ]] && . "$feature_file"
-  }
-`, loaderFunc, featureName))
-
-				// Create wrappers for each command
-				for _, cmd := range commands {
-					allCommands := strings.Join(commands, " ")
-					sb.WriteString(fmt.Sprintf(`  %s() { %s; unfunction %s %s; command %s "$@"; }
-`, cmd, loaderFunc, allCommands, loaderFunc, cmd))
-				}
-			}
-			sb.WriteString("\n")
-		}
-
+		writeOnCommandWrappers(&sb, "zsh", features.OnCommand)
 		sb.WriteString("}\n\n")
 	}
 
@@ -360,7 +287,7 @@ end
 set -g OMD_FISH_LOADED 1
 
 # Determine shell root
-set -l OMD_SHELL_ROOT (dirname (status --current-filename))
+set -g OMD_SHELL_ROOT (dirname (status --current-filename))
 
 `)
 
@@ -394,49 +321,10 @@ end
 		sb.WriteString("end\n\n")
 	}
 
-	// On-command loading
+	// Register wrappers that remove themselves before loading so feature-defined
+	// functions remain available after the first invocation.
 	if len(features.OnCommand) > 0 {
-		sb.WriteString("# Register on-command features\n")
-		for featureName, commands := range features.OnCommand {
-			if len(commands) == 1 {
-				// Single command - simple wrapper
-				cmd := commands[0]
-				sb.WriteString(fmt.Sprintf(`function %s
-  functions -e %s
-  set -l feature_file "$OMD_SHELL_ROOT/features/%s.fish"
-  test -r "$feature_file"; and source "$feature_file"
-  if type -q %s
-    command %s $argv
-  else
-    echo "oh-my-dot: %s command not found after loading feature" >&2
-    return 127
-  end
-end
-
-`, cmd, cmd, featureName, cmd, cmd, cmd))
-			} else {
-				// Multiple commands - use helper function
-				loaderFunc := fmt.Sprintf("__omd_load_%s", featureName)
-				sb.WriteString(fmt.Sprintf(`function %s
-  set -l feature_file "$OMD_SHELL_ROOT/features/%s.fish"
-  test -r "$feature_file"; and source "$feature_file"
-end
-
-`, loaderFunc, featureName))
-
-				// Create wrappers for each command
-				for _, cmd := range commands {
-					allCommands := append(commands, loaderFunc)
-					sb.WriteString(fmt.Sprintf(`function %s
-  %s
-  functions -e %s
-  command %s $argv
-end
-
-`, cmd, loaderFunc, strings.Join(allCommands, " "), cmd))
-				}
-			}
-		}
+		writeOnCommandWrappers(&sb, "fish", features.OnCommand)
 	}
 
 	return sb.String()
@@ -490,57 +378,10 @@ if (Test-Path $featureFile) {
 		sb.WriteString("}\n\n")
 	}
 
-	// On-command loading
+	// Register wrappers that remove themselves before loading so feature-defined
+	// functions remain available after the first invocation.
 	if len(features.OnCommand) > 0 {
-		sb.WriteString("# Register on-command features\n")
-		for featureName, commands := range features.OnCommand {
-			if len(commands) == 1 {
-				// Single command - simple wrapper
-				cmd := commands[0]
-				sb.WriteString(fmt.Sprintf(`function %s {
-  Remove-Item Function:%s -ErrorAction SilentlyContinue
-  $featureFile = Join-Path $OMD_SHELL_ROOT "features\%s.ps1"
-  if (Test-Path $featureFile) {
-    . $featureFile
-  }
-  if (Get-Command %s -ErrorAction SilentlyContinue) {
-    & %s @args
-  } else {
-    Write-Warning "oh-my-dot: %s command not found after loading feature"
-    exit 127
-  }
-}
-
-`, cmd, cmd, featureName, cmd, cmd, cmd))
-			} else {
-				// Multiple commands - use helper function
-				loaderFunc := fmt.Sprintf("__omd_load_%s", featureName)
-				sb.WriteString(fmt.Sprintf(`function %s {
-  $featureFile = Join-Path $OMD_SHELL_ROOT "features\%s.ps1"
-  if (Test-Path $featureFile) {
-    . $featureFile
-  }
-}
-
-`, loaderFunc, featureName))
-
-				// Create wrappers for each command
-				for _, cmd := range commands {
-					allCommands := append(commands, loaderFunc)
-					removeCmds := make([]string, len(allCommands))
-					for i, c := range allCommands {
-						removeCmds[i] = fmt.Sprintf("Remove-Item Function:%s -ErrorAction SilentlyContinue", c)
-					}
-					sb.WriteString(fmt.Sprintf(`function %s {
-  %s
-  %s
-  & %s @args
-}
-
-`, cmd, loaderFunc, strings.Join(removeCmds, "; "), cmd))
-				}
-			}
-		}
+		writeOnCommandWrappers(&sb, "powershell", features.OnCommand)
 	}
 
 	return sb.String()
@@ -603,50 +444,91 @@ fi
 		sb.WriteString("esac\n\n")
 	}
 
-	// On-command loading
+	// Register wrappers that remove themselves before loading so feature-defined
+	// functions remain available after the first invocation.
 	if len(features.OnCommand) > 0 {
-		sb.WriteString("# Register on-command features\n")
-		for featureName, commands := range features.OnCommand {
-			if len(commands) == 1 {
-				// Single command - simple wrapper
-				cmd := commands[0]
-				sb.WriteString(fmt.Sprintf(`%s() {
-  unset -f %s
-  feature_file="$OMD_SHELL_ROOT/features/%s.sh"
-  if [ -r "$feature_file" ]; then
-    . "$feature_file"
+		writeOnCommandWrappers(&sb, "posix", features.OnCommand)
+	}
+
+	return sb.String()
+}
+
+// writeOnCommandWrappers loads a feature in the invoking shell, then calls the
+// resulting function or executable without bypassing shell functions.
+func writeOnCommandWrappers(sb *strings.Builder, shellName string, features map[string][]string) {
+	for feature, commands := range features {
+		allCommands := strings.Join(commands, " ")
+		for _, commandName := range commands {
+			switch shellName {
+			case "bash", "zsh", "posix":
+				extension, declaration, remove := "sh", "local ", "unset -f"
+				if shellName == "zsh" {
+					extension, remove = "zsh", "unfunction"
+				}
+				if shellName == "posix" {
+					declaration = ""
+				}
+				fmt.Fprintf(sb, `%s() {
+  %sfeature_file="$OMD_SHELL_ROOT/features/%s.%s"
+  if [ ! -r "$feature_file" ]; then
+    echo "oh-my-dot: feature '%s' not found" >&2
+    return 127
   fi
+  %s %s
+  . "$feature_file" || return $?
   if command -v %s >/dev/null 2>&1; then
-    command %s "$@"
+    %s "$@"
   else
     echo "oh-my-dot: %s command not found after loading feature" >&2
     return 127
   fi
 }
 
-`, cmd, cmd, featureName, cmd, cmd, cmd))
-			} else {
-				// Multiple commands - use helper function
-				loaderFunc := fmt.Sprintf("__omd_load_%s", featureName)
-				sb.WriteString(fmt.Sprintf(`%s() {
-  feature_file="$OMD_SHELL_ROOT/features/%s.sh"
-  [ -r "$feature_file" ] && . "$feature_file"
+`, commandName, declaration, feature, extension, feature, remove, allCommands, commandName, commandName, commandName)
+			case "fish":
+				fmt.Fprintf(sb, `function %s
+  set -l feature_file "$OMD_SHELL_ROOT/features/%s.fish"
+  if not test -r "$feature_file"
+    echo "oh-my-dot: feature '%s' not found" >&2
+    return 127
+  end
+  functions -e %s
+  source "$feature_file"; or return $status
+  if type -q %s
+    %s $argv
+  else
+    echo "oh-my-dot: %s command not found after loading feature" >&2
+    return 127
+  end
+end
+
+`, commandName, feature, feature, allCommands, commandName, commandName, commandName)
+			case "powershell":
+				var remove, promote strings.Builder
+				for _, name := range commands {
+					fmt.Fprintf(&remove, "  Remove-Item Function:global:%s -ErrorAction SilentlyContinue\n", name)
+					fmt.Fprintf(&promote, "  $loadedCommand = Get-Command %s -CommandType Function -ErrorAction SilentlyContinue\n  if ($loadedCommand) { Set-Item Function:global:%s -Value $loadedCommand.ScriptBlock }\n", name, name)
+				}
+				fmt.Fprintf(sb, `function global:%s {
+  $featureFile = Join-Path $OMD_SHELL_ROOT "features\%s.ps1"
+  if (-not (Test-Path $featureFile -PathType Leaf)) {
+    Write-Warning "oh-my-dot: feature '%s' not found"
+    $global:LASTEXITCODE = 127
+    return
+  }
+%s  try { . $featureFile } catch { Write-Warning "oh-my-dot: feature '%s' failed: $_"; $global:LASTEXITCODE = 1; return }
+%s  if (Get-Command %s -ErrorAction SilentlyContinue) {
+    & %s @args
+  } else {
+    Write-Warning "oh-my-dot: %s command not found after loading feature"
+    $global:LASTEXITCODE = 127
+  }
 }
 
-`, loaderFunc, featureName))
-
-				// Create wrappers for each command
-				for _, cmd := range commands {
-					allCommands := strings.Join(commands, " ")
-					sb.WriteString(fmt.Sprintf(`%s() { %s; unset -f %s %s; command %s "$@"; }
-`, cmd, loaderFunc, allCommands, loaderFunc, cmd))
-				}
-				sb.WriteString("\n")
+`, commandName, feature, feature, remove.String(), feature, promote.String(), commandName, commandName, commandName)
 			}
 		}
 	}
-
-	return sb.String()
 }
 
 // RegenerateInitScript regenerates the init script for a shell

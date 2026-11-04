@@ -200,3 +200,16 @@ func TestBatchSSHCommandPreservesConfiguration(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestConflictingSSHBatchOptionRejected(t *testing.T) {
+	for _, value := range []string{"ssh -oBatchMode=no", "ssh -o 'BatchMode no'", "ssh -o BatchMode=NO"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("GIT_SSH_COMMAND", value)
+			t.Setenv("GIT_SSH_VARIANT", "ssh")
+			_, err := runRemoteGit(t.TempDir(), time.Second, "ls-remote", "git@unused.invalid:repo")
+			if err == nil || !strings.Contains(err.Error(), "BatchMode=no") {
+				t.Fatalf("conflict not rejected before network: %v", err)
+			}
+		})
+	}
+}

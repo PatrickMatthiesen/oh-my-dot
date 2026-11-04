@@ -21,8 +21,19 @@ func init() {
 var configCmd = &cobra.Command{
 	Use:   "config [key]",
 	Short: "Show configuration values",
-	Long:  `Display configuration values for oh-my-dot. Run without arguments to see all config values, or specify a key to see a specific value.`,
-	Args:  cobra.MaximumNArgs(1),
+	Long: `Display configuration values. Run without arguments for current settings.
+
+Readable keys: location, dotfiles, remote-url, initialized, allow-gh-auth, push-compact.
+Writable keys (config set <key> <value>):
+  remote-url      Origin URL; use an empty value to remove origin
+  allow-gh-auth   true/false; controls release update checks only
+  push-compact    auto/ask/off; repeated unpublished commit compaction
+
+Examples:
+  oh-my-dot config remote-url
+  oh-my-dot config set remote-url git@github.com:you/dotfiles.git
+  oh-my-dot config set push-compact ask`,
+	Args: cobra.MaximumNArgs(1),
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		if len(args) > 0 {
 			return nil, cobra.ShellCompDirectiveNoFileComp
@@ -30,16 +41,22 @@ var configCmd = &cobra.Command{
 
 		return completeConfigKeys(false), cobra.ShellCompDirectiveNoFileComp
 	},
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
 			// Show all config values
 			showAllConfig()
-			return
+			return nil
 		}
 
 		// Show specific config value
 		key := args[0]
-		showConfigValue(key)
+		for _, spec := range configKeys {
+			if spec.Key == key {
+				showConfigValue(key)
+				return nil
+			}
+		}
+		return fmt.Errorf("unknown config key %q; run config --help for readable and writable keys", key)
 	},
 }
 

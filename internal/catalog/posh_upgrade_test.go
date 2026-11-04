@@ -93,6 +93,14 @@ func TestOhMyPoshAutoUpgradeShellExecution(t *testing.T) {
 				if !strings.Contains(string(calls), "init\n") {
 					t.Fatalf("prompt initialization did not continue after upgrade failure: %s", calls)
 				}
+				initShell := shellName
+				if shellName == "powershell" {
+					initShell = "pwsh"
+				}
+				wantInit := "init\n" + initShell + "\n--config\n" + configPath + "\n"
+				if !strings.Contains(string(calls), wantInit) {
+					t.Fatalf("initialization did not receive exact config path: %s", calls)
+				}
 				wantUpgrade := "upgrade\n--auto\n--config\n" + configPath + "\n"
 				if strings.Contains(string(calls), wantUpgrade) != enabled {
 					t.Fatalf("unexpected upgrade arguments (enabled=%t): %s", enabled, calls)

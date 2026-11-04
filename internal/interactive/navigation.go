@@ -9,6 +9,9 @@ import (
 // ErrBack requests the previous option without discarding other answers.
 var ErrBack = errors.New("previous option")
 
+// ErrClear removes an optional answer without changing other answers.
+var ErrClear = errors.New("clear optional answer")
+
 // ErrSkip requests skipping this feature, while continuing with other features.
 var ErrSkip = errors.New("skip feature")
 
@@ -28,6 +31,8 @@ func (n *promptNavigation) handle(msg tea.Msg) bool {
 	switch key.String() {
 	case "ctrl+b":
 		n.err = ErrBack
+	case "ctrl+x":
+		n.err = ErrClear
 	case "ctrl+s":
 		n.err = ErrSkip
 	default:
@@ -40,5 +45,5 @@ func (n promptNavigation) help() string {
 	if !n.enabled {
 		return ""
 	}
-	return "\nCtrl+B: previous option; Ctrl+S: skip feature; Esc/Ctrl+C: cancel operation"
+	return "\nCtrl+B: previous option; Ctrl+X: clear optional answer; Ctrl+S: skip feature; Esc/Ctrl+C: cancel operation"
 }

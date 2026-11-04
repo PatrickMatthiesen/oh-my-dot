@@ -1,10 +1,12 @@
 package shell
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -331,7 +333,7 @@ func TestResolveProfilePath(t *testing.T) {
 		}
 	})
 
-	t.Run("falls back to standard PowerShell profile path when lookup fails", func(t *testing.T) {
+	t.Run("returns actionable error on Windows when lookup fails", func(t *testing.T) {
 		t.Setenv("PROFILE", "")
 
 		// Save and restore global state modified by this subtest.
@@ -354,18 +356,8 @@ func TestResolveProfilePath(t *testing.T) {
 		}
 
 		path, err := ResolveProfilePath(ShellConfig{ProfilePath: "$PROFILE"})
-		if err != nil {
-			t.Fatalf("ResolveProfilePath returned error: %v", err)
-		}
-
-		home, err := os.UserHomeDir()
-		if err != nil {
-			t.Fatalf("failed to get home directory: %v", err)
-		}
-
-		expected := filepath.Join(home, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1")
-		if path != expected {
-			t.Fatalf("ResolveProfilePath returned %q, want %q", path, expected)
+		if err == nil || path != "" || !strings.Contains(err.Error(), "PowerShell profile discovery failed") || !strings.Contains(err.Error(), "then retry") {
+			t.Fatalf("expected actionable error and no guessed path, got %q %v", path, err)
 		}
 	})
 
@@ -462,5 +454,39 @@ func TestIsShellExecutableAvailableSkipsWSLBashLauncherOnWindows(t *testing.T) {
 
 	if IsShellExecutableAvailable("bash") {
 		t.Fatal("expected WSL bash launcher to be ignored on windows")
+	}
+}
+
+func TestProfileDiscoveryDoesNotGuessOrSwitchAfterQueryFailure(t *testing.T) {
+	oldGOOS, oldLookPath, oldRunCommand := currentGOOS, lookPath, runCommand
+	t.Cleanup(func() { currentGOOS, lookPath, runCommand = oldGOOS, oldLookPath, oldRunCommand })
+	currentGOOS = "windows"
+	for _, scenario := range []string{"timeout", "empty", "relative", "multiple lines"} {
+		t.Run(scenario, func(t *testing.T) {
+			lookups := 0
+			lookPath = func(name string) (string, error) { lookups++; return name, nil }
+			runCommand = func(name string, args ...string) ([]byte, error) {
+				if name != "pwsh" {
+					t.Fatalf("queried different PowerShell runtime: %s", name)
+				}
+				switch scenario {
+				case "timeout":
+					return nil, context.DeadlineExceeded
+				case "empty":
+					return []byte("\r\n"), nil
+				case "relative":
+					return []byte("Documents/profile.ps1"), nil
+				default:
+					return []byte("C:\\Users\\user\\profile.ps1\nextra-output"), nil
+				}
+			}
+			path, err := ResolveProfilePath(ShellConfig{ProfilePath: "$PROFILE"})
+			if err == nil || path != "" || lookups != 1 || !strings.Contains(err.Error(), "then retry") {
+				t.Fatalf("query failure was hidden: %q %v lookups=%d", path, err, lookups)
+			}
+			if scenario == "timeout" && !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("timeout cause not preserved: %v", err)
+			}
+		})
 	}
 }

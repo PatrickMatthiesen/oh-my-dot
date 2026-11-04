@@ -20,7 +20,7 @@ else
 fi
 
 {{ end }}if [ -f "$OMD_OMP_CONFIG" ]; then
-  eval "$(oh-my-posh init zsh --config \"$OMD_OMP_CONFIG\")"
+  eval "$(oh-my-posh init zsh --config "$OMD_OMP_CONFIG")"
 else
   eval "$(oh-my-posh init zsh)"
 fi

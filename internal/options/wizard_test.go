@@ -110,3 +110,41 @@ func TestWizardPreservesSkipAndCancelErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestBackCanExplicitlyClearOptionalPath(t *testing.T) {
+	metadata := catalog.FeatureMetadata{Options: []catalog.OptionMetadata{
+		{Name: "theme", Type: catalog.OptionTypeEnum, Required: true, EnumValues: []string{"chosen"}},
+		{Name: "path", Type: catalog.OptionTypeFile},
+		{Name: "upgrade", Type: catalog.OptionTypeBool, Default: false},
+	}}
+	inputs, confirms := 0, 0
+	values, err := promptForOptions(metadata, nil, optionPrompter{
+		selectOption: func(string, []string, int) (int, error) { return 0, nil },
+		input: func(_, defaultValue string) (string, error) {
+			inputs++
+			if inputs == 1 {
+				return "/previous/path", nil
+			}
+			if defaultValue != "/previous/path" {
+				t.Fatal("back lost previous answer")
+			}
+			return "", interactive.ErrClear
+		},
+		confirm: func(string, bool) (bool, error) {
+			confirms++
+			if confirms == 1 {
+				return false, interactive.ErrBack
+			}
+			return true, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := values["path"]; exists {
+		t.Fatal("cleared path remains")
+	}
+	if values["theme"] != "chosen" || values["upgrade"] != true {
+		t.Fatalf("other answers changed: %v", values)
+	}
+}

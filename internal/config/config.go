@@ -1,7 +1,7 @@
 package config
 
 import (
-	"log"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -12,6 +12,7 @@ import (
 // var homeDir, _ = os.UserHomeDir()
 // var DefaultRepoPath = filepath.Join(homeDir, "dotfiles")
 
+// GetDefaultRepoPath returns the default dotfiles repository directory.
 func GetDefaultRepoPath() string {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -20,13 +21,26 @@ func GetDefaultRepoPath() string {
 	return filepath.Join(homeDir, "dotfiles")
 }
 
+// InitializeConfig reads configuration, creating a new file only when absent.
+// Invalid existing configuration is never replaced.
 func InitializeConfig(configFile string) error {
+	return LoadConfig(configFile, true)
+}
+
+// LoadConfig reads configuration and only creates missing files when requested.
+// Read-only commands can inspect an uninitialized installation without writes.
+func LoadConfig(configFile string, create bool) error {
+	if !create {
+		viper.SetConfigFile(configFile)
+		if err := viper.ReadInConfig(); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("read configuration %q: %w; repair this file before retrying", configFile, err)
+		}
+		return nil
+	}
 	// Ensure the directory exists
 	configDir := filepath.Dir(configFile)
 	if err := fileops.EnsureDir(configDir); err != nil {
-		log.Println("No config directory found")
-		log.Println("Making a new one")
-		return err
+		return fmt.Errorf("create configuration directory %q: %w", configDir, err)
 	}
 
 	// Set viper config file
@@ -35,15 +49,12 @@ func InitializeConfig(configFile string) error {
 	// Try to read existing config, create if it doesn't exist
 	if err := viper.ReadInConfig(); err != nil {
 		if os.IsNotExist(err) {
-			log.Println("No config file found")
-			log.Println("Making a new one")
 			// Config file not found, create it
 			if err := viper.SafeWriteConfigAs(configFile); err != nil {
-				return err
+				return fmt.Errorf("create configuration %q: %w", configFile, err)
 			}
-			log.Println("Config file created at " + configFile)
 		} else {
-			return err
+			return fmt.Errorf("read configuration %q: %w; repair this file before retrying", configFile, err)
 		}
 	}
 

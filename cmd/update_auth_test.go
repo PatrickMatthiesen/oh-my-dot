@@ -10,6 +10,8 @@ import (
 )
 
 func TestResolveGitHubAPIToken(t *testing.T) {
+	t.Setenv("CI", "")
+	t.Setenv("OMDOT_NON_INTERACTIVE", "")
 	originalRunner := runGHAuthTokenCommand
 	originalHasGitHubCLI := hasGitHubCLI
 	originalConfirmUse := confirmGitHubCLIAuthUse

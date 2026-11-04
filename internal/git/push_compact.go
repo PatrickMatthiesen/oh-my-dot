@@ -3,6 +3,7 @@ package git
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	gogit "github.com/go-git/go-git/v6"
@@ -26,6 +27,8 @@ type PushCompactionPlan struct {
 	Groups               []PushCompactionGroup
 	SkippedReason        string
 
+	repoPath   string
+	headHash   plumbing.Hash
 	commits    []*object.Commit
 	remoteHash plumbing.Hash
 	headName   plumbing.ReferenceName
@@ -59,7 +62,7 @@ func PlanPushCompaction() (PushCompactionPlan, error) {
 	remoteHash, err := resolveRemoteBranchHash(r, headRef.Name().Short())
 	if err != nil {
 		if errors.Is(err, errRemoteBranchNotFound) {
-			return PushCompactionPlan{SkippedReason: "remote branch could not be resolved"}, nil
+			return PushCompactionPlan{SkippedReason: "branch has not been pushed yet"}, nil
 		}
 		return PushCompactionPlan{}, err
 	}
@@ -119,6 +122,8 @@ func PlanPushCompaction() (PushCompactionPlan, error) {
 		OriginalCommitCount:  len(commits),
 		CompactedCommitCount: len(commits) - duplicateCommitSavings(groups),
 		Groups:               groups,
+		repoPath:             filepath.Clean(repoPath),
+		headHash:             headRef.Hash(),
 		commits:              commits,
 		remoteHash:           remoteHash,
 		headName:             headRef.Name(),
@@ -136,6 +141,27 @@ func CompactPushHistory(plan PushCompactionPlan) (PushCompactionPlan, error) {
 		return plan, fmt.Errorf("failed to open repository: %w", err)
 	}
 
+	if filepath.Clean(viper.GetString("repo-path")) != plan.repoPath {
+		return plan, fmt.Errorf("repository changed since compaction was planned; retry push")
+	}
+	head, err := r.Head()
+	if err != nil {
+		return plan, fmt.Errorf("inspect current branch: %w", err)
+	}
+	if head.Name() != plan.headName || head.Hash() != plan.headHash {
+		return plan, fmt.Errorf("branch changed since compaction was planned; retry push")
+	}
+	worktree, err := r.Worktree()
+	if err != nil {
+		return plan, fmt.Errorf("inspect compaction worktree: %w", err)
+	}
+	status, err := worktree.Status()
+	if err != nil {
+		return plan, fmt.Errorf("inspect compaction worktree: %w", err)
+	}
+	if !status.IsClean() {
+		return plan, fmt.Errorf("worktree changed since compaction was planned; commit or stash changes and retry push")
+	}
 	newParent := plan.remoteHash
 	for i := 0; i < len(plan.commits); {
 		runEnd := i + 1
@@ -152,7 +178,7 @@ func CompactPushHistory(plan PushCompactionPlan) (PushCompactionPlan, error) {
 		i = runEnd
 	}
 
-	if err := r.Storer.SetReference(plumbing.NewHashReference(plan.headName, newParent)); err != nil {
+	if err := r.Storer.CheckAndSetReference(plumbing.NewHashReference(plan.headName, newParent), plumbing.NewHashReference(plan.headName, plan.headHash)); err != nil {
 		return plan, fmt.Errorf("failed to update %s: %w", plan.headName.Short(), err)
 	}
 
@@ -172,7 +198,11 @@ func resolveRemoteBranchHash(r *gogit.Repository, branchName string) (plumbing.H
 		if err != nil {
 			return plumbing.ZeroHash, fmt.Errorf("open worktree: %w", err)
 		}
-		fetchErr = FetchSSH(worktree.Filesystem.Root(), origin.Config().URLs[0], fmt.Sprintf("+refs/heads/%s:%s", branchName, remoteBranchRefName))
+		rooted, ok := worktree.Filesystem().(interface{ Root() string })
+		if !ok {
+			return plumbing.ZeroHash, fmt.Errorf("native SSH fetch requires a filesystem-backed worktree")
+		}
+		fetchErr = FetchSSH(rooted.Root(), origin.Config().URLs[0], fmt.Sprintf("+refs/heads/%s:%s", branchName, remoteBranchRefName))
 	} else {
 		fetchErr = r.Fetch(&gogit.FetchOptions{
 			ClientOptions: repositoryClientOptions(r),
@@ -186,8 +216,20 @@ func resolveRemoteBranchHash(r *gogit.Repository, branchName string) (plumbing.H
 		// A new remote has no branch to compact against. Native Git reports
 		// this as a failed refspec; list once to distinguish it from lost access.
 		refs, listErr := ListRemote(viper.GetString("repo-path"), origin.Config().URLs[0], 15)
-		if errors.Is(listErr, transport.ErrEmptyRemoteRepository) || listErr == nil && len(refs) == 0 {
+		if errors.Is(listErr, transport.ErrEmptyRemoteRepository) {
 			return plumbing.ZeroHash, fmt.Errorf("%w: %s", errRemoteBranchNotFound, branchName)
+		}
+		if listErr == nil {
+			found := false
+			for _, ref := range refs {
+				if ref.Name() == plumbing.NewBranchReferenceName(branchName) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return plumbing.ZeroHash, fmt.Errorf("%w: %s", errRemoteBranchNotFound, branchName)
+			}
 		}
 		return plumbing.ZeroHash, fmt.Errorf("failed to fetch remote branch: %w", fetchErr)
 	}

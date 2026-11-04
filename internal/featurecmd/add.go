@@ -20,12 +20,15 @@ func (state *commandState) runFeatureAdd(cmd *cobra.Command, args []string) erro
 	repoPath := state.repoPathProvider()
 	alias := state.aliasProvider()
 
-	if state.flagInteractive {
-		return state.runInteractiveFeatureAdd(repoPath)
+	if err := interactive.ValidateMode(cmd); err != nil {
+		return fmt.Errorf("invalid interaction mode: %w", err)
+	}
+	if len(args) == 0 && interactive.ShouldPrompt(cmd, false) {
+		return state.runInteractiveFeatureAdd(cmd, repoPath)
 	}
 
 	if len(args) == 0 {
-		return fmt.Errorf("feature name required (or use -i for interactive mode)")
+		return fmt.Errorf("feature name required; pass a feature name and --shell, or run feature add in a terminal to browse the catalog")
 	}
 
 	featureName := args[0]
@@ -52,7 +55,7 @@ func (state *commandState) runFeatureAdd(cmd *cobra.Command, args []string) erro
 	} else if len(state.flagShell) > 0 {
 		targetShells = state.flagShell
 	} else {
-		targetShells, err = state.selectShells(metadata)
+		targetShells, err = state.selectShells(cmd, metadata)
 		if err != nil {
 			return err
 		}
@@ -67,58 +70,99 @@ func (state *commandState) runFeatureAdd(cmd *cobra.Command, args []string) erro
 		}
 	}
 
+	// Validate every supplied configuration value even for an idempotent rerun.
+	strategy := state.flagStrategy
+	if strategy == "" {
+		strategy = metadata.DefaultStrategy
+	}
+	onCommand := state.flagOnCommand
+	if len(onCommand) == 0 && metadata.DefaultStrategy == "on-command" {
+		onCommand = metadata.DefaultCommands
+	}
+	if err := (&manifest.FeatureConfig{Name: featureName, Strategy: strategy, OnCommand: onCommand}).Validate(); err != nil {
+		return fmt.Errorf("invalid feature configuration: %w", err)
+	}
+	var overrides map[string]any
+	if inCatalog {
+		overrides, err = options.ParseOptionOverrides(metadata, state.flagOption)
+	} else {
+		overrides, err = parseRawOptionPairs(state.flagOption)
+	}
+	if err != nil {
+		return fmt.Errorf("invalid --option values: %w", err)
+	}
+	if err := preflightFeatureManifests(repoPath, targetShells); err != nil {
+		return err
+	}
+	var pendingShells []string
+	for _, shellName := range targetShells {
+		if isFeatureInstalled(repoPath, shellName, featureName) {
+			fileops.ColorPrintfn(fileops.Yellow, "Skipping %s in %s (already installed)", featureName, shellName)
+		} else {
+			pendingShells = append(pendingShells, shellName)
+		}
+	}
+	if len(pendingShells) == 0 {
+		hasConfiguration := len(state.flagOption) > 0 || state.flagStrategy != "" || len(state.flagOnCommand) > 0 || state.flagDisabled
+		for _, name := range []string{"option", "strategy", "on-command", "disabled"} {
+			hasConfiguration = hasConfiguration || cmd.Flags().Changed(name)
+		}
+		if hasConfiguration {
+			return fmt.Errorf("feature %q is already installed; feature add does not change installed settings. Edit its saved options in omd-shells/<shell>/enabled.json, then run '%s feature update %s --shell <shell>' to regenerate the feature file; use feature enable/disable for load settings", featureName, alias, featureName)
+		}
+		return nil
+	}
+	if err := preflightFeatureMutation(repoPath); err != nil {
+		return err
+	}
+	targetShells = pendingShells
 	var optionValues map[string]any
 	if inCatalog && len(metadata.Options) > 0 {
-		overrides, err := options.ParseOptionOverrides(metadata, state.flagOption)
-		if err != nil {
-			return fmt.Errorf("failed to parse --option values: %w", err)
-		}
 
-		if isInteractive() {
+		optionValues, err = options.ResolveOptionsForNonInteractiveWithOverrides(metadata, overrides)
+		if err != nil && interactive.ShouldPrompt(cmd, false) {
 			optionValues, err = options.PromptForOptionsWithOverrides(metadata, overrides)
 			if errors.Is(err, interactive.ErrSkip) {
 				fileops.ColorPrintfn(fileops.Yellow, "Skipped %s", featureName)
 				return nil
 			}
 			if errors.Is(err, interactive.ErrCancelled) {
-				fileops.ColorPrintln("Cancelled", fileops.Yellow)
-				return nil
+				return fmt.Errorf("feature configuration cancelled: %w", err)
 			}
-			if err != nil {
-				return fmt.Errorf("failed to collect feature options: %w", err)
-			}
-		} else {
-			optionValues, err = options.ResolveOptionsForNonInteractiveWithOverrides(metadata, overrides)
-			if err != nil {
-				return fmt.Errorf("failed to resolve feature options in non-interactive mode: %w", err)
-			}
-
-			if len(optionValues) > 0 {
-				fileops.ColorPrintln("Using default values for feature options (non-interactive mode)", fileops.Cyan)
-			}
+		}
+		if err != nil {
+			return fmt.Errorf("resolve feature options (use --option key=value): %w", err)
 		}
 	} else {
-		optionValues, err = parseRawOptionPairs(state.flagOption)
-		if err != nil {
-			return fmt.Errorf("failed to parse --option values: %w", err)
-		}
+		optionValues = overrides
 	}
 
+	addedCount := 0
+	var failures []error
 	for _, shellName := range targetShells {
-		fileops.ColorPrintfn(fileops.Cyan, "Adding %s to %s...", featureName, shellName)
-
-		err := shell.AddFeatureToShell(repoPath, shellName, featureName, state.flagStrategy, state.flagOnCommand, state.flagDisabled, optionValues)
-		if err != nil {
-			return fmt.Errorf("failed to add feature to %s: %w", shellName, err)
+		if isFeatureInstalled(repoPath, shellName, featureName) {
+			fileops.ColorPrintfn(fileops.Yellow, "Skipping %s in %s (already installed)", featureName, shellName)
+			continue
 		}
-
+		fileops.ColorPrintfn(fileops.Cyan, "Adding %s to %s...", featureName, shellName)
+		if err := shell.AddFeatureToShell(repoPath, shellName, featureName, state.flagStrategy, state.flagOnCommand, state.flagDisabled, optionValues); err != nil {
+			failures = append(failures, fmt.Errorf("add feature to %s: %w", shellName, err))
+			continue
+		}
+		addedCount++
 		fileops.ColorPrintfn(fileops.Green, "  ✓ Feature added")
 	}
-
-	if err := autoCommitShellFeatureChanges("Add shell feature: " + featureName); err != nil {
-		return fmt.Errorf("failed to commit shell feature changes: %w", err)
+	if addedCount > 0 {
+		if err := autoCommitShellFeatureChanges("Add shell feature: " + featureName); err != nil {
+			failures = append(failures, fmt.Errorf("commit successful additions: %w", err))
+		}
 	}
-
+	if len(failures) > 0 {
+		return fmt.Errorf("added feature to %d shell(s); remaining additions failed: %w", addedCount, errors.Join(failures...))
+	}
+	if addedCount == 0 {
+		return nil
+	}
 	fmt.Println()
 	fileops.ColorPrintfn(fileops.Cyan, "Run '%s apply' to activate the feature(s)", alias)
 	fileops.ColorPrintfn(fileops.Cyan, "Run '%s push' to push committed changes", alias)
@@ -126,8 +170,8 @@ func (state *commandState) runFeatureAdd(cmd *cobra.Command, args []string) erro
 	return nil
 }
 
-func (state *commandState) runInteractiveFeatureAdd(repoPath string) error {
-	if !isInteractive() {
+func (state *commandState) runInteractiveFeatureAdd(cmd *cobra.Command, repoPath string) error {
+	if !interactive.ShouldPrompt(cmd, false) {
 		return fmt.Errorf("cannot run interactive mode in non-interactive environment")
 	}
 
@@ -253,6 +297,12 @@ func featureInstallLabel(feature catalog.FeatureMetadata, selectedShells []strin
 }
 
 func (state *commandState) addSelectedFeatures(repoPath string, selectedShells []string, selectedFeatures []catalog.FeatureMetadata, installedFeaturesByShell map[string]map[string]bool, promptOptions func(catalog.FeatureMetadata) (map[string]any, error)) error {
+	if err := preflightFeatureMutation(repoPath); err != nil {
+		return err
+	}
+	if err := preflightFeatureManifests(repoPath, selectedShells); err != nil {
+		return err
+	}
 	alias := state.aliasProvider()
 	addedCount := 0
 	skippedCount := 0
@@ -351,7 +401,7 @@ func (state *commandState) addSelectedFeatures(repoPath string, selectedShells [
 	return nil
 }
 
-func (state *commandState) selectShells(metadata catalog.FeatureMetadata) ([]string, error) {
+func (state *commandState) selectShells(cmd *cobra.Command, metadata catalog.FeatureMetadata) ([]string, error) {
 	currentShell, err := shell.DetectCurrentShell()
 	if err != nil {
 		currentShell = ""
@@ -362,7 +412,7 @@ func (state *commandState) selectShells(metadata catalog.FeatureMetadata) ([]str
 		supportedShells = []string{"bash", "zsh", "fish", "posix"}
 	}
 
-	if len(supportedShells) == 1 && supportedShells[0] == currentShell {
+	if len(supportedShells) == 1 {
 		return supportedShells, nil
 	}
 
@@ -375,7 +425,7 @@ func (state *commandState) selectShells(metadata catalog.FeatureMetadata) ([]str
 	}
 
 	if currentShellSupported && len(supportedShells) > 1 {
-		if !isInteractive() {
+		if !interactive.ShouldPrompt(cmd, false) {
 			return nil, fmt.Errorf(
 				"cannot prompt for shell selection in non-interactive mode\nPlease specify target shell(s):\n  --shell bash          Add to specific shell\n  --all                 Add to all supported shells\n\nExample: %s feature add %s --shell bash",
 				state.aliasProvider(),
@@ -390,7 +440,7 @@ func (state *commandState) selectShells(metadata catalog.FeatureMetadata) ([]str
 		)
 	}
 
-	if !isInteractive() {
+	if !interactive.ShouldPrompt(cmd, false) {
 		return nil, fmt.Errorf("feature does not support current shell, cannot prompt in non-interactive mode\nPlease specify target shell(s) with --shell flag\n\nSupported shells: %v", supportedShells)
 	}
 

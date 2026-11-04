@@ -39,35 +39,37 @@ func hasInteractiveTerminal() bool {
 
 // ValidateMode rejects forced interaction when input or output is not a terminal.
 func ValidateMode(cmd *cobra.Command) error {
-	if forced, _ := cmd.Flags().GetBool("interactive"); forced && !hasInteractiveTerminal() {
+	forced, _ := cmd.Flags().GetBool("interactive")
+	disabled, _ := cmd.Flags().GetBool("no-interactive")
+	jsonOutput, _ := cmd.Flags().GetBool("json")
+	if forced && (disabled || jsonOutput) {
+		return fmt.Errorf("--interactive cannot be combined with --no-interactive or --json")
+	}
+	if forced && (os.Getenv("CI") != "" || os.Getenv("OMDOT_NON_INTERACTIVE") != "") {
+		return fmt.Errorf("interactive prompts are disabled by CI or OMDOT_NON_INTERACTIVE; unset them to use --interactive")
+	}
+	if forced && !hasInteractiveTerminal() {
 		return fmt.Errorf("--interactive requires both stdin and stdout to be terminals; use --no-interactive or run in a terminal")
 	}
 	return nil
 }
 
-// GetMode detects the appropriate mode based on flags and environment
+// GetMode selects one interaction policy for every command. Pipes, CI, explicit
+// opt-out and machine-readable output never prompt, including indirect prompts.
 func GetMode(cmd *cobra.Command) Mode {
-	// 1. Explicit flags take precedence
-	if interactive, _ := cmd.Flags().GetBool("interactive"); interactive {
+	disabled, _ := cmd.Flags().GetBool("no-interactive")
+	jsonOutput, _ := cmd.Flags().GetBool("json")
+	if disabled || jsonOutput || os.Getenv("CI") != "" || os.Getenv("OMDOT_NON_INTERACTIVE") != "" {
+		return ModeNonInteractive
+	}
+	if forced, _ := cmd.Flags().GetBool("interactive"); forced {
+		// ValidateMode rejects forced interaction without a terminal before
+		// execution. Keeping the requested mode separate makes helpers testable.
 		return ModeInteractive
 	}
-
-	if noInteractive, _ := cmd.Flags().GetBool("no-interactive"); noInteractive {
-		return ModeNonInteractive
-	}
-
-	// 2. Check environment variables (for CI)
-	if os.Getenv("CI") != "" ||
-		os.Getenv("OMDOT_NON_INTERACTIVE") != "" {
-		return ModeNonInteractive
-	}
-
-	// 3. Check if running in a TTY
 	if !hasInteractiveTerminal() {
 		return ModeNonInteractive
 	}
-
-	// 4. Default: Auto mode (smart behavior)
 	return ModeAuto
 }
 

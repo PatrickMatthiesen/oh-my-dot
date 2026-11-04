@@ -56,7 +56,7 @@ work/config. Use ./config to select a flat file when nested matches also exist.`
 			return fmt.Errorf("read file flag: %w", err)
 		}
 		mode := interactive.GetMode(cmd)
-		if mode == interactive.ModeInteractive && file == "" && len(args) == 0 {
+		if mode != interactive.ModeNonInteractive && file == "" && len(args) == 0 {
 			options, err := git.ListFiles()
 			if err != nil {
 				return fmt.Errorf("list repository files: %w", err)
@@ -85,7 +85,7 @@ work/config. Use ./config to select a flat file when nested matches also exist.`
 		}
 		if file == "" {
 			if len(args) == 0 {
-				return fmt.Errorf("no file was specified")
+				return fmt.Errorf("no file specified; pass a repository path, or run remove in a terminal to select files")
 			}
 			file = args[0]
 		}
@@ -151,6 +151,11 @@ func processRemoveFile(cmd *cobra.Command, file string) error {
 func processRemoveResolvedFile(cmd *cobra.Command, key string) error {
 	// Validate before deleting anything at the linked destination.
 	repoPath := viper.GetString("repo-path")
+	if noCommit, _ := cmd.Flags().GetBool("no-commit"); !noCommit {
+		if err := git.CheckCommitSafety(repoPath); err != nil {
+			return err
+		}
+	}
 	repositoryFile, err := repopath.Resolve(repoPath, key)
 	if err != nil {
 		return fmt.Errorf("validate repository file %q: %w", key, err)
@@ -192,6 +197,11 @@ func processRemoveResolvedFile(cmd *cobra.Command, key string) error {
 			return fmt.Errorf("remove linked file %q: %w", link, err)
 		}
 		fileops.ColorPrintfn(fileops.Yellow, "Deleted linked file: %s", link)
+	}
+	if linked && !shouldDeleteLinked {
+		if err := preserveManagedSymlink(repositoryFile, link); err != nil {
+			return fmt.Errorf("keep local file %q before removing repository copy: %w", link, err)
+		}
 	}
 	if err := git.RemoveFile(key); err != nil {
 		return fmt.Errorf("remove repository file %q: %w", key, err)
