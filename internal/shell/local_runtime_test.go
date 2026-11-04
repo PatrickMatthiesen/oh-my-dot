@@ -255,8 +255,17 @@ func TestPrivateInitDispatchLoadsExactlyOneEffectiveConfiguration(t *testing.T) 
 				t.Fatalf("effective source: %v\n%s", err, output)
 			}
 			roots := strings.Split(strings.ReplaceAll(strings.TrimSpace(string(output)), "\r", ""), "\n")
-			if len(roots) != 2 || roots[0] != roots[1] {
+			if len(roots) != 2 {
 				t.Fatalf("wrong shell root: %q", output)
+			}
+			if roots[0] != roots[1] {
+				// PowerShell may expand a Windows 8.3 path while the fixture
+				// retains its short spelling. Both must identify the same directory.
+				actual, actualErr := os.Stat(roots[0])
+				expected, expectedErr := os.Stat(roots[1])
+				if actualErr != nil || expectedErr != nil || !os.SameFile(actual, expected) {
+					t.Fatalf("wrong shell root: %q (path errors: %v, %v)", output, actualErr, expectedErr)
+				}
 			}
 			data, err := os.ReadFile(log)
 			if err != nil || strings.TrimSpace(string(data)) != "PRIVATE" {
