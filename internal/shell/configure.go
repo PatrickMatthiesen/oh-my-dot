@@ -142,12 +142,13 @@ func (plan *FeatureConfigurationPlan) Apply() error {
 		snapshots[plan.sourcePath] = plan.originalSource
 	}
 	for path, expected := range snapshots {
+		privateRefreshTarget := plan.local && plan.refreshOnly && path == plan.featurePath
 		info, err := os.Lstat(path)
 		if plan.local && expected == nil {
 			if os.IsNotExist(err) {
 				continue
 			}
-			if err == nil {
+			if err == nil && !privateRefreshTarget {
 				return fmt.Errorf("private configuration appeared while choosing options; retry configure: %s", path)
 			}
 		}
@@ -162,6 +163,12 @@ func (plan *FeatureConfigurationPlan) Apply() error {
 			return fmt.Errorf("recheck configuration: %w", err)
 		}
 		if !bytes.Equal(data, expected) {
+			// Regenerating an earlier feature in this batch can already render
+			// this private template. Accept only its exact prepared result;
+			// settings and unrelated edits still require their original snapshots.
+			if privateRefreshTarget && bytes.Equal(data, plan.updatedScript) {
+				continue
+			}
 			return fmt.Errorf("configuration changed while selecting options; retry configure: %s", path)
 		}
 	}
@@ -403,8 +410,8 @@ func PrepareLocalFeatureConfiguration(repoPath, shellName, featureName string, v
 
 // PrepareLocalFeatureRefresh refreshes an existing private catalog template with
 // its effective options. Customized private scripts require explicit force.
-func PrepareLocalFeatureRefresh(repoPath, shellName, featureName string, values map[string]any, force bool) (*FeatureConfigurationPlan, error) {
-	return prepareLocalFeatureConfiguration(repoPath, shellName, featureName, values, force, true)
+func PrepareLocalFeatureRefresh(repoPath, shellName, featureName string, force bool) (*FeatureConfigurationPlan, error) {
+	return prepareLocalFeatureConfiguration(repoPath, shellName, featureName, nil, force, true)
 }
 
 func prepareLocalFeatureConfiguration(repoPath, shellName, featureName string, values map[string]any, force, refresh bool) (*FeatureConfigurationPlan, error) {
@@ -451,6 +458,9 @@ func prepareLocalFeatureConfiguration(repoPath, shellName, featureName string, v
 	if effective == nil {
 		return nil, fmt.Errorf("feature %q is not installed in %s", featureName, shellName)
 	}
+	if refresh {
+		values = effective.Options
+	}
 	scriptPath, err := GetLocalFeatureFilePath(repoPath, shellName, featureName)
 	if err != nil {
 		return nil, err
@@ -458,7 +468,7 @@ func prepareLocalFeatureConfiguration(repoPath, shellName, featureName string, v
 	if err := ensurePrivateRuntimeDirectory(filepath.Dir(scriptPath), true); err != nil {
 		return nil, err
 	}
-	plan := &FeatureConfigurationPlan{repoPath: repoPath, shellName: shellName, manifestPath: path, featurePath: scriptPath, local: true, originalManifest: original, updatedManifest: local, scriptMode: 0600}
+	plan := &FeatureConfigurationPlan{repoPath: repoPath, shellName: shellName, manifestPath: path, featurePath: scriptPath, local: true, originalManifest: original, updatedManifest: local, scriptMode: 0600, refreshOnly: refresh}
 	if !refresh && reflect.DeepEqual(effective.Options, values) {
 		return plan, nil
 	}

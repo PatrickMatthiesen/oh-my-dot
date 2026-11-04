@@ -113,7 +113,7 @@ func (state *commandState) runLocalFeatureUpdate(cmd *cobra.Command, args []stri
 	}
 	plans := make([]*shell.FeatureConfigurationPlan, 0, len(records))
 	for _, record := range records {
-		plan, err := shell.PrepareLocalFeatureRefresh(state.repoPathProvider(), record.Shell, record.Name, record.Options, state.flagForce)
+		plan, err := shell.PrepareLocalFeatureRefresh(state.repoPathProvider(), record.Shell, record.Name, state.flagForce)
 		if err != nil {
 			return fmt.Errorf("prepare private %s in %s: %w", record.Name, record.Shell, err)
 		}
