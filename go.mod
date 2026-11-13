@@ -28,7 +28,7 @@ require (
 	github.com/go-git/gcfg/v2 v2.0.2 // indirect
 	github.com/go-git/go-billy/v6 v6.0.0-beta.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
-	github.com/google/go-github/v86 v86.0.0 // indirect
+	github.com/google/go-github/v93 v93.0.0 // indirect
 	github.com/google/go-querystring v1.2.0 // indirect
 	github.com/graph-gophers/graphql-go v1.11.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
@@ -66,12 +66,12 @@ require (
 require (
 	charm.land/bubbles/v2 v2.2.1
 	charm.land/bubbletea/v2 v2.1.1
-	charm.land/lipgloss/v2 v2.0.6
-	github.com/creativeprojects/go-selfupdate v1.7.0
+	charm.land/lipgloss/v2 v2.1.0
+	github.com/creativeprojects/go-selfupdate v1.7.1
 	github.com/go-git/go-git/v6 v6.0.0-beta.1
 	github.com/mattn/go-isatty v0.0.24
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
-	golang.org/x/mod v0.42.0
-	golang.org/x/sys v0.49.0
+	golang.org/x/mod v0.43.0
+	golang.org/x/sys v0.50.0
 )
