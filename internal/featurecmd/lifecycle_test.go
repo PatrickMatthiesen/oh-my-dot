@@ -286,6 +286,9 @@ func TestMissingFeatureSelectionFiltersCurrentState(t *testing.T) {
 	if err := shell.AddFeatureToShell(path, "bash", "core-aliases", "", nil, false, nil); err != nil {
 		t.Fatal(err)
 	}
+	if err := autoCommitShellFeatureChanges("fixture"); err != nil {
+		t.Fatal(err)
+	}
 	command := &cobra.Command{}
 	command.Flags().Bool("interactive", true, "")
 	old := selectLifecycleFeature

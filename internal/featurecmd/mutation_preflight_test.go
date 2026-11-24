@@ -2,6 +2,7 @@ package featurecmd
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/catalog"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/manifest"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/shell"
 )
@@ -370,5 +372,82 @@ func TestFeatureInfoDocumentsScriptOptions(t *testing.T) {
 		if !strings.Contains(string(output), want) {
 			t.Fatalf("missing %q in %s", want, output)
 		}
+	}
+}
+
+func TestConfigurePreflightFailsBeforeInteractivePromptsAndSilencesUsage(t *testing.T) {
+	t.Setenv("CI", "")
+	t.Setenv("OMDOT_NON_INTERACTIVE", "")
+
+	for _, args := range [][]string{nil, {"oh-my-posh"}} {
+		name := "no-args"
+		if len(args) > 0 {
+			name = "named-feature"
+		}
+		t.Run(name, func(t *testing.T) {
+			path, _, state, _ := setupFeatureMutationFixture(t)
+			if err := shell.AddFeatureToShell(path, "bash", "oh-my-posh", "", nil, false, map[string]any{"theme": "pure"}); err != nil {
+				t.Fatal(err)
+			}
+			if err := autoCommitShellFeatureChanges("fixture"); err != nil {
+				t.Fatal(err)
+			}
+			// Create two dirty shell files so we verify sorted reporting and pre-prompt rejection.
+			scriptPath, err := shell.GetFeatureFilePath(path, "bash", "oh-my-posh")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(scriptPath, []byte("# pending edit\n"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			manifestPath := shell.GetManifestPath(path, "bash")
+			manifestBytes, err := os.ReadFile(manifestPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(manifestPath, append(manifestBytes, '\n'), 0644); err != nil {
+				t.Fatal(err)
+			}
+
+			oldValidate := validateInteractionMode
+			oldSelect := selectLifecycleFeature
+			oldPrompt := promptExistingFeatureOptions
+			t.Cleanup(func() {
+				validateInteractionMode = oldValidate
+				selectLifecycleFeature = oldSelect
+				promptExistingFeatureOptions = oldPrompt
+			})
+			validateInteractionMode = func(*cobra.Command) error { return nil }
+			selectLifecycleFeature = func(string, []string) (int, error) {
+				t.Fatal("feature picker ran before commit safety preflight")
+				return 0, nil
+			}
+			promptExistingFeatureOptions = func(catalog.FeatureMetadata, map[string]any) (map[string]any, error) {
+				t.Fatal("option prompts ran before commit safety preflight")
+				return nil, nil
+			}
+
+			cmd := &cobra.Command{}
+			cmd.Flags().Bool("interactive", true, "")
+			runErr := silenceUsageOnRun(state.runFeatureConfigure)(cmd, args)
+			if runErr == nil {
+				t.Fatal("expected preflight error on dirty repository")
+			}
+			var visibility interface{ ShowUsage() bool }
+			if !errors.As(runErr, &visibility) || visibility.ShowUsage() {
+				t.Fatalf("expected runtime preflight error to suppress usage output, got %T (%v)", runErr, runErr)
+			}
+			if cmd.SilenceUsage {
+				t.Fatal("runtime error must not mutate persistent cmd.SilenceUsage state")
+			}
+			msg := runErr.Error()
+			wantOrder := "omd-shells/bash/enabled.json, omd-shells/bash/features/oh-my-posh.sh"
+			if !strings.Contains(msg, wantOrder) {
+				t.Fatalf("expected deterministic sorted paths %q in error, got %q", wantOrder, msg)
+			}
+			if !strings.Contains(msg, path) || !strings.Contains(msg, "--local") {
+				t.Fatalf("expected repo path and --local hint in error, got %q", msg)
+			}
+		})
 	}
 }

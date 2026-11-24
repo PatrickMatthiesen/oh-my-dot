@@ -814,31 +814,46 @@ func StageAndCommitShellFeatureChanges(message string) (bool, error) {
 }
 
 func ensureNoStagedNonShellChanges(status git.Status) error {
+	return ensureNoStagedNonShellChangesForRepo(viper.GetString("repo-path"), status)
+}
+
+func ensureNoStagedNonShellChangesForRepo(repoPath string, status git.Status) error {
+	var staged []string
 	for path, fileStatus := range status {
-		if fileStatus.Staging == git.Unmodified || fileStatus.Staging == git.Untracked || isCommittableShellChangePath(path) {
+		if fileStatus.Staging == git.Unmodified || fileStatus.Staging == git.Untracked || isCommittableShellChangePathForRepo(repoPath, path) {
 			continue
 		}
-
-		return fmt.Errorf("refusing to commit shell feature changes while non-shell changes are staged: %s", path)
+		staged = append(staged, path)
+	}
+	if len(staged) > 0 {
+		return fmt.Errorf("refusing to commit shell feature changes while non-shell changes are staged: %s", formatPathSummary(staged))
 	}
 
 	return nil
 }
 
 func isCommittableShellChangePath(path string) bool {
+	return isCommittableShellChangePathForRepo(viper.GetString("repo-path"), path)
+}
+
+func isCommittableShellChangePathForRepo(repoPath, path string) bool {
 	normalizedPath := filepath.ToSlash(filepath.Clean(path))
 	if !strings.HasPrefix(normalizedPath, "omd-shells/") {
 		return false
 	}
 
-	return !isDeviceLocalShellChangePath(normalizedPath)
+	return !isDeviceLocalShellChangePathForRepo(repoPath, normalizedPath)
 }
 
 func isDeviceLocalShellChangePath(path string) bool {
+	return isDeviceLocalShellChangePathForRepo(viper.GetString("repo-path"), path)
+}
+
+func isDeviceLocalShellChangePathForRepo(repoPath, path string) bool {
 	if shell.IsDeviceLocalShellPath(path) {
 		return true
 	}
-	localOnly, err := shell.IsLocalOnlyFeaturePath(viper.GetString("repo-path"), path)
+	localOnly, err := shell.IsLocalOnlyFeaturePath(repoPath, path)
 	return err != nil || localOnly
 }
 

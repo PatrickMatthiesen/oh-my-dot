@@ -15,7 +15,7 @@ import (
 var promptExistingFeatureOptions = options.PromptForOptionsWithOverrides
 
 func (state *commandState) runFeatureConfigure(cmd *cobra.Command, args []string) error {
-	if err := interactive.ValidateMode(cmd); err != nil {
+	if err := validateInteractionMode(cmd); err != nil {
 		return err
 	}
 	name, records, err := state.configureSelection(cmd, args)
@@ -51,12 +51,17 @@ func (state *commandState) runFeatureConfigure(cmd *cobra.Command, args []string
 			return fmt.Errorf("unknown reset option %q for %s", key, name)
 		}
 		if _, set := overrides[key]; set {
-			return fmt.Errorf("option %q cannot be changed and reset together", key)
+			return usageErrorf(cmd, "option %q cannot be changed and reset together", key)
 		}
 	}
 	interactiveEdit := len(state.flagOption) == 0 && len(state.flagResetOption) == 0
 	if interactiveEdit && !interactive.ShouldPrompt(cmd, false) {
-		return fmt.Errorf("no changes specified; pass --option key=value or --reset-option name, or run in a terminal to edit current values")
+		return usageErrorf(cmd, "no changes specified; pass --option key=value or --reset-option name, or run in a terminal to edit current values")
+	}
+	if interactiveEdit && !state.flagLocal {
+		if err := preflightFeatureMutation(state.repoPathProvider()); err != nil {
+			return err
+		}
 	}
 	plans := make([]*shell.FeatureConfigurationPlan, 0, len(records))
 	changed := false

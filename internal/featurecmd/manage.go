@@ -97,7 +97,7 @@ func (state *commandState) runFeatureInfo(cmd *cobra.Command, args []string) err
 		name = args[0]
 	} else {
 		if !interactive.ShouldPrompt(cmd, false) {
-			return fmt.Errorf("feature name required; use feature info <feature> or run in a terminal to browse")
+			return usageErrorf(cmd, "feature name required; use feature info <feature> or run in a terminal to browse")
 		}
 		available := make(map[string]bool, len(catalog.Catalog)+len(records))
 		for name := range catalog.Catalog {

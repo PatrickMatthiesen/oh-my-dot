@@ -208,18 +208,60 @@ func resolveOptionDefault(opt catalog.OptionMetadata) (any, bool, error) {
 	return opt.Default, true, nil
 }
 
-// promptForOption prompts for a single option based on its type
-func (p optionPrompter) promptForOption(opt catalog.OptionMetadata) (any, error) {
-	// Build question with description
+func hasNonEmptyDefault(val any) bool {
+	return val != nil && fmt.Sprintf("%v", val) != ""
+}
+
+// formatOptionQuestion formats a concise single-line prompt for an option,
+// combining requirement, constraint, and blank-input hints into one parenthetical.
+func formatOptionQuestion(opt catalog.OptionMetadata) string {
 	question := opt.DisplayName
 	if opt.Description != "" {
 		question = fmt.Sprintf("%s - %s", question, opt.Description)
 	}
+
+	var hints []string
 	if opt.Required {
-		question = fmt.Sprintf("%s (required)", question)
-	} else if opt.Type == catalog.OptionTypeFile || opt.Type == catalog.OptionTypePath || opt.Type == catalog.OptionTypeString {
-		question += " (Enter to keep default or skip)"
+		hints = append(hints, "required")
 	}
+
+	switch opt.Type {
+	case catalog.OptionTypeInt:
+		if opt.IntMin != nil {
+			hints = append(hints, fmt.Sprintf("min: %d", *opt.IntMin))
+		}
+		if opt.IntMax != nil {
+			hints = append(hints, fmt.Sprintf("max: %d", *opt.IntMax))
+		}
+	case catalog.OptionTypeFile, catalog.OptionTypePath:
+		switch {
+		case opt.PathMustExist && opt.FileOnly:
+			hints = append(hints, "existing file")
+		case opt.PathMustExist:
+			hints = append(hints, "must exist")
+		case opt.FileOnly:
+			hints = append(hints, "file only")
+		}
+	}
+
+	if !opt.Required && (opt.Type == catalog.OptionTypeFile || opt.Type == catalog.OptionTypePath || opt.Type == catalog.OptionTypeString) {
+		if hasNonEmptyDefault(opt.Default) {
+			hints = append(hints, "Enter to keep")
+		} else {
+			hints = append(hints, "Enter to skip")
+		}
+	}
+
+	if len(hints) > 0 {
+		question = fmt.Sprintf("%s (%s)", question, strings.Join(hints, ", "))
+	}
+
+	return question
+}
+
+// promptForOption prompts for a single option based on its type
+func (p optionPrompter) promptForOption(opt catalog.OptionMetadata) (any, error) {
+	question := formatOptionQuestion(opt)
 
 	switch opt.Type {
 	case catalog.OptionTypeString:
@@ -249,8 +291,8 @@ func (p optionPrompter) promptString(opt catalog.OptionMetadata, question string
 		return nil, err
 	}
 
-	// If empty and has default, use default
-	if value == "" && opt.Default != nil {
+	// If empty and has a non-empty default, use default
+	if value == "" && hasNonEmptyDefault(opt.Default) {
 		return opt.Default, nil
 	}
 
@@ -262,18 +304,6 @@ func (p optionPrompter) promptString(opt catalog.OptionMetadata, question string
 
 // promptInt prompts for integer input
 func (p optionPrompter) promptInt(opt catalog.OptionMetadata, question string) (any, error) {
-	// Build constraints string
-	var constraints []string
-	if opt.IntMin != nil {
-		constraints = append(constraints, fmt.Sprintf("min: %d", *opt.IntMin))
-	}
-	if opt.IntMax != nil {
-		constraints = append(constraints, fmt.Sprintf("max: %d", *opt.IntMax))
-	}
-	if len(constraints) > 0 {
-		question = fmt.Sprintf("%s (%s)", question, strings.Join(constraints, ", "))
-	}
-
 	defaultStr := ""
 	if opt.Default != nil {
 		defaultStr = fmt.Sprintf("%v", opt.Default)
@@ -285,8 +315,8 @@ func (p optionPrompter) promptInt(opt catalog.OptionMetadata, question string) (
 			return nil, err
 		}
 
-		// If empty and has default, use default
-		if value == "" && opt.Default != nil {
+		// If empty and has a non-empty default, use default
+		if value == "" && hasNonEmptyDefault(opt.Default) {
 			return opt.Default, nil
 		}
 
@@ -342,18 +372,6 @@ func (p optionPrompter) promptEnum(opt catalog.OptionMetadata, question string) 
 
 // promptPath prompts for file/path input
 func (p optionPrompter) promptPath(opt catalog.OptionMetadata, question string) (any, error) {
-	// Add path requirements to question
-	var hints []string
-	if opt.PathMustExist {
-		hints = append(hints, "must exist")
-	}
-	if opt.FileOnly {
-		hints = append(hints, "file only")
-	}
-	if len(hints) > 0 {
-		question = fmt.Sprintf("%s (%s)", question, strings.Join(hints, ", "))
-	}
-
 	defaultStr := ""
 	if opt.Default != nil {
 		defaultStr = fmt.Sprintf("%v", opt.Default)
@@ -367,8 +385,8 @@ func (p optionPrompter) promptPath(opt catalog.OptionMetadata, question string) 
 			return nil, err
 		}
 
-		// If empty and has default, use default
-		if value == "" && opt.Default != nil {
+		// If empty and has a non-empty default, use default
+		if value == "" && hasNonEmptyDefault(opt.Default) {
 			return opt.Default, nil
 		}
 

@@ -8,12 +8,44 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/catalog"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/fileops"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/git"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/interactive"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/manifest"
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/shell"
 )
+
+var validateInteractionMode = interactive.ValidateMode
+
+type usageError struct {
+	err       error
+	showUsage bool
+}
+
+func (e usageError) Error() string   { return e.err.Error() }
+func (e usageError) Unwrap() error   { return e.err }
+func (e usageError) ShowUsage() bool { return e.showUsage }
+
+func silenceUsageOnRun(runE func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		err := runE(cmd, args)
+		if err == nil {
+			return nil
+		}
+		var ue usageError
+		if errors.As(err, &ue) {
+			return err
+		}
+		return usageError{err: err, showUsage: false}
+	}
+}
+
+func usageErrorf(_ *cobra.Command, format string, args ...any) error {
+	return usageError{err: fmt.Errorf(format, args...), showUsage: true}
+}
 
 func autoCommitShellFeatureChanges(commitMessage string) error {
 	committed, err := git.StageAndCommitShellFeatureChanges(commitMessage)

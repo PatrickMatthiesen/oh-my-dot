@@ -51,7 +51,7 @@ Examples:
   oh-my-dot feature add kubectl-completion --shell bash
   oh-my-dot feature add core-aliases --all`,
 		Args: cobra.MaximumNArgs(1),
-		RunE: state.runFeatureAdd,
+		RunE: silenceUsageOnRun(state.runFeatureAdd),
 	}
 
 	featureUpdateCmd := &cobra.Command{
@@ -77,7 +77,7 @@ Examples:
   oh-my-dot feature update --all --shell powershell
   oh-my-dot feature update --local --all`,
 		Args: state.validateFeatureUpdateArgs,
-		RunE: state.runFeatureUpdate,
+		RunE: silenceUsageOnRun(state.runFeatureUpdate),
 	}
 
 	featureRemoveCmd := &cobra.Command{
@@ -99,7 +99,7 @@ Examples:
   oh-my-dot feature remove kubectl-completion --shell bash
   oh-my-dot feature remove core-aliases --all`,
 		Args: cobra.MaximumNArgs(1),
-		RunE: state.runFeatureRemove,
+		RunE: silenceUsageOnRun(state.runFeatureRemove),
 	}
 
 	featureListCmd := &cobra.Command{
@@ -111,7 +111,7 @@ Examples:
   oh-my-dot feature list
   oh-my-dot feature list --shell bash`,
 		Args: cobra.NoArgs,
-		RunE: state.runFeatureList,
+		RunE: silenceUsageOnRun(state.runFeatureList),
 	}
 
 	featureEnableCmd := &cobra.Command{
@@ -123,7 +123,7 @@ Examples:
   oh-my-dot feature enable git-prompt
   oh-my-dot feature enable kubectl-completion --shell bash`,
 		Args: cobra.MaximumNArgs(1),
-		RunE: state.runFeatureEnable,
+		RunE: silenceUsageOnRun(state.runFeatureEnable),
 	}
 
 	featureDisableCmd := &cobra.Command{
@@ -136,7 +136,7 @@ Examples:
   oh-my-dot feature disable git-prompt
   oh-my-dot feature disable kubectl-completion --shell bash`,
 		Args: cobra.MaximumNArgs(1),
-		RunE: state.runFeatureDisable,
+		RunE: silenceUsageOnRun(state.runFeatureDisable),
 	}
 
 	featureInfoCmd := &cobra.Command{
@@ -152,7 +152,7 @@ Examples:
   oh-my-dot feature info git-prompt
   oh-my-dot feature info kubectl-completion`,
 		Args: cobra.MaximumNArgs(1),
-		RunE: state.runFeatureInfo,
+		RunE: silenceUsageOnRun(state.runFeatureInfo),
 	}
 
 	featureConfigureCmd := &cobra.Command{
@@ -166,7 +166,7 @@ Examples:
   oh-my-dot feature configure
   oh-my-dot feature configure oh-my-posh --shell powershell --option theme=pure
   oh-my-dot feature configure oh-my-posh --shell bash --reset-option config_file`,
-		Args: cobra.MaximumNArgs(1), RunE: state.runFeatureConfigure,
+		Args: cobra.MaximumNArgs(1), RunE: silenceUsageOnRun(state.runFeatureConfigure),
 	}
 	featureConfigureCmd.Flags().StringSliceVar(&state.flagShell, "shell", nil, "Configure specific installed shells")
 	featureConfigureCmd.Flags().StringSliceVar(&state.flagOption, "option", nil, "Change an option (key=value); repeatable")
