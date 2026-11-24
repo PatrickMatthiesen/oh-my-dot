@@ -25,7 +25,7 @@ func (state *commandState) loadSelection(cmd *cobra.Command, args []string, disa
 	}
 	if len(args) == 0 {
 		if !interactive.ShouldPrompt(cmd, false) {
-			return "", nil, fmt.Errorf("feature name required; specify a feature and --shell (or --all), or run in a terminal to select")
+			return "", nil, usageErrorf(cmd, "feature name required; specify a feature and --shell (or --all), or run in a terminal to select")
 		}
 		var eligible []featureRecord
 		var labels []string
@@ -37,6 +37,11 @@ func (state *commandState) loadSelection(cmd *cobra.Command, args []string, disa
 		}
 		if len(eligible) == 0 {
 			return "", nil, nil
+		}
+		if !state.flagLocal {
+			if err := preflightFeatureMutation(state.repoPathProvider()); err != nil {
+				return "", nil, err
+			}
 		}
 		action := "enable"
 		if disabled {
@@ -83,7 +88,12 @@ func (state *commandState) loadSelection(cmd *cobra.Command, args []string, disa
 		}
 	}
 	if !interactive.ShouldPrompt(cmd, false) {
-		return "", nil, fmt.Errorf("feature %q is installed in multiple shells; specify --shell or --all", name)
+		return "", nil, usageErrorf(cmd, "feature %q is installed in multiple shells; specify --shell or --all", name)
+	}
+	if !state.flagLocal {
+		if err := preflightFeatureMutation(state.repoPathProvider()); err != nil {
+			return "", nil, err
+		}
 	}
 	selected, err := selectLifecycleShells("Change "+name+" in which shells?", installed, nil)
 	return name, selected, err
@@ -181,7 +191,7 @@ func (state *commandState) configureSelection(cmd *cobra.Command, args []string)
 	}
 	if name == "" {
 		if !interactive.ShouldPrompt(cmd, false) {
-			return "", nil, fmt.Errorf("feature name required; use feature configure <feature> --shell <shell> --option key=value")
+			return "", nil, usageErrorf(cmd, "feature name required; use feature configure <feature> --shell <shell> --option key=value")
 		}
 		names := make(map[string]bool)
 		for _, record := range records {
@@ -196,6 +206,11 @@ func (state *commandState) configureSelection(cmd *cobra.Command, args []string)
 		sort.Strings(choices)
 		if len(choices) == 0 {
 			return "", nil, fmt.Errorf("no installed catalog features have configurable options")
+		}
+		if !state.flagLocal {
+			if err := preflightFeatureMutation(state.repoPathProvider()); err != nil {
+				return "", nil, err
+			}
 		}
 		index, err := selectLifecycleFeature("Configure which installed feature?", choices)
 		if err != nil {
@@ -214,7 +229,12 @@ func (state *commandState) configureSelection(cmd *cobra.Command, args []string)
 	}
 	if len(selected) > 1 && len(state.flagShell) == 0 {
 		if !interactive.ShouldPrompt(cmd, false) {
-			return "", nil, fmt.Errorf("feature %q is installed in multiple shells; specify --shell", name)
+			return "", nil, usageErrorf(cmd, "feature %q is installed in multiple shells; specify --shell", name)
+		}
+		if !state.flagLocal {
+			if err := preflightFeatureMutation(state.repoPathProvider()); err != nil {
+				return "", nil, err
+			}
 		}
 		labels := make([]string, len(selected))
 		for index, record := range selected {

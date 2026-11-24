@@ -106,6 +106,33 @@ func TestExecutePrintsRunEErrorWhenUsageIsSilenced(t *testing.T) {
 	}
 }
 
+func TestExecuteFeatureRuntimeErrorSilencesUsageWithoutLeakingToLaterUsageError(t *testing.T) {
+	viper.Reset()
+	viper.Set("initialized", true)
+	viper.Set("repo-path", t.TempDir())
+	t.Cleanup(viper.Reset)
+
+	// 1. Runtime error (feature not installed) must not dump Usage:.
+	runtimeOut, err := captureExecuteOutput(t, []string{"feature", "configure", "oh-my-posh", "--no-interactive"})
+	if err == nil {
+		t.Fatal("expected runtime error for missing feature")
+	}
+	runtimeText := stripANSICodes(runtimeOut)
+	if strings.Contains(runtimeText, "Usage:\n") {
+		t.Fatalf("expected runtime error to omit usage, got %q", runtimeText)
+	}
+
+	// 2. Subsequent CLI usage error on the same command must still print Usage:.
+	usageOut, err := captureExecuteOutput(t, []string{"feature", "configure", "--no-interactive"})
+	if err == nil {
+		t.Fatal("expected usage error for missing feature name")
+	}
+	usageText := stripANSICodes(usageOut)
+	if !strings.Contains(usageText, "Usage:\n") {
+		t.Fatalf("expected follow-up usage error to print usage, got %q", usageText)
+	}
+}
+
 func captureExecuteOutput(t *testing.T, args []string) (string, error) {
 	t.Helper()
 

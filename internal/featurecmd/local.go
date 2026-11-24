@@ -13,7 +13,7 @@ import (
 
 func (state *commandState) localFeatureTargets(cmd *cobra.Command, args []string, refresh bool) ([]featureRecord, error) {
 	if state.flagInteractive && len(args) > 0 {
-		return nil, fmt.Errorf("interactive mode does not accept a feature name")
+		return nil, usageErrorf(cmd, "interactive mode does not accept a feature name")
 	}
 	records, err := featureRecords(state.repoPathProvider(), state.flagShell)
 	if err != nil {
@@ -66,7 +66,7 @@ func (state *commandState) localFeatureTargets(cmd *cobra.Command, args []string
 			return selected, nil
 		}
 		if !interactive.ShouldPrompt(cmd, false) {
-			return nil, fmt.Errorf("private feature %q is installed in multiple shells; specify --shell or --all", name)
+			return nil, usageErrorf(cmd, "private feature %q is installed in multiple shells; specify --shell or --all", name)
 		}
 		var names []string
 		for _, record := range selected {
@@ -90,7 +90,7 @@ func (state *commandState) localFeatureTargets(cmd *cobra.Command, args []string
 		return eligible, nil
 	}
 	if !interactive.ShouldPrompt(cmd, false) {
-		return nil, fmt.Errorf("feature name required; specify a feature and --shell (or --all), or run in a terminal to browse private features")
+		return nil, usageErrorf(cmd, "feature name required; specify a feature and --shell (or --all), or run in a terminal to browse private features")
 	}
 	if len(eligible) == 0 {
 		return eligible, nil

@@ -29,7 +29,7 @@ Adding oh-my-posh to bash...
     dracula
     pure
 
-Config File - Path to custom Oh My Posh configuration file (Enter to keep default or skip)
+Config File - Custom Oh My Posh config file (existing file, Enter to skip)
 >
 
 Auto Upgrade - Automatically install Oh My Posh updates using its configured check interval

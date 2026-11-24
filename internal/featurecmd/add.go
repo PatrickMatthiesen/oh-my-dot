@@ -25,14 +25,14 @@ func (state *commandState) runFeatureAdd(cmd *cobra.Command, args []string) erro
 		return fmt.Errorf("invalid interaction mode: %w", err)
 	}
 	if state.flagAll && len(state.flagShell) > 0 {
-		return fmt.Errorf("choose --shell or --all, not both")
+		return usageErrorf(cmd, "choose --shell or --all, not both")
 	}
 	if len(args) == 0 && interactive.ShouldPrompt(cmd, false) {
 		return state.runInteractiveFeatureAdd(cmd, repoPath)
 	}
 
 	if len(args) == 0 {
-		return fmt.Errorf("feature name required; pass a feature name and --shell, or run feature add in a terminal to browse the catalog")
+		return usageErrorf(cmd, "feature name required; pass a feature name and --shell, or run feature add in a terminal to browse the catalog")
 	}
 
 	featureName := args[0]
@@ -205,6 +205,11 @@ func (state *commandState) runFeatureAdd(cmd *cobra.Command, args []string) erro
 func (state *commandState) runInteractiveFeatureAdd(cmd *cobra.Command, repoPath string) error {
 	if !interactive.ShouldPrompt(cmd, false) {
 		return fmt.Errorf("cannot run interactive mode in non-interactive environment")
+	}
+	if !state.flagLocal {
+		if err := preflightFeatureMutation(repoPath); err != nil {
+			return err
+		}
 	}
 
 	allFeatures := catalog.ListFeatures()
@@ -506,11 +511,17 @@ func (state *commandState) selectShells(cmd *cobra.Command, metadata catalog.Fea
 
 	if currentShellSupported && len(supportedShells) > 1 {
 		if !interactive.ShouldPrompt(cmd, false) {
-			return nil, fmt.Errorf(
+			return nil, usageErrorf(
+				cmd,
 				"cannot prompt for shell selection in non-interactive mode\nPlease specify target shell(s):\n  --shell bash          Add to specific shell\n  --all                 Add to all supported shells\n\nExample: %s feature add %s --shell bash",
 				state.aliasProvider(),
 				metadata.Name,
 			)
+		}
+		if !state.flagLocal {
+			if err := preflightFeatureMutation(state.repoPathProvider()); err != nil {
+				return nil, err
+			}
 		}
 
 		return interactive.MultiSelect(
@@ -521,7 +532,12 @@ func (state *commandState) selectShells(cmd *cobra.Command, metadata catalog.Fea
 	}
 
 	if !interactive.ShouldPrompt(cmd, false) {
-		return nil, fmt.Errorf("feature does not support current shell, cannot prompt in non-interactive mode\nPlease specify target shell(s) with --shell flag\n\nSupported shells: %v", supportedShells)
+		return nil, usageErrorf(cmd, "feature does not support current shell, cannot prompt in non-interactive mode\nPlease specify target shell(s) with --shell flag\n\nSupported shells: %v", supportedShells)
+	}
+	if !state.flagLocal {
+		if err := preflightFeatureMutation(state.repoPathProvider()); err != nil {
+			return nil, err
+		}
 	}
 
 	return interactive.MultiSelect(

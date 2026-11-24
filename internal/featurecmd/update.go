@@ -45,7 +45,7 @@ func (state *commandState) runFeatureUpdate(cmd *cobra.Command, args []string) e
 	}
 	if state.flagInteractive || (len(args) == 0 && !state.flagAll && interactive.ShouldPrompt(cmd, false)) {
 		if len(args) > 0 {
-			return fmt.Errorf("interactive mode does not accept a feature name")
+			return usageErrorf(cmd, "interactive mode does not accept a feature name")
 		}
 
 		return state.runInteractiveFeatureUpdate(cmd, repoPath)
@@ -56,7 +56,7 @@ func (state *commandState) runFeatureUpdate(cmd *cobra.Command, args []string) e
 			return state.runAllFeatureUpdates(repoPath, alias)
 		}
 
-		return fmt.Errorf("feature name required (or use -i for interactive mode)")
+		return usageErrorf(cmd, "feature name required (or use -i for interactive mode)")
 	}
 
 	featureName := args[0]
@@ -121,6 +121,9 @@ func (state *commandState) runInteractiveFeatureUpdate(cmd *cobra.Command, repoP
 	if len(featureMap) == 0 {
 		fileops.ColorPrintln("No refreshable features found", fileops.Yellow)
 		return nil
+	}
+	if err := preflightFeatureMutation(repoPath); err != nil {
+		return err
 	}
 
 	labels := make([]string, 0, len(featureMap))

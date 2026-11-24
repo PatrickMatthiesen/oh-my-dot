@@ -2,6 +2,7 @@ package cmd
 
 import (
 	_ "embed"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -195,7 +196,7 @@ func Execute(funcs ...func(*cobra.Command)) error {
 			fmt.Fprintf(rootCmd.ErrOrStderr(), "%s: %s\n\n", fileops.SColorPrint("Error", fileops.Red), err)
 		}
 
-		if shouldPrintCommandUsage(executedCmd) {
+		if shouldPrintCommandUsage(executedCmd, err) {
 			_ = executedCmd.Usage()
 		}
 	}
@@ -207,7 +208,15 @@ func shouldPrintCommandError(cmd *cobra.Command) bool {
 	return !hasLocalSilenceErrorSetting(cmd)
 }
 
-func shouldPrintCommandUsage(cmd *cobra.Command) bool {
+type usageVisibilityError interface {
+	ShowUsage() bool
+}
+
+func shouldPrintCommandUsage(cmd *cobra.Command, err error) bool {
+	var visibility usageVisibilityError
+	if errors.As(err, &visibility) {
+		return visibility.ShowUsage()
+	}
 	return !hasLocalSilenceUsageSetting(cmd)
 }
 

@@ -28,7 +28,7 @@ func (state *commandState) runFeatureRemove(cmd *cobra.Command, args []string) e
 	}
 
 	if len(args) == 0 {
-		return fmt.Errorf("feature name required (or use -i for interactive mode)\n\nExamples:\n  %s feature remove git-prompt\n  %s feature remove -i                    # Browse features interactively\n  %s feature remove git-prompt --all      # Remove from all shells", alias, alias, alias)
+		return usageErrorf(cmd, "feature name required (or use -i for interactive mode)\n\nExamples:\n  %s feature remove git-prompt\n  %s feature remove -i                    # Browse features interactively\n  %s feature remove git-prompt --all      # Remove from all shells", alias, alias, alias)
 	}
 
 	featureName := args[0]
@@ -46,7 +46,7 @@ func (state *commandState) runFeatureRemove(cmd *cobra.Command, args []string) e
 		}
 	} else {
 		if !interactive.ShouldPrompt(cmd, false) {
-			return fmt.Errorf("cannot prompt in non-interactive mode\nPlease specify shell(s) with --shell flag or use --all")
+			return usageErrorf(cmd, "cannot prompt in non-interactive mode\nPlease specify shell(s) with --shell flag or use --all")
 		}
 
 		allShells, err := shell.ListShellsWithFeatures(repoPath)
@@ -66,6 +66,10 @@ func (state *commandState) runFeatureRemove(cmd *cobra.Command, args []string) e
 
 		if len(shellsWithFeature) == 0 {
 			return fmt.Errorf("feature '%s' is not installed in any shell", featureName)
+		}
+
+		if err := preflightFeatureMutation(repoPath); err != nil {
+			return err
 		}
 
 		targetShells, err = interactive.MultiSelect(
@@ -155,6 +159,9 @@ func (state *commandState) runInteractiveFeatureRemove(cmd *cobra.Command, repoP
 	if len(allShells) == 0 {
 		fileops.ColorPrintln("No shell features configured", fileops.Yellow)
 		return nil
+	}
+	if err := preflightFeatureMutation(repoPath); err != nil {
+		return err
 	}
 
 	selectedShells, err := interactive.MultiSelect(

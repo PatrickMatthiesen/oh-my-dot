@@ -150,3 +150,24 @@ func TestBackCanExplicitlyClearOptionalPath(t *testing.T) {
 		t.Fatalf("other answers changed: %v", values)
 	}
 }
+
+func TestOptionalEmptyStringDefaultSkipsOnBlankInput(t *testing.T) {
+	metadata := catalog.FeatureMetadata{Options: []catalog.OptionMetadata{
+		{Name: "prefix", DisplayName: "Prefix", Type: catalog.OptionTypeString, Default: ""},
+		{Name: "config", DisplayName: "Config File", Type: catalog.OptionTypeFile, Default: ""},
+	}}
+	values, err := promptForOptions(metadata, nil, optionPrompter{
+		input: func(question, _ string) (string, error) {
+			if !strings.Contains(question, "Enter to skip") {
+				t.Fatalf("expected skip hint for empty default, got %q", question)
+			}
+			return "", nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(values) != 0 {
+		t.Fatalf("expected blank optional answers with empty defaults to be skipped, got %v", values)
+	}
+}

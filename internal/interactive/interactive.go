@@ -138,6 +138,7 @@ type textInputModel struct {
 	navigation promptNavigation
 	textInput  textinput.Model
 	question   string
+	width      int
 	cancelled  bool
 }
 
@@ -152,6 +153,14 @@ func (m textInputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		if msg.Width > 0 {
+			inputWidth := max(1, min(50, msg.Width-4))
+			m.textInput.SetWidth(inputWidth)
+			m.textInput.SetCursor(m.textInput.Position())
+		}
+		return m, nil
 	case tea.KeyMsg:
 		key := msg.Key()
 		switch key.Code {
@@ -173,11 +182,17 @@ func (m textInputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m textInputModel) View() tea.View {
+	questionStyle := lipgloss.NewStyle().Bold(true)
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	if m.width > 0 {
+		questionStyle = questionStyle.Width(m.width)
+		helpStyle = helpStyle.Width(m.width)
+	}
 	content := fmt.Sprintf(
 		"%s\n\n%s\n\n%s",
-		lipgloss.NewStyle().Bold(true).Render(m.question),
+		questionStyle.Render(m.question),
 		m.textInput.View(),
-		lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(Press Enter to confirm, Esc to cancel)"+m.navigation.help()),
+		helpStyle.Render("(Press Enter to confirm, Esc to cancel)"+m.navigation.help()),
 	)
 	return tea.NewView(content)
 }
@@ -208,6 +223,7 @@ func PromptConfirm(question string) (bool, error) {
 type confirmModel struct {
 	navigation promptNavigation
 	question   string
+	width      int
 	selected   bool
 	cancelled  bool
 }
@@ -221,6 +237,9 @@ func (m confirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		return m, nil
 	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "y", "Y":
@@ -256,12 +275,19 @@ func (m confirmModel) View() tea.View {
 		noLabel = "> [No]"
 	}
 
+	questionStyle := lipgloss.NewStyle().Bold(true)
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	if m.width > 0 {
+		questionStyle = questionStyle.Width(m.width)
+		helpStyle = helpStyle.Width(m.width)
+	}
+
 	content := fmt.Sprintf(
 		"%s\n\n  %s  %s\n\n%s",
-		lipgloss.NewStyle().Bold(true).Render(m.question),
+		questionStyle.Render(m.question),
 		yesStyle.Render(yesLabel),
 		noStyle.Render(noLabel),
-		lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(Left: Yes, Right: No; Enter confirms; y/n answers immediately; Esc cancels)"+m.navigation.help()),
+		helpStyle.Render("(Left: Yes, Right: No; Enter confirms; y/n answers immediately; Esc cancels)"+m.navigation.help()),
 	)
 	return tea.NewView(content)
 }
@@ -404,8 +430,17 @@ func (m selectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m selectModel) View() tea.View {
-	question := lipgloss.NewStyle().Bold(true).Width(m.list.Width()).Render(m.question)
-	return tea.NewView(question + "\n\n" + m.list.View() + m.navigation.help())
+	width := m.list.Width()
+	question := lipgloss.NewStyle().Bold(true).Width(width).Render(m.question)
+	view := question + "\n\n" + m.list.View()
+	if help := strings.TrimPrefix(m.navigation.help(), "\n"); help != "" {
+		helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+		if width > 0 {
+			helpStyle = helpStyle.Width(width)
+		}
+		view += "\n" + helpStyle.Render(help)
+	}
+	return tea.NewView(view)
 }
 
 // PromptMultiSelect prompts the user to select multiple items from a list
@@ -445,6 +480,7 @@ type multiSelectModel struct {
 	options   []string
 	selected  map[int]bool
 	cursor    int
+	width     int
 	cancelled bool
 }
 
@@ -454,6 +490,9 @@ func (m multiSelectModel) Init() tea.Cmd {
 
 func (m multiSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		return m, nil
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "up", "k":
@@ -477,7 +516,13 @@ func (m multiSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m multiSelectModel) View() tea.View {
-	s := lipgloss.NewStyle().Bold(true).Render(m.question) + "\n\n"
+	questionStyle := lipgloss.NewStyle().Bold(true)
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	if m.width > 0 {
+		questionStyle = questionStyle.Width(m.width)
+		helpStyle = helpStyle.Width(m.width)
+	}
+	s := questionStyle.Render(m.question) + "\n\n"
 
 	for i, opt := range m.options {
 		cursor := " "
@@ -493,7 +538,7 @@ func (m multiSelectModel) View() tea.View {
 		s += fmt.Sprintf("%s [%s] %s\n", cursor, checked, opt)
 	}
 
-	s += "\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(Use arrows to move, Space to select, Enter to confirm, Esc to cancel)")
+	s += "\n" + helpStyle.Render("(Use arrows to move, Space to select, Enter to confirm, Esc to cancel)")
 
 	return tea.NewView(s)
 }

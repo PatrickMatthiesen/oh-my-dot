@@ -232,7 +232,7 @@ var Catalog = map[string]FeatureMetadata{
 			{
 				Name:          "config_file",
 				DisplayName:   "Config File",
-				Description:   "Path to custom Oh My Posh configuration file (optional)",
+				Description:   "Custom Oh My Posh config file",
 				Type:          OptionTypeFile,
 				Required:      false,
 				PathMustExist: true,

@@ -176,3 +176,80 @@ func TestResolveOptionsForNonInteractiveWithOverrides(t *testing.T) {
 		t.Fatalf("optional_timeout = %v, want 42", values["optional_timeout"])
 	}
 }
+
+func TestFormatOptionQuestion(t *testing.T) {
+	minVal, maxVal := 1, 60
+	posh, _ := catalog.GetFeature("oh-my-posh")
+	var configOpt catalog.OptionMetadata
+	for _, opt := range posh.Options {
+		if opt.Name == "config_file" {
+			configOpt = opt
+		}
+	}
+	configWithDefault := configOpt
+	configWithDefault.Default = "/tmp/theme.omp.json"
+
+	tests := []struct {
+		name string
+		opt  catalog.OptionMetadata
+		want string
+	}{
+		{
+			name: "oh-my-posh config_file without default",
+			opt:  configOpt,
+			want: "Config File - Custom Oh My Posh config file (existing file, Enter to skip)",
+		},
+		{
+			name: "oh-my-posh config_file with existing value",
+			opt:  configWithDefault,
+			want: "Config File - Custom Oh My Posh config file (existing file, Enter to keep)",
+		},
+		{
+			name: "required int with min and max",
+			opt: catalog.OptionMetadata{
+				DisplayName: "Timeout",
+				Description: "Seconds",
+				Type:        catalog.OptionTypeInt,
+				Required:    true,
+				IntMin:      &minVal,
+				IntMax:      &maxVal,
+			},
+			want: "Timeout - Seconds (required, min: 1, max: 60)",
+		},
+		{
+			name: "optional string without default",
+			opt: catalog.OptionMetadata{
+				DisplayName: "Prefix",
+				Description: "Command prefix",
+				Type:        catalog.OptionTypeString,
+			},
+			want: "Prefix - Command prefix (Enter to skip)",
+		},
+		{
+			name: "optional path must exist only",
+			opt: catalog.OptionMetadata{
+				DisplayName:   "Output Dir",
+				Type:          catalog.OptionTypePath,
+				PathMustExist: true,
+			},
+			want: "Output Dir (must exist, Enter to skip)",
+		},
+		{
+			name: "optional file only",
+			opt: catalog.OptionMetadata{
+				DisplayName: "Output File",
+				Type:        catalog.OptionTypeFile,
+				FileOnly:    true,
+			},
+			want: "Output File (file only, Enter to skip)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := formatOptionQuestion(tt.opt); got != tt.want {
+				t.Fatalf("formatOptionQuestion() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
