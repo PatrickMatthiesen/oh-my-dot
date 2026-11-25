@@ -17,6 +17,9 @@ import (
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/manifest"
 )
 
+// Windows PowerShell can round a short sleep down to the system timer interval.
+const powerShellFixtureSleepToleranceMS = 15
+
 func TestPowerShellProfileMeasuresSharedScopeAndFeatures(t *testing.T) {
 	testPowerShellProfileEditions(t, testPowerShellProfileMeasuresSharedScopeAndFeatures)
 }
@@ -115,7 +118,7 @@ if ($global:omdDeferredFixtureRan) { throw 'deferred feature ran during noninter
 		total += profile.DurationMS
 		byPath[profile.Path] = profile.Features
 	}
-	if math.Abs(total-report.TotalMS) > 0.001 || total < 100 {
+	if math.Abs(total-report.TotalMS) > 0.001 || total < 100-3*powerShellFixtureSleepToleranceMS {
 		t.Fatalf("unexpected total %.3f ms, profile sum %.3f ms", report.TotalMS, total)
 	}
 	if len(byPath[paths[0]]) != 0 {
@@ -136,7 +139,7 @@ if ($global:omdDeferredFixtureRan) { throw 'deferred feature ran during noninter
 		feature := features[0]
 		actualFile, actualErr := os.Stat(feature.Path)
 		expectedFile, expectedErr := os.Stat(want.path)
-		if feature.Name != want.name || feature.Strategy != want.strategy || feature.DurationMS < want.minMS ||
+		if feature.Name != want.name || feature.Strategy != want.strategy || feature.DurationMS+powerShellFixtureSleepToleranceMS < want.minMS ||
 			actualErr != nil || expectedErr != nil || !os.SameFile(actualFile, expectedFile) {
 			t.Fatalf("unexpected feature timing: %+v, want %+v", feature, want)
 		}
@@ -215,7 +218,7 @@ if ((Get-OmdDeferredFixture) -cne 'deferred') { throw 'idle action did not load 
 				t.Fatalf("expected one timed idle feature: %+v", profile)
 			}
 			feature := profile.Features[0]
-			if feature.Name != "deferred" || feature.Strategy != "defer" || feature.DurationMS < 30 {
+			if feature.Name != "deferred" || feature.Strategy != "defer" || feature.DurationMS+powerShellFixtureSleepToleranceMS < 30 {
 				t.Fatalf("unexpected idle feature timing: %+v", feature)
 			}
 		}
@@ -320,7 +323,7 @@ $omdNestedFixture = $true`)
 		}
 		profile := report.Profiles[0]
 		if len(profile.Features) != 1 || profile.Features[0].Name != "completed" ||
-			profile.Features[0].DurationMS < 30 || profile.DurationMS < profile.Features[0].DurationMS ||
+			profile.Features[0].DurationMS+powerShellFixtureSleepToleranceMS < 30 || profile.DurationMS < profile.Features[0].DurationMS ||
 			report.TotalMS != profile.DurationMS {
 			t.Fatalf("expected the completed feature and elapsed profile timing, got %+v", report)
 		}
