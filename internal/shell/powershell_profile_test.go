@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -16,7 +18,11 @@ import (
 )
 
 func TestPowerShellProfileMeasuresSharedScopeAndFeatures(t *testing.T) {
-	executable, paths := powerShellProfileFixtures(t)
+	testPowerShellProfileEditions(t, testPowerShellProfileMeasuresSharedScopeAndFeatures)
+}
+
+func testPowerShellProfileMeasuresSharedScopeAndFeatures(t *testing.T, executable string) {
+	paths := powerShellProfileFixtures(t)
 	repo := filepath.Join(filepath.Dir(paths[0]), "managed repo")
 	if err := InitializeShellDirectory(repo, "powershell"); err != nil {
 		t.Fatal(err)
@@ -40,6 +46,7 @@ func TestPowerShellProfileMeasuresSharedScopeAndFeatures(t *testing.T) {
 	lazy, _ := GetFeatureFilePath(repo, "powershell", "lazy-demo")
 	unused, _ := GetFeatureFilePath(repo, "powershell", "unused-demo")
 	writePowerShellFixture(t, eager, `
+Invoke-MissingOMDEagerFixtureCommand
 $omdFixtureOrder += 'E'
 Start-Sleep -Milliseconds 30
 function Get-OMDFixture { $omdFixtureOrder }
@@ -60,6 +67,7 @@ function Invoke-OMDFixture { "loaded-$($args[0])" }
 	}
 	initPath, _ := GetInitScriptPath(repo, "powershell")
 	writePowerShellFixture(t, paths[0], `
+Invoke-MissingOMDProfileFixtureCommand
 $omdFixtureOrder = '1'
 'unrelated success output'
 Write-Warning 'unrelated warning'
@@ -86,8 +94,15 @@ if ((Invoke-OMDFixture next) -cne 'loaded-next') { throw 'wrapper failed to prom
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Shell != "powershell" || report.Executable != executable || report.Edition == "" || report.Version == "" || report.Host != "ConsoleHost" || !report.AttributionAvailable || len(report.Profiles) != 4 || len(report.Warnings) != 0 {
+	if report.Shell != "powershell" || report.Executable != executable || report.Edition == "" || report.Version == "" || report.Host != "ConsoleHost" || !report.AttributionAvailable || len(report.Profiles) != 4 {
 		t.Fatalf("unexpected report: %+v", report)
+	}
+	wantWarnings := []string{
+		"PowerShell recorded 2 error(s) while running " + paths[0] + ".",
+		"PowerShell recorded 1 error(s) while running " + paths[1] + ".",
+	}
+	if !slices.Equal(report.Warnings, wantWarnings) {
+		t.Fatalf("unexpected warnings: %v", report.Warnings)
 	}
 	var total float64
 	byPath := make(map[string][]FeatureTiming)
@@ -133,7 +148,11 @@ if ((Invoke-OMDFixture next) -cne 'loaded-next') { throw 'wrapper failed to prom
 }
 
 func TestPowerShellProfileWithoutAttribution(t *testing.T) {
-	executable, paths := powerShellProfileFixtures(t)
+	testPowerShellProfileEditions(t, testPowerShellProfileWithoutAttribution)
+}
+
+func testPowerShellProfileWithoutAttribution(t *testing.T, executable string) {
+	paths := powerShellProfileFixtures(t)
 	for _, tt := range []struct {
 		name, script string
 		profiles     int
@@ -168,18 +187,54 @@ func TestPowerShellProfileWithoutAttribution(t *testing.T) {
 	}
 }
 
+func TestPowerShellProfileAvoidsObserverModuleImports(t *testing.T) {
+	testPowerShellProfileEditions(t, func(t *testing.T, executable string) {
+		paths := powerShellProfileFixtures(t)
+		const checkModules = `
+if (Get-Module Microsoft.PowerShell.Management, Microsoft.PowerShell.Utility) {
+  throw 'the loader or profiler imported a module'
+}
+`
+		initPath := filepath.Join(filepath.Dir(paths[0]), "init.ps1")
+		writePowerShellFixture(t, initPath, generatePowerShellInit(FeaturesByStrategy{}))
+		writePowerShellFixture(t, paths[0], checkModules+`
+Set-StrictMode -Version Latest
+$PSModuleAutoLoadingPreference = 'None'
+function Split-Path {
+  param([switch]$Parent, [string]$Path)
+  [IO.Path]::GetDirectoryName($Path)
+}
+. `+powerShellLiteral(initPath)+"\n"+checkModules)
+		writePowerShellFixture(t, paths[1], checkModules+`
+if ($PSModuleAutoLoadingPreference -cne 'None') { throw 'profiler changed autoload preference' }
+`)
+		cmd := exec.Command(executable, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", paths[0])
+		if output, err := cmd.CombinedOutput(); err != nil || len(output) != 0 {
+			t.Fatalf("inactive loader with strict mode and no autoload: %v\n%s", err, output)
+		}
+		report, err := profilePowerShell(context.Background(), executable, &paths)
+		if err != nil || !report.AttributionAvailable || len(report.Profiles) != 2 || len(report.Warnings) != 0 {
+			t.Fatalf("active loader with strict mode and no autoload: %+v, %v", report, err)
+		}
+	})
+}
+
 func TestPowerShellProfileFailures(t *testing.T) {
-	executable, paths := powerShellProfileFixtures(t)
+	testPowerShellProfileEditions(t, testPowerShellProfileFailures)
+}
+
+func testPowerShellProfileFailures(t *testing.T, executable string) {
+	paths := powerShellProfileFixtures(t)
 	for _, tt := range []struct{ name, script, want string }{
 		{"profile throw", "throw 'fixture error'", paths[0] + ": fixture error"},
 		{"process exit", "[Environment]::Exit(0)", "did not write a startup report"},
-		{"profile break", "break", "did not write a startup report"},
+		{"profile break", "break", "profile stopped before it finished running"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			writePowerShellFixture(t, paths[0], tt.script)
-			_, err := profilePowerShell(context.Background(), executable, &paths)
-			if err == nil || !strings.Contains(err.Error(), tt.want) {
-				t.Fatalf("expected %q, got %v", tt.want, err)
+			report, err := profilePowerShell(context.Background(), executable, &paths)
+			if err == nil || !strings.Contains(err.Error(), tt.want) || len(report.Profiles) != 0 {
+				t.Fatalf("expected %q and no timings, got %+v, %v", tt.want, report, err)
 			}
 		})
 	}
@@ -195,6 +250,39 @@ func TestPowerShellProfileFailures(t *testing.T) {
 			t.Fatalf("expected the completed profile timing, got %+v", report)
 		}
 	})
+	t.Run("feature before profile throw", func(t *testing.T) {
+		root := filepath.Dir(paths[0])
+		initPath := filepath.Join(root, "init.ps1")
+		featurePath := filepath.Join(root, "features", "completed.ps1")
+		writePowerShellFixture(t, initPath, generatePowerShellInit(FeaturesByStrategy{Eager: []string{"completed"}}))
+		writePowerShellFixture(t, featurePath, "Start-Sleep -Milliseconds 30")
+		writePowerShellFixture(t, paths[0], ". "+powerShellLiteral(initPath)+"\nthrow 'after completed feature'")
+		report, err := profilePowerShell(context.Background(), executable, &paths)
+		if err == nil || !strings.Contains(err.Error(), "after completed feature") {
+			t.Fatalf("expected the profile throw, got %v", err)
+		}
+		if len(report.Profiles) != 1 || report.Profiles[0].Path != paths[0] || !report.AttributionAvailable {
+			t.Fatalf("expected the failed profile with attribution, got %+v", report)
+		}
+		profile := report.Profiles[0]
+		if len(profile.Features) != 1 || profile.Features[0].Name != "completed" ||
+			profile.Features[0].DurationMS < 30 || profile.DurationMS < profile.Features[0].DurationMS ||
+			report.TotalMS != profile.DurationMS {
+			t.Fatalf("expected the completed feature and elapsed profile timing, got %+v", report)
+		}
+	})
+	t.Run("hard exit after completed profile", func(t *testing.T) {
+		writePowerShellFixture(t, paths[0], "'successful profile'")
+		writePowerShellFixture(t, paths[1], "[Environment]::Exit(7)")
+		report, err := profilePowerShell(context.Background(), executable, &paths)
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) || exitErr.ExitCode() != 7 {
+			t.Fatalf("expected process exit code 7, got %v", err)
+		}
+		if len(report.Profiles) != 1 || report.Profiles[0].Path != paths[0] {
+			t.Fatalf("expected the completed profile timing, got %+v", report)
+		}
+	})
 	t.Run("cancelled or timed out", func(t *testing.T) {
 		writePowerShellFixture(t, paths[0], "Start-Sleep -Seconds 60")
 		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
@@ -204,16 +292,62 @@ func TestPowerShellProfileFailures(t *testing.T) {
 			t.Fatalf("expected deadline error, got %v", err)
 		}
 	})
+	t.Run("cancelled after completed profile", func(t *testing.T) {
+		startedPath := filepath.Join(filepath.Dir(paths[0]), "second-profile-started")
+		writePowerShellFixture(t, paths[0], "'successful profile'")
+		writePowerShellFixture(t, paths[1], "[IO.File]::WriteAllText("+powerShellLiteral(startedPath)+", '')\nStart-Sleep -Seconds 60")
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		type result struct {
+			report PowerShellProfileReport
+			err    error
+		}
+		done := make(chan result, 1)
+		go func() {
+			report, err := profilePowerShell(ctx, executable, &paths)
+			done <- result{report, err}
+		}()
+		ticker := time.NewTicker(10 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case got := <-done:
+				if !errors.Is(got.err, context.Canceled) || len(got.report.Profiles) != 1 || got.report.Profiles[0].Path != paths[0] {
+					t.Fatalf("expected one completed profile and context cancellation, got %+v, %v", got.report, got.err)
+				}
+				return
+			case <-ticker.C:
+				if _, err := os.Stat(startedPath); err == nil {
+					cancel()
+				}
+			}
+		}
+	})
 }
 
-func powerShellProfileFixtures(t *testing.T) (string, [4]string) {
+func testPowerShellProfileEditions(t *testing.T, test func(*testing.T, string)) {
 	t.Helper()
-	executable, err := exec.LookPath("pwsh")
-	if err != nil {
-		t.Skip("pwsh is unavailable")
+	names := []string{"pwsh"}
+	if runtime.GOOS == "windows" {
+		names = append(names, "powershell.exe")
+		// Use Process scope for the child running disposable local scripts.
+		t.Setenv("PSExecutionPolicyPreference", "Bypass")
 	}
+	for _, name := range names {
+		t.Run(name, func(t *testing.T) {
+			executable, err := exec.LookPath(name)
+			if err != nil {
+				t.Skipf("%s is unavailable", name)
+			}
+			test(t, executable)
+		})
+	}
+}
+
+func powerShellProfileFixtures(t *testing.T) [4]string {
+	t.Helper()
 	root := t.TempDir()
-	return executable, [4]string{
+	return [4]string{
 		filepath.Join(root, "first profile.ps1"),
 		filepath.Join(root, "second's profile.ps1"),
 		filepath.Join(root, "third profile.ps1"),

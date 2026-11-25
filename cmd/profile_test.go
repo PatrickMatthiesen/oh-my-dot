@@ -138,7 +138,9 @@ func TestProfileTextDisplaysTimingsAndMeasuredSuggestions(t *testing.T) {
 				{Name: "oh-my-posh", Path: "posh.ps1", Strategy: "eager", DurationMS: 175},
 				{Name: "another-feature", Path: "another.ps1", Strategy: "defer", DurationMS: 10},
 			}},
-			{Path: "host.ps1", DurationMS: 150},
+			{Path: "host.ps1", DurationMS: 150, Features: []shell.FeatureTiming{
+				{Name: "fast-feature", Path: "fast.ps1", Strategy: "eager", DurationMS: 5},
+			}},
 		},
 	}
 	var out bytes.Buffer
@@ -151,6 +153,7 @@ func TestProfileTextDisplaysTimingsAndMeasuredSuggestions(t *testing.T) {
 		"Total profile time: 400.00 ms",
 		"  250.00 ms  user.ps1\n    175.00 ms  oh-my-posh (eager)  posh.ps1",
 		"Inspect the Oh My Posh theme and cache configuration.",
+		"Check whether auto_upgrade runs during startup.",
 		"  150.00 ms  host.ps1\n    Inspect imports and commands in this profile.",
 		"Warning: example warning",
 	} {

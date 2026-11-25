@@ -342,11 +342,15 @@ oh-my-dot profile --shell powershell --json
 `profile` runs the profilers for all installed, supported shells by default.
 Use `--shell` to select one. The current release supports PowerShell. The
 profiler prefers PowerShell 7 and falls back to Windows PowerShell 5.1 on
-Windows. You can run it without initializing an oh-my-dot repository.
+Windows. When both are installed, it measures the PowerShell 7 profiles
+even when you run it in a Windows PowerShell 5.1 session. You can run it
+without initializing an oh-my-dot repository.
 
 The profiler replays the existing console profile files in a fresh,
 noninteractive PowerShell process. The total excludes process launch and the
 first prompt. Startup in an editor or an interactive terminal can differ.
+The child has redirected streams, so features that require console input
+may skip work they would do interactively.
 Your profiles execute as code and can perform their normal side effects,
 such as writing files or contacting services. The profiler itself does not
 write to the managed files.
@@ -361,9 +365,11 @@ Use `--json` for scripts. Standard output contains one document with
 `schemaVersion` and a `results` array. Each result identifies the shell and
 its status: `ok`, `partial`, `failed`, `unavailable`, or `unsupported`.
 Results include a `report` when timings are available and an `error` when
-the profiler cannot complete. A partial result retains the timings
-collected before failure. Any status other than `ok` returns a nonzero exit
-code.
+the profiler cannot complete. The profiler has a 30-second deadline. A
+partial result retains completed profile timings. If a profile throws
+after loading a managed feature, the report can include the feature and the
+elapsed time of that profile. Any status other than `ok` returns a nonzero
+exit code.
 
 ## Directory Structure
 

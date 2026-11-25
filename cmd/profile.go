@@ -106,16 +106,18 @@ func writeProfileText(out io.Writer, result profileResult) error {
 	}
 	for _, profile := range report.Profiles {
 		fmt.Fprintf(&text, "  %.2f ms  %s\n", profile.DurationMS, profile.Path)
-		if profile.DurationMS >= slowProfileEntryMS && len(profile.Features) == 0 {
+		// Features arrive slowest first and their timings may overlap.
+		if profile.DurationMS >= slowProfileEntryMS && (len(profile.Features) == 0 || profile.Features[0].DurationMS < slowProfileEntryMS) {
 			fmt.Fprintln(&text, "    Inspect imports and commands in this profile.")
 		}
 		for _, feature := range profile.Features {
 			fmt.Fprintf(&text, "    %.2f ms  %s (%s)  %s\n", feature.DurationMS, feature.Name, feature.Strategy, feature.Path)
 			if feature.DurationMS >= slowProfileEntryMS {
 				if strings.EqualFold(feature.Name, "oh-my-posh") {
-					fmt.Fprintln(&text, "      Inspect the Oh My Posh theme and cache configuration.")
+					fmt.Fprintln(&text, "      Inspect the Oh My Posh theme and cache configuration. Check whether auto_upgrade runs during startup.")
 				} else {
 					fmt.Fprintln(&text, "      Inspect imports and external commands in this feature.")
+					fmt.Fprintln(&text, "      If you do not use this feature, consider disabling it.")
 				}
 			}
 		}
