@@ -84,8 +84,9 @@ func TestProfileJSON(t *testing.T) {
 				return tt.installed
 			}, func(got context.Context) (shell.PowerShellProfileReport, error) {
 				runs++
-				if got != ctx {
-					t.Fatal("profiler did not receive the command context")
+				cancel()
+				if !errors.Is(got.Err(), context.Canceled) {
+					t.Fatal("profiler context did not inherit command cancellation")
 				}
 				return tt.returnReport, tt.returnError
 			})

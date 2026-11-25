@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/spf13/cobra"
 
@@ -55,7 +58,9 @@ func newProfileCommand(
 				result.Status = "unavailable"
 				profileErr = fmt.Errorf("PowerShell executable not found. Install PowerShell or add it to PATH")
 			default:
-				report, err := profilePowerShell(cmd.Context())
+				ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+				defer stop()
+				report, err := profilePowerShell(ctx)
 				result.Status = "ok"
 				if err != nil {
 					profileErr = fmt.Errorf("profile PowerShell: %w", err)

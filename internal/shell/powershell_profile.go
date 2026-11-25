@@ -106,7 +106,7 @@ func profilePowerShell(ctx context.Context, executable string, fixturePaths *[4]
 		return PowerShellProfileReport{}, errors.Join(runErr, fmt.Errorf("read PowerShell startup report: %w", err))
 	}
 	report, err := decodePowerShellProfileReport(string(data), executable)
-	if runErr != nil && errors.Is(err, errIncompletePowerShellReport) {
+	if runErr != nil && err == errIncompletePowerShellReport {
 		err = runErr
 	} else {
 		err = errors.Join(runErr, err)
@@ -152,32 +152,36 @@ func decodePowerShellProfileReport(data, executable string) (PowerShellProfileRe
 	}
 	// Each newline ends a checkpoint. An interrupted write can leave an
 	// unfinished record after the last usable sample.
+	var failures []error
 	for records := 0; ; records++ {
 		var line string
 		line, data, complete = strings.Cut(data, "\n")
 		if !complete {
-			return report, errIncompletePowerShellReport
+			if len(failures) == 0 {
+				return report, errIncompletePowerShellReport
+			}
+			return report, errors.Join(append(failures, errIncompletePowerShellReport)...)
 		}
 		if line == "D" && data == "" {
-			return report, nil
+			return report, errors.Join(failures...)
 		}
 		fields := strings.Split(line, "\t")
 		// A profile record has six fields followed by four fields per feature.
 		if len(fields) < 6 || (len(fields)-6)%4 != 0 || (fields[0] != "P" && fields[0] != "F") || records == 4 {
-			return report, fmt.Errorf("invalid PowerShell startup profile record")
+			return report, errors.Join(append(failures, fmt.Errorf("invalid PowerShell startup profile record"))...)
 		}
 		profile, err := decodePowerShellProfileTiming(fields)
 		if err != nil {
-			return report, err
+			return report, errors.Join(append(failures, err)...)
 		}
 		errorCount, err := strconv.ParseUint(fields[4], 10, 32)
 		if err != nil || (fields[3] != "0" && fields[3] != "1") {
-			return report, fmt.Errorf("invalid PowerShell startup profile record for %s", profile.Path)
+			return report, errors.Join(append(failures, fmt.Errorf("invalid PowerShell startup profile record for %s", profile.Path))...)
 		}
 		failure, err := decodePowerShellProfileField(fields[5])
 		failed := fields[0] == "F"
-		if err != nil || failed != (failure != "") || (failed && data != "") {
-			return report, fmt.Errorf("invalid PowerShell startup profile completion for %s", profile.Path)
+		if err != nil || failed != (failure != "") {
+			return report, errors.Join(append(failures, fmt.Errorf("invalid PowerShell startup profile completion for %s", profile.Path))...)
 		}
 		report.AttributionAvailable = report.AttributionAvailable || fields[3] == "1"
 		if errorCount != 0 {
@@ -188,7 +192,7 @@ func decodePowerShellProfileReport(data, executable string) (PowerShellProfileRe
 			report.TotalMS += profile.DurationMS
 		}
 		if failed {
-			return report, fmt.Errorf("PowerShell startup profiling failed: %s: %s", profile.Path, failure)
+			failures = append(failures, fmt.Errorf("PowerShell startup profiling failed: %s: %s", profile.Path, failure))
 		}
 	}
 }
@@ -247,6 +251,7 @@ $global:__omdStartupProfiler = @{
   AttributionAvailable = $false
   Features = $null
 }
+$__omdStartupInvocation = '. $global:__omdStartupProfilePath; $global:__omdStartupProfileReturned = $true'
 foreach ($__omdStartupPath in $__omdStartupProfilePaths) {
   if (-not [System.IO.File]::Exists($__omdStartupPath)) {
     continue
@@ -258,7 +263,7 @@ foreach ($__omdStartupPath in $__omdStartupProfilePaths) {
   # The nested pipeline shares session state. Its script has no try/catch
   # around the dot-source, so statement-terminating errors can continue.
   $__omdStartupPipeline = [PowerShell]::Create([System.Management.Automation.RunspaceMode]::CurrentRunspace)
-  $null = $__omdStartupPipeline.AddScript('. $global:__omdStartupProfilePath; $global:__omdStartupProfileReturned = $true', $false).AddCommand('Microsoft.PowerShell.Core\Out-Default')
+  $null = $__omdStartupPipeline.AddScript($__omdStartupInvocation, $false).AddCommand('Microsoft.PowerShell.Core\Out-Default')
   $__omdStartupWatch = [System.Diagnostics.Stopwatch]::StartNew()
   try {
     $null = $__omdStartupPipeline.Invoke()
@@ -269,6 +274,33 @@ foreach ($__omdStartupPath in $__omdStartupProfilePaths) {
   }
   if (-not $global:__omdStartupProfileReturned -and -not $__omdStartupFailure) {
     $__omdStartupFailure = 'profile stopped before it finished running'
+  }
+  # The return marker can run even when PowerShell could not load the file.
+  # Check where the error originated so errors in scripts the profile calls
+  # remain ordinary profile warnings.
+  if (-not $__omdStartupFailure) {
+    foreach ($__omdStartupError in $__omdStartupPipeline.Streams.Error) {
+      $__omdStartupException = $__omdStartupError.Exception
+      $__omdStartupSource = $__omdStartupError.InvocationInfo
+      if ($null -eq $__omdStartupSource) {
+        continue
+      }
+      $__omdStartupFromRunner = -not $__omdStartupSource.ScriptName -and $__omdStartupSource.Line -ceq $__omdStartupInvocation
+      if ($__omdStartupException -is [System.Management.Automation.ParseException] -and
+          ($__omdStartupFromRunner -or $__omdStartupSource.ScriptName -ceq $__omdStartupPath) -and
+          $null -ne $__omdStartupException.Errors -and
+          $__omdStartupException.Errors.Count -ne 0 -and
+          $__omdStartupException.Errors[0].Extent.File -ceq $__omdStartupPath) {
+        $__omdStartupFailure = 'could not parse profile: ' + $__omdStartupException.Message
+        break
+      }
+      # Write-Error can report its caller's invocation from inside a profile.
+      if ($__omdStartupException -is [System.Management.Automation.PSSecurityException] -and
+          $__omdStartupFromRunner -and $__omdStartupError.FullyQualifiedErrorId -ceq 'UnauthorizedAccess') {
+        $__omdStartupFailure = 'authorization blocked the profile: ' + $__omdStartupException.Message
+        break
+      }
+    }
   }
   if ($__omdStartupFailure.Length -gt 512) {
     $__omdStartupFailure = $__omdStartupFailure.Substring(0, 512)
@@ -289,9 +321,6 @@ foreach ($__omdStartupPath in $__omdStartupProfilePaths) {
   )
   $__omdStartupPipeline.Dispose()
   [System.IO.File]::AppendAllText($__omdStartupResultPath, ($__omdStartupFields -join [char]9) + [char]10)
-  if ($__omdStartupFailure) {
-    return
-  }
 }
 [System.IO.File]::AppendAllText($__omdStartupResultPath, 'D' + [char]10)
 `

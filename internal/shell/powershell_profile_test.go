@@ -224,13 +224,13 @@ func TestPowerShellProfileFailures(t *testing.T) {
 }
 
 func testPowerShellProfileFailures(t *testing.T, executable string) {
-	paths := powerShellProfileFixtures(t)
 	for _, tt := range []struct{ name, script, want string }{
-		{"profile throw", "throw 'fixture error'", paths[0] + ": fixture error"},
+		{"profile throw", "throw 'fixture error'", ": fixture error"},
 		{"process exit", "[Environment]::Exit(0)", "did not write a startup report"},
 		{"profile break", "break", "profile stopped before it finished running"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			paths := powerShellProfileFixtures(t)
 			writePowerShellFixture(t, paths[0], tt.script)
 			report, err := profilePowerShell(context.Background(), executable, &paths)
 			if err == nil || !strings.Contains(err.Error(), tt.want) || len(report.Profiles) != 0 {
@@ -238,19 +238,42 @@ func testPowerShellProfileFailures(t *testing.T, executable string) {
 			}
 		})
 	}
-	t.Run("partial report", func(t *testing.T) {
-		writePowerShellFixture(t, paths[0], "'successful profile'")
-		writePowerShellFixture(t, paths[1], "throw 'fixture error'")
-		writePowerShellFixture(t, paths[2], "throw 'did not stop after failure'")
+	t.Run("continues after throw and parse failure", func(t *testing.T) {
+		paths := powerShellProfileFixtures(t)
+		writePowerShellFixture(t, paths[0], "$omdFailureFixture = 'first'")
+		writePowerShellFixture(t, paths[1], "$omdFailureFixture += '-second'; throw 'fixture error'")
+		writePowerShellFixture(t, paths[2], "if (")
+		writePowerShellFixture(t, paths[3], "if ($omdFailureFixture -cne 'first-second') { throw 'profile state was lost' }")
 		report, err := profilePowerShell(context.Background(), executable, &paths)
-		if err == nil || !strings.Contains(err.Error(), paths[1]+": fixture error") {
-			t.Fatalf("expected the second profile to fail, got %v", err)
+		if err == nil || !strings.Contains(err.Error(), paths[1]+": fixture error") ||
+			!strings.Contains(err.Error(), paths[2]+": could not parse profile: ") || errors.Is(err, errIncompletePowerShellReport) {
+			t.Fatalf("expected both profile failures in a complete report, got %v", err)
 		}
-		if len(report.Profiles) != 1 || report.Profiles[0].Path != paths[0] {
-			t.Fatalf("expected the completed profile timing, got %+v", report)
+		var completedPaths []string
+		for _, profile := range report.Profiles {
+			completedPaths = append(completedPaths, profile.Path)
+		}
+		slices.Sort(completedPaths)
+		if !slices.Equal(completedPaths, []string{paths[0], paths[3]}) {
+			t.Fatalf("expected the first and fourth profile timings, got %+v", report)
+		}
+	})
+	t.Run("nested parse and in-profile security errors are warnings", func(t *testing.T) {
+		paths := powerShellProfileFixtures(t)
+		nestedPath := filepath.Join(filepath.Dir(paths[0]), "nested.ps1")
+		writePowerShellFixture(t, nestedPath, "if (")
+		writePowerShellFixture(t, paths[0], ". "+powerShellLiteral(nestedPath)+`
+Write-Error -Exception ([System.Management.Automation.PSSecurityException]::new('fixture security error')) -ErrorId UnauthorizedAccess -ErrorAction Continue
+$omdNestedFixture = $true`)
+		writePowerShellFixture(t, paths[1], "if (-not $omdNestedFixture) { throw 'profile did not continue' }")
+		report, err := profilePowerShell(context.Background(), executable, &paths)
+		wantWarning := "PowerShell recorded 2 error(s) while running " + paths[0] + "."
+		if err != nil || len(report.Profiles) != 2 || !slices.Contains(report.Warnings, wantWarning) {
+			t.Fatalf("expected two timings and a warning, got %+v, %v", report, err)
 		}
 	})
 	t.Run("feature before profile throw", func(t *testing.T) {
+		paths := powerShellProfileFixtures(t)
 		root := filepath.Dir(paths[0])
 		initPath := filepath.Join(root, "init.ps1")
 		featurePath := filepath.Join(root, "features", "completed.ps1")
@@ -271,19 +294,22 @@ func testPowerShellProfileFailures(t *testing.T, executable string) {
 			t.Fatalf("expected the completed feature and elapsed profile timing, got %+v", report)
 		}
 	})
-	t.Run("hard exit after completed profile", func(t *testing.T) {
+	t.Run("hard exit after completed and failed profiles", func(t *testing.T) {
+		paths := powerShellProfileFixtures(t)
 		writePowerShellFixture(t, paths[0], "'successful profile'")
-		writePowerShellFixture(t, paths[1], "[Environment]::Exit(7)")
+		writePowerShellFixture(t, paths[1], "throw 'fixture error'")
+		writePowerShellFixture(t, paths[2], "[Environment]::Exit(7)")
 		report, err := profilePowerShell(context.Background(), executable, &paths)
 		var exitErr *exec.ExitError
-		if !errors.As(err, &exitErr) || exitErr.ExitCode() != 7 {
-			t.Fatalf("expected process exit code 7, got %v", err)
+		if !errors.As(err, &exitErr) || exitErr.ExitCode() != 7 || !strings.Contains(err.Error(), paths[1]+": fixture error") {
+			t.Fatalf("expected the profile failure and process exit code 7, got %v", err)
 		}
 		if len(report.Profiles) != 1 || report.Profiles[0].Path != paths[0] {
 			t.Fatalf("expected the completed profile timing, got %+v", report)
 		}
 	})
 	t.Run("cancelled or timed out", func(t *testing.T) {
+		paths := powerShellProfileFixtures(t)
 		writePowerShellFixture(t, paths[0], "Start-Sleep -Seconds 60")
 		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 		defer cancel()
@@ -293,6 +319,7 @@ func testPowerShellProfileFailures(t *testing.T, executable string) {
 		}
 	})
 	t.Run("cancelled after completed profile", func(t *testing.T) {
+		paths := powerShellProfileFixtures(t)
 		startedPath := filepath.Join(filepath.Dir(paths[0]), "second-profile-started")
 		writePowerShellFixture(t, paths[0], "'successful profile'")
 		writePowerShellFixture(t, paths[1], "[IO.File]::WriteAllText("+powerShellLiteral(startedPath)+", '')\nStart-Sleep -Seconds 60")
@@ -323,6 +350,32 @@ func testPowerShellProfileFailures(t *testing.T, executable string) {
 			}
 		}
 	})
+}
+
+func TestPowerShellProfileRestrictedExecutionPolicy(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("requires Windows PowerShell execution policy")
+	}
+	executable, err := exec.LookPath("powershell.exe")
+	if err != nil {
+		t.Skip("Windows PowerShell is unavailable")
+	}
+	t.Setenv("PSExecutionPolicyPreference", "Restricted")
+	cmd := exec.Command(executable, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "Get-ExecutionPolicy")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("read effective execution policy: %v\n%s", err, output)
+	}
+	if policy := strings.TrimSpace(string(output)); policy != "Restricted" {
+		t.Skipf("effective execution policy is %q instead of process-scoped Restricted", policy)
+	}
+	paths := powerShellProfileFixtures(t)
+	writePowerShellFixture(t, paths[0], "throw 'restricted fixture ran'")
+	report, err := profilePowerShell(context.Background(), executable, &paths)
+	if err == nil || !strings.Contains(err.Error(), paths[0]+": authorization blocked the profile: ") ||
+		errors.Is(err, errIncompletePowerShellReport) || len(report.Profiles) != 0 {
+		t.Fatalf("expected the blocked profile diagnostic and no timings, got %+v, %v", report, err)
+	}
 }
 
 func testPowerShellProfileEditions(t *testing.T, test func(*testing.T, string)) {
