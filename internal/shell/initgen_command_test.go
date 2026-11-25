@@ -69,6 +69,12 @@ command -v omd_fail_sibling >/dev/null || printf 'failed source sibling wrapper 
 				flags = []string{"--noprofile", "--norc", "-O", "expand_aliases"}
 			case "zsh":
 				flags = []string{"-f"}
+			case "posix":
+				// Git for Windows can start sh as Bash with alias expansion disabled.
+				runner = `if [ -n "${BASH_VERSION:-}" ]; then
+    set -o posix
+fi
+` + runner
 			case "fish":
 				flags = []string{"--no-config"}
 				feature = `printf 'loaded\n'

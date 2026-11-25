@@ -166,8 +166,11 @@ if [[ $- == *i* ]]; then
           unset 'PROMPT_COMMAND[hook_index]'
         fi
       done
-    elif [[ ${PROMPT_COMMAND-} == *$'\n'_omd_load_deferred_features ]]; then
-      PROMPT_COMMAND=${PROMPT_COMMAND%$'\n'_omd_load_deferred_features}
+    else
+      # Match the generated command line even if the profile appended hooks.
+      local prompt_hooks="${PROMPT_COMMAND-}"$'\n'
+      prompt_hooks=${prompt_hooks/$'\n'_omd_load_deferred_features[$'\n;']/$'\n'}
+      PROMPT_COMMAND=${prompt_hooks%$'\n'}
     fi
     unset -f _omd_load_deferred_features
 `)

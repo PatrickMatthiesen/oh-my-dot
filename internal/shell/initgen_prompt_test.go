@@ -16,12 +16,21 @@ func TestInitDefersUntilFirstPrompt(t *testing.T) {
 		name       string
 		shell      string
 		setupHooks string
+		appendHook string
 		listHooks  string
 	}{
 		{
 			name:       "bash scalar",
 			shell:      "bash",
 			setupHooks: `PROMPT_COMMAND='user_prompt "$?" # keep this comment'`,
+			appendHook: `PROMPT_COMMAND="$PROMPT_COMMAND"$'\n'second_prompt`,
+			listHooks:  `printf '%s' "${PROMPT_COMMAND-}"`,
+		},
+		{
+			name:       "bash scalar semicolon",
+			shell:      "bash",
+			setupHooks: `PROMPT_COMMAND='user_prompt "$?" # keep this comment'`,
+			appendHook: `PROMPT_COMMAND="$PROMPT_COMMAND; second_prompt"`,
 			listHooks:  `printf '%s' "${PROMPT_COMMAND-}"`,
 		},
 		{
@@ -59,7 +68,7 @@ printf 'startup:%s:%s\n' "$eager_runs" "${deferred_runs:-0}"
 PS1=reset
 . ./init
 printf 'startup-resource:%s:%s:%s\n' "$eager_runs" "${deferred_runs:-0}" "$PS1"
-`
+` + tt.appendHook + "\n"
 			args := []string{"-d", "-i"}
 			rcName := ".zshrc"
 			if tt.shell == "bash" {
@@ -88,8 +97,7 @@ exit 0
 			}
 			for _, hook := range []string{"user-hook:", "second-hook\n", "bare-hook\n"} {
 				wantCount := 4
-				if (hook == "second-hook\n" && tt.name == "bash scalar") ||
-					(hook == "bare-hook\n" && tt.shell == "bash") {
+				if hook == "bare-hook\n" && tt.shell == "bash" {
 					wantCount = 0
 				}
 				if strings.Count(output, hook) != wantCount {

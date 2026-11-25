@@ -113,6 +113,7 @@ case $- in
 esac
 echo done
 `
+	initPath := filepath.ToSlash(filepath.Join(root, "init.sh"))
 	for _, tc := range []struct {
 		name   string
 		option string
@@ -130,7 +131,7 @@ echo done
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cmd := exec.CommandContext(t.Context(), dash, tc.option, runner, "test", filepath.Join(root, "init.sh"))
+			cmd := exec.CommandContext(t.Context(), dash, tc.option, runner, "test", initPath)
 			cmd.Env = append(os.Environ(), "ENV=")
 			checkInitTestOutput(t, cmd, tc.want)
 		})
