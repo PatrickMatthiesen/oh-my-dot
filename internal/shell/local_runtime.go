@@ -175,7 +175,7 @@ func ensurePrivateRuntimeDirectory(path string, preview bool) error {
 
 func withLocalDispatch(repoPath, shellName, content string) string {
 	localPath, _ := GetLocalInitScriptPath(repoPath, shellName)
-	var dispatch string
+	var dispatch, suffix string
 	switch shellName {
 	case "bash":
 		dispatch = `_omd_local_init="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/init.local.sh"
@@ -201,10 +201,10 @@ unset _omd_local_init
 		dispatch = `set -l _omd_local_init (dirname (status --current-filename))/init.local.fish
 if test -r "$_omd_local_init"
   source "$_omd_local_init"
-  return $status
-end
+else
 
 `
+		suffix = "end\n"
 	case "powershell":
 		dispatch = `$omdLocalInit = Join-Path (Split-Path -Parent $PSCommandPath) 'init.local.ps1'
 if (Test-Path -LiteralPath $omdLocalInit -PathType Leaf) {
@@ -220,9 +220,9 @@ Remove-Variable omdLocalInit -ErrorAction SilentlyContinue
 	}
 	if strings.HasPrefix(content, "#!") {
 		first, rest, _ := strings.Cut(content, "\n")
-		return first + "\n" + dispatch + rest
+		return first + "\n" + dispatch + rest + suffix
 	}
-	return dispatch + content
+	return dispatch + content + suffix
 }
 
 type generatedLocalFeature struct {

@@ -2,10 +2,12 @@ package shell
 
 import (
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/catalog"
+	"github.com/PatrickMatthiesen/oh-my-dot/internal/manifest"
 )
 
 func TestGeneratePosixInitUsesGeneratedShellRoot(t *testing.T) {
@@ -22,6 +24,31 @@ func TestGeneratePosixInitUsesGeneratedShellRoot(t *testing.T) {
 	}
 }
 
+func TestOnCommandTriggerOwnershipFollowsManifestOrder(t *testing.T) {
+	base := &manifest.FeatureManifest{Features: []manifest.FeatureConfig{
+		{Name: "disabled", Strategy: "on-command", OnCommand: []string{"Example"}, Disabled: true},
+		{Name: "z-first", Strategy: "on-command", OnCommand: []string{"Example", "Example"}},
+		{Name: "a-second", Strategy: "on-command", OnCommand: []string{"example", "second"}},
+	}}
+	merged := manifest.MergeManifests(base, nil)
+
+	for _, tc := range []struct {
+		shell string
+		want  string
+	}{
+		{"bash", "example second"},
+		{"powershell", "second"},
+	} {
+		t.Run(tc.shell, func(t *testing.T) {
+			owners := categorizeFeaturesMerged(merged, tc.shell).OnCommand
+			if len(owners) != 2 || strings.Join(owners["z-first"], " ") != "Example" ||
+				strings.Join(owners["a-second"], " ") != tc.want {
+				t.Fatalf("unexpected trigger ownership: %v", owners)
+			}
+		})
+	}
+}
+
 func TestDeferredFeaturesLoadInCurrentShell(t *testing.T) {
 	features := FeaturesByStrategy{Defer: []string{"example"}}
 
@@ -33,17 +60,17 @@ func TestDeferredFeaturesLoadInCurrentShell(t *testing.T) {
 		{
 			name:      "bash",
 			content:   generateBashInit(features),
-			forbidden: []string{`) &`},
+			forbidden: []string{`\) &($|[^&])`},
 		},
 		{
 			name:      "zsh",
 			content:   generateZshInit(features),
-			forbidden: []string{`) &!`},
+			forbidden: []string{`\) &!`},
 		},
 		{
 			name:      "fish",
 			content:   generateFishInit(features),
-			forbidden: []string{`source "$feature_file" &`},
+			forbidden: []string{`source "\$feature_file" &($|[^&])`},
 		},
 		{
 			name:      "powershell",
@@ -53,14 +80,14 @@ func TestDeferredFeaturesLoadInCurrentShell(t *testing.T) {
 		{
 			name:      "posix",
 			content:   generatePosixInit(t.TempDir(), features),
-			forbidden: []string{`) &`},
+			forbidden: []string{`\) &($|[^&])`},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			for _, forbidden := range tt.forbidden {
-				if strings.Contains(tt.content, forbidden) {
+				if regexp.MustCompile(forbidden).MatchString(tt.content) {
 					t.Fatalf("deferred feature still uses background loading %q\n%s", forbidden, tt.content)
 				}
 			}

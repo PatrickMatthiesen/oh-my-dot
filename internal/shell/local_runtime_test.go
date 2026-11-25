@@ -242,7 +242,7 @@ func TestPrivateInitDispatchLoadsExactlyOneEffectiveConfiguration(t *testing.T) 
 			case "zsh":
 				args = []string{"-f", "-c", `. "$1"; cd "$OMD_SHELL_ROOT" && pwd; cd "$OMD_TEST_ROOT" && pwd`, "test", filepath.ToSlash(publicPath)}
 			case "fish":
-				args = []string{"--no-config", "-c", `source "$argv[1]"; cd "$OMD_SHELL_ROOT"; or exit 1; pwd; cd "$OMD_TEST_ROOT"; or exit 1; pwd`, filepath.ToSlash(publicPath)}
+				args = []string{"--no-config", "-c", `function test_source; source "$argv[1]"; cd "$OMD_SHELL_ROOT"; or exit 1; pwd; cd "$OMD_TEST_ROOT"; or exit 1; pwd; end; test_source "$argv[1]"`, filepath.ToSlash(publicPath)}
 			case "powershell":
 				args = []string{"-NoProfile", "-NonInteractive", "-Command", `. $env:OMD_TEST_INIT; (Resolve-Path -LiteralPath $OMD_SHELL_ROOT).ProviderPath; (Resolve-Path -LiteralPath $env:OMD_TEST_ROOT).ProviderPath`}
 			case "posix":
@@ -272,6 +272,85 @@ func TestPrivateInitDispatchLoadsExactlyOneEffectiveConfiguration(t *testing.T) 
 				t.Fatalf("effective script did not run once: %q %v", data, err)
 			}
 		})
+	}
+}
+
+func TestPowerShellPrivateDeferredAndOnCommandPaths(t *testing.T) {
+	const shellName = "powershell"
+	root := filepath.Join(t.TempDir(), "repo with spaces")
+	if err := InitializeShellDirectory(root, shellName); err != nil {
+		t.Fatal(err)
+	}
+	local := &manifest.FeatureManifest{Features: []manifest.FeatureConfig{
+		{Name: "private-defer", Strategy: "defer"},
+		{Name: "private-lazy", Strategy: "on-command", OnCommand: []string{"Invoke-OmdPrivate"}},
+	}}
+	if err := manifest.WriteLocalManifest(GetLocalManifestPath(root, shellName), local); err != nil {
+		t.Fatal(err)
+	}
+	for name, script := range map[string]string{
+		"private-defer": "# Private deferred feature\n",
+		"private-lazy": `'private feature loaded'
+function Invoke-OmdPrivate { 'private command ran' }
+`,
+	} {
+		path, err := GetLocalFeatureFilePath(root, shellName, name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(script), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := RegenerateInitScript(root, shellName); err != nil {
+		t.Fatal(err)
+	}
+
+	privatePath, err := GetLocalInitScriptPath(root, shellName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	private, err := os.ReadFile(privatePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := strings.NewReplacer(`\`, "/", `"`, "'").Replace(string(private))
+	for _, feature := range local.Features {
+		relative := "features/" + feature.Name + ".ps1"
+		if !strings.Contains(paths, "'.local/"+relative+"'") || strings.Contains(paths, "'"+relative+"'") {
+			t.Errorf("private init did not redirect %s feature %q to .local/%s", feature.Strategy, feature.Name, relative)
+		}
+	}
+
+	interpreter, err := exec.LookPath("pwsh")
+	if err != nil && runtime.GOOS == "windows" {
+		interpreter, err = exec.LookPath("powershell.exe")
+	}
+	if err != nil {
+		t.Skip("PowerShell interpreter unavailable")
+	}
+	publicPath, err := GetInitScriptPath(root, shellName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := `$ErrorActionPreference = 'Stop'
+. $env:OMD_TEST_INIT
+'public init sourced'
+Invoke-OmdPrivate
+Invoke-OmdPrivate
+`
+	command := exec.Command(interpreter, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", runner)
+	command.Env = append(os.Environ(), "OMD_TEST_INIT="+publicPath)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run private PowerShell trigger: %v\n%s", err, output)
+	}
+	want := "public init sourced\nprivate feature loaded\nprivate command ran\nprivate command ran"
+	if got := strings.TrimSpace(strings.ReplaceAll(string(output), "\r\n", "\n")); got != want {
+		t.Fatalf("PowerShell output = %q, want %q", got, want)
 	}
 }
 

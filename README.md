@@ -143,22 +143,30 @@ When no `--shell` flag is provided, oh-my-dot tries to detects your current shel
 
 ### Loading Strategies
 
-Features can be loaded with different strategies to optimize shell startup:
+Choose when a feature loads with `--strategy`. Run `oh-my-dot apply` to regenerate existing init scripts after an upgrade.
 
 #### Eager Loading (Default)
-Loads immediately during shell startup:
+Loads during shell startup and reapplies when you source the init script again.
 ```sh
 oh-my-dot feature add git-prompt --strategy eager
 ```
 
 #### Deferred Loading
-Loads in background for interactive shells (faster startup):
+Bash, Zsh, and Fish load deferred features once, before the first interactive prompt. POSIX sh has no portable prompt hook, so it loads deferred features at the end of interactive init. These shells skip deferred features in non-interactive sessions.
+
+PowerShell loads deferred features once when the session first idles after startup.
 ```sh
 oh-my-dot feature add kubectl-completion --strategy defer
 ```
 
 #### On-Command Loading
-Lazy loads when specific commands are invoked:
+The first trigger invocation loads the feature and forwards the arguments to the resulting command. If enabled features share a trigger, the first one in the effective manifest owns it. In Bash, Zsh, Fish, and POSIX sh, existing aliases and functions take precedence over wrappers.
+
+POSIX sh trigger names must start with a letter or underscore and contain only letters, digits, and underscores. Any sibling wrappers the feature leaves in place remove themselves on their next call.
+
+PowerShell loads the feature during command lookup, which can also happen when you run `Get-Command`. PowerShell's deferred and on-command scripts run in modules that export their functions and aliases. Use `$global:` for variables that must be visible outside the feature.
+
+Load completion features eagerly or with `defer` if you want completion to be ready before you invoke the command. A trigger run in a subshell loads the feature in that subshell.
 ```sh
 oh-my-dot feature add nvm --strategy on-command --on-command nvm,node,npm
 ```
@@ -321,8 +329,6 @@ Oh-my-dot fully supports PowerShell (both Windows PowerShell 5.1 and PowerShell 
 # PowerShell profile ($PROFILE)
 . "$HOME\dotfiles\omd-shells\powershell\init.ps1"
 ```
-
-The init script supports all loading strategies (eager, defer, on-command) with PowerShell-native syntax.
 
 ## Directory Structure
 
