@@ -133,7 +133,7 @@ func TestProfileJSON(t *testing.T) {
 func TestProfileTextDisplaysTimingsAndMeasuredSuggestions(t *testing.T) {
 	report := shell.PowerShellProfileReport{
 		Version: "7.5.0", Edition: "Core", Host: "ConsoleHost", Executable: "pwsh",
-		TotalMS: 400, AttributionAvailable: true, Warnings: []string{"example warning"},
+		TotalMS: 520, AttributionAvailable: true, Warnings: []string{"example warning"},
 		Profiles: []shell.ProfileTiming{
 			{Path: "user.ps1", DurationMS: 250, Features: []shell.FeatureTiming{
 				{Name: "oh-my-posh", Path: "posh.ps1", Strategy: "eager", DurationMS: 175},
@@ -141,6 +141,9 @@ func TestProfileTextDisplaysTimingsAndMeasuredSuggestions(t *testing.T) {
 			}},
 			{Path: "host.ps1", DurationMS: 150, Features: []shell.FeatureTiming{
 				{Name: "fast-feature", Path: "fast.ps1", Strategy: "eager", DurationMS: 5},
+			}},
+			{Path: "other.ps1", DurationMS: 120, Features: []shell.FeatureTiming{
+				{Name: "slow-feature", Path: "slow.ps1", Strategy: "eager", DurationMS: 115},
 			}},
 		},
 	}
@@ -151,11 +154,12 @@ func TestProfileTextDisplaysTimingsAndMeasuredSuggestions(t *testing.T) {
 	for _, want := range []string{
 		"PowerShell 7.5.0 (Core, ConsoleHost)",
 		"Partial result",
-		"Total profile time: 400.00 ms",
+		"Total profile time: 520.00 ms",
 		"  250.00 ms  user.ps1\n    175.00 ms  oh-my-posh (eager)  posh.ps1",
 		"Inspect the Oh My Posh theme and cache configuration.",
 		"Check whether auto_upgrade runs during startup.",
 		"  150.00 ms  host.ps1\n    Inspect imports and commands in this profile.",
+		"Consider defer if this feature can wait until the shell is idle.",
 		"Warning: example warning",
 	} {
 		if !strings.Contains(out.String(), want) {

@@ -330,7 +330,6 @@ Oh-my-dot fully supports PowerShell (both Windows PowerShell 5.1 and PowerShell 
 . "$HOME\dotfiles\omd-shells\powershell\init.ps1"
 ```
 
-
 ### Profile shell startup
 
 ```sh
@@ -358,6 +357,8 @@ write to the managed files.
 Each file timing includes the code it runs. Managed feature timings are
 inclusive and appear under the file that loaded them. Do not add them to the
 file timings. On-command features appear only if the replay loads them.
+Deferred features usually wait until the session is idle, outside the
+measured profile execution.
 If managed timings are unavailable and you know your generated runtime is
 from an older version, run `oh-my-dot apply` to regenerate it and retry.
 
@@ -366,7 +367,8 @@ Use `--json` for scripts. Standard output contains one document with
 its status: `ok`, `partial`, `failed`, `unavailable`, or `unsupported`.
 Results include a `report` when timings are available and an `error` when
 the profiler cannot complete. The profiler has a 30-second deadline. A
-partial result retains completed profile timings. If a profile throws
+partial result retains completed profile timings, including those from
+later files after a profile fails. If a profile throws
 after loading a managed feature, the report can include the feature and the
 elapsed time of that profile. Any status other than `ok` returns a nonzero
 exit code.

@@ -275,6 +275,7 @@ foreach ($__omdStartupPath in $__omdStartupProfilePaths) {
   if (-not $global:__omdStartupProfileReturned -and -not $__omdStartupFailure) {
     $__omdStartupFailure = 'profile stopped before it finished running'
   }
+  $global:__omdStartupProfileReturned = $true
   # The return marker can run even when PowerShell could not load the file.
   # Check where the error originated so errors in scripts the profile calls
   # remain ordinary profile warnings.

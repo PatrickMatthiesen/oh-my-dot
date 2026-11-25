@@ -29,11 +29,11 @@ func testPowerShellProfileMeasuresSharedScopeAndFeatures(t *testing.T, executabl
 	}
 	base := &manifest.FeatureManifest{Features: []manifest.FeatureConfig{
 		{Name: "eager-demo", Strategy: "eager"},
-		{Name: "lazy-demo", Strategy: "on-command", OnCommand: []string{"Invoke-OMDFixture"}},
+		{Name: "defer-demo", Strategy: "defer"},
 		{Name: "unused-demo", Strategy: "on-command", OnCommand: []string{"Invoke-OMDUnused"}},
 	}}
 	local := &manifest.FeatureManifest{Features: []manifest.FeatureConfig{
-		{Name: "defer-demo", Strategy: "defer"},
+		{Name: "lazy-demo", Strategy: "on-command", OnCommand: []string{"Invoke-OMDFixture"}},
 	}}
 	if err := manifest.WriteManifest(GetManifestPath(repo, "powershell"), base); err != nil {
 		t.Fatal(err)
@@ -42,26 +42,23 @@ func testPowerShellProfileMeasuresSharedScopeAndFeatures(t *testing.T, executabl
 		t.Fatal(err)
 	}
 	eager, _ := GetFeatureFilePath(repo, "powershell", "eager-demo")
-	deferred, _ := GetLocalFeatureFilePath(repo, "powershell", "defer-demo")
-	lazy, _ := GetFeatureFilePath(repo, "powershell", "lazy-demo")
+	deferred, _ := GetFeatureFilePath(repo, "powershell", "defer-demo")
+	lazy, _ := GetLocalFeatureFilePath(repo, "powershell", "lazy-demo")
 	unused, _ := GetFeatureFilePath(repo, "powershell", "unused-demo")
 	writePowerShellFixture(t, eager, `
 Invoke-MissingOMDEagerFixtureCommand
+Write-Warning 'eager feature warning'
 $omdFixtureOrder += 'E'
 Start-Sleep -Milliseconds 30
 function Get-OMDFixture { $omdFixtureOrder }
 `)
-	writePowerShellFixture(t, deferred, `
-if ((Get-OMDFixture) -cne '12E') { throw 'eager feature did not share the profile scope' }
-$omdFixtureOrder += 'D'
-Start-Sleep -Milliseconds 120
-`)
+	writePowerShellFixture(t, deferred, "$global:omdDeferredFixtureRan = $true")
 	writePowerShellFixture(t, lazy, `
-if ((Get-OMDFixture) -cne '12ED3') { throw 'trigger did not inherit the profile scope' }
 Start-Sleep -Milliseconds 40
-function Invoke-OMDFixture { "loaded-$($args[0])" }
+$script:omdFixturePrefix = 'loaded'
+function Invoke-OMDFixture { "$omdFixturePrefix-$($args[0])" }
 `)
-	writePowerShellFixture(t, unused, "throw 'uninvoked wrapper loaded its feature'")
+	writePowerShellFixture(t, unused, "throw 'uninvoked lookup loaded its feature'")
 	if err := RegenerateInitScript(repo, "powershell"); err != nil {
 		t.Fatal(err)
 	}
@@ -69,6 +66,7 @@ function Invoke-OMDFixture { "loaded-$($args[0])" }
 	writePowerShellFixture(t, paths[0], `
 Invoke-MissingOMDProfileFixtureCommand
 $omdFixtureOrder = '1'
+$global:omdDeferredFixtureRan = $false
 'unrelated success output'
 Write-Warning 'unrelated warning'
 Write-Error 'unrelated nonterminating error' -ErrorAction Continue
@@ -81,14 +79,17 @@ if ($omdFixtureOrder -cne '1') { throw 'first profile did not run in shared scop
 $omdFixtureOrder += '2'
 . `+powerShellLiteral(initPath))
 	writePowerShellFixture(t, paths[2], `
-if ($omdFixtureOrder -cne '12ED') { throw 'features did not share the profile scope' }
+if ((Get-OMDFixture) -cne '12E') { throw 'eager feature did not share the profile scope' }
 $omdFixtureOrder += '3'
-if ((Invoke-OMDFixture first) -cne 'loaded-first') { throw 'wrapper lost the function or its argument' }
+if ((Invoke-OMDFixture first) -cne 'loaded-first') { throw 'lookup lost the function or its argument' }
 `)
 	writePowerShellFixture(t, paths[3], `
-if ($omdFixtureOrder -cne '12ED3') { throw 'profiles ran out of order' }
-if ((Invoke-OMDFixture next) -cne 'loaded-next') { throw 'wrapper failed to promote the loaded function' }
-. `+powerShellLiteral(initPath))
+if ($omdFixtureOrder -cne '12E3') { throw 'profiles ran out of order' }
+if ((Invoke-OMDFixture next) -cne 'loaded-next') { throw 'lookup failed to preserve the loaded module' }
+. `+powerShellLiteral(initPath)+`
+if ((Get-OMDFixture) -cne '12E3E') { throw 'eager feature did not run again in the profile scope' }
+if ($global:omdDeferredFixtureRan) { throw 'deferred feature ran during noninteractive replay' }
+`)
 
 	report, err := profilePowerShell(context.Background(), executable, &paths)
 	if err != nil {
@@ -100,6 +101,7 @@ if ((Invoke-OMDFixture next) -cne 'loaded-next') { throw 'wrapper failed to prom
 	wantWarnings := []string{
 		"PowerShell recorded 2 error(s) while running " + paths[0] + ".",
 		"PowerShell recorded 1 error(s) while running " + paths[1] + ".",
+		"PowerShell recorded 1 error(s) while running " + paths[3] + ".",
 	}
 	if !slices.Equal(report.Warnings, wantWarnings) {
 		t.Fatalf("unexpected warnings: %v", report.Warnings)
@@ -113,37 +115,31 @@ if ((Invoke-OMDFixture next) -cne 'loaded-next') { throw 'wrapper failed to prom
 		total += profile.DurationMS
 		byPath[profile.Path] = profile.Features
 	}
-	if math.Abs(total-report.TotalMS) > 0.001 || total < 190 {
+	if math.Abs(total-report.TotalMS) > 0.001 || total < 100 {
 		t.Fatalf("unexpected total %.3f ms, profile sum %.3f ms", report.TotalMS, total)
 	}
-	if len(byPath[paths[0]]) != 0 || len(byPath[paths[3]]) != 0 {
+	if len(byPath[paths[0]]) != 0 {
 		t.Fatalf("recorded timings without feature loads: %+v", byPath)
 	}
-	features := byPath[paths[1]]
-	if len(features) != 2 || features[0].DurationMS < features[1].DurationMS {
-		t.Fatalf("expected two ranked features in second profile: %+v", features)
-	}
-	features = append(features, byPath[paths[2]]...)
-	if len(features) != 3 {
-		t.Fatalf("expected three timed features: %+v", features)
-	}
-	want := map[string]struct {
-		path, strategy string
-		minMS          float64
+	for _, want := range []struct {
+		profile, name, path, strategy string
+		minMS                         float64
 	}{
-		"eager-demo": {eager, "eager", 30},
-		"defer-demo": {deferred, "defer", 120},
-		"lazy-demo":  {lazy, "on-command", 40},
-	}
-	for _, feature := range features {
-		expected := want[feature.Name]
-		actualFile, actualErr := os.Stat(feature.Path)
-		expectedFile, expectedErr := os.Stat(expected.path)
-		if feature.Strategy != expected.strategy || feature.DurationMS < expected.minMS ||
-			actualErr != nil || expectedErr != nil || !os.SameFile(actualFile, expectedFile) {
-			t.Fatalf("unexpected feature timing: %+v, want %+v", feature, expected)
+		{paths[1], "eager-demo", eager, "eager", 30},
+		{paths[2], "lazy-demo", lazy, "on-command", 40},
+		{paths[3], "eager-demo", eager, "eager", 30},
+	} {
+		features := byPath[want.profile]
+		if len(features) != 1 {
+			t.Fatalf("expected one timed feature in %s, got %+v", want.profile, features)
 		}
-		delete(want, feature.Name)
+		feature := features[0]
+		actualFile, actualErr := os.Stat(feature.Path)
+		expectedFile, expectedErr := os.Stat(want.path)
+		if feature.Name != want.name || feature.Strategy != want.strategy || feature.DurationMS < want.minMS ||
+			actualErr != nil || expectedErr != nil || !os.SameFile(actualFile, expectedFile) {
+			t.Fatalf("unexpected feature timing: %+v, want %+v", feature, want)
+		}
 	}
 }
 
@@ -159,7 +155,7 @@ func testPowerShellProfileWithoutAttribution(t *testing.T, executable string) {
 	}{
 		{name: "no profiles"},
 		{name: "ordinary profile", script: "'profile output'", profiles: 1},
-		{name: "guarded loader", script: "$global:OMD_POWERSHELL_LOADED = $true\n" + generatePowerShellInit(FeaturesByStrategy{}), profiles: 1},
+		{name: "guarded loader", script: "$global:OMD_POWERSHELL_LOADED = $true\n" + generatePowerShellInit(FeaturesByStrategy{Defer: []string{"deferred"}}), profiles: 1},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.script != "" {
@@ -187,6 +183,45 @@ func testPowerShellProfileWithoutAttribution(t *testing.T, executable string) {
 	}
 }
 
+func TestPowerShellProfileMeasuresIdleActionDuringProfile(t *testing.T) {
+	testPowerShellProfileEditions(t, func(t *testing.T, executable string) {
+		paths := powerShellProfileFixtures(t)
+		root := filepath.Dir(paths[0])
+		initPath := filepath.Join(root, "init.ps1")
+		deferredPath := filepath.Join(root, "features", "deferred.ps1")
+		writePowerShellFixture(t, initPath, generatePowerShellInit(FeaturesByStrategy{Defer: []string{"deferred"}}))
+		writePowerShellFixture(t, deferredPath, "Start-Sleep -Milliseconds 30\nfunction Get-OmdDeferredFixture { 'deferred' }")
+		writePowerShellFixture(t, paths[0], ". "+powerShellLiteral(initPath))
+		// Deliver an idle event explicitly to a profile. The loader itself must
+		// leave the console's normal noninteractive idle behavior unchanged.
+		writePowerShellFixture(t, paths[1], `
+$null = New-Event -SourceIdentifier PowerShell.OnIdle
+$deadline = [DateTime]::UtcNow.AddSeconds(3)
+while (@(Get-Job).Count -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 25 }
+if ((Get-OmdDeferredFixture) -cne 'deferred') { throw 'idle action did not load its feature' }
+`)
+		report, err := profilePowerShell(context.Background(), executable, &paths)
+		if err != nil || !report.AttributionAvailable || len(report.Profiles) != 2 || len(report.Warnings) != 0 {
+			t.Fatalf("unexpected idle report: %+v, %v", report, err)
+		}
+		for _, profile := range report.Profiles {
+			if profile.Path == paths[0] {
+				if len(profile.Features) != 0 {
+					t.Fatalf("idle feature attributed to the registering profile: %+v", profile)
+				}
+				continue
+			}
+			if profile.Path != paths[1] || len(profile.Features) != 1 {
+				t.Fatalf("expected one timed idle feature: %+v", profile)
+			}
+			feature := profile.Features[0]
+			if feature.Name != "deferred" || feature.Strategy != "defer" || feature.DurationMS < 30 {
+				t.Fatalf("unexpected idle feature timing: %+v", feature)
+			}
+		}
+	})
+}
+
 func TestPowerShellProfileAvoidsObserverModuleImports(t *testing.T) {
 	testPowerShellProfileEditions(t, func(t *testing.T, executable string) {
 		paths := powerShellProfileFixtures(t)
@@ -200,10 +235,6 @@ if (Get-Module Microsoft.PowerShell.Management, Microsoft.PowerShell.Utility) {
 		writePowerShellFixture(t, paths[0], checkModules+`
 Set-StrictMode -Version Latest
 $PSModuleAutoLoadingPreference = 'None'
-function Split-Path {
-  param([switch]$Parent, [string]$Path)
-  [IO.Path]::GetDirectoryName($Path)
-}
 . `+powerShellLiteral(initPath)+"\n"+checkModules)
 		writePowerShellFixture(t, paths[1], checkModules+`
 if ($PSModuleAutoLoadingPreference -cne 'None') { throw 'profiler changed autoload preference' }

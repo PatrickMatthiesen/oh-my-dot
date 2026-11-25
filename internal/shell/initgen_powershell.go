@@ -15,22 +15,27 @@ func generatePowerShellInit(features FeaturesByStrategy) string {
 $OMD_SHELL_ROOT = $PSScriptRoot
 
 `)
+	hasLazyFeatures := len(features.Defer) > 0 || len(features.OnCommand) > 0
+	if len(features.Eager) > 0 || !hasLazyFeatures {
+		writePowerShellProfilerHandshake(&sb, "")
+	}
 
 	// Dot-source eager features in the caller's scope every time.
 	for _, feature := range features.Eager {
 		fmt.Fprintf(&sb, `$__omdEagerFile = Microsoft.PowerShell.Management\Join-Path $PSScriptRoot %s
 if (Microsoft.PowerShell.Management\Test-Path -LiteralPath $__omdEagerFile -PathType Leaf) {
-  . $__omdEagerFile
-} else {
+`, powerShellFeaturePath(feature))
+		writePowerShellProfiledSource(&sb, "  ", powerShellQuote(feature), "$__omdEagerFile", "'eager'", ". $__omdEagerFile")
+		fmt.Fprintf(&sb, `} else {
   Microsoft.PowerShell.Utility\Write-Warning %s
 }
 
-`, powerShellFeaturePath(feature), powerShellQuote("oh-my-dot: feature '"+feature+"' not found"))
+`, powerShellQuote("oh-my-dot: feature '"+feature+"' not found"))
 	}
 	if len(features.Eager) > 0 {
 		sb.WriteString("Microsoft.PowerShell.Utility\\Remove-Variable __omdEagerFile\n\n")
 	}
-	if len(features.Defer) == 0 && len(features.OnCommand) == 0 {
+	if !hasLazyFeatures {
 		return sb.String()
 	}
 
@@ -42,13 +47,19 @@ if (Microsoft.PowerShell.Management\Test-Path -LiteralPath $__omdEagerFile -Path
   }
   $global:OMD_POWERSHELL_LOADED = $true
 
-  $loadFeature = {
-    param($file, $feature, $root)
+`)
+	if len(features.Eager) == 0 {
+		writePowerShellProfilerHandshake(&sb, "  ")
+	}
+	sb.WriteString(`  $loadFeature = {
+    param($file, $feature, $root, $strategy)
     $output = [System.Collections.Generic.List[object]]::new()
-    $module = Microsoft.PowerShell.Core\New-Module -Name "oh-my-dot-$feature" -ArgumentList $file,$output,$root -ErrorAction Stop -ScriptBlock {
-      param($__omdFeatureFile, $__omdFeatureOutput, $OMD_SHELL_ROOT)
-      . $__omdFeatureFile | Microsoft.PowerShell.Core\ForEach-Object { $__omdFeatureOutput.Add($_) }
-      Microsoft.PowerShell.Core\Export-ModuleMember -Function * -Alias *
+    $module = Microsoft.PowerShell.Core\New-Module -Name "oh-my-dot-$feature" -ArgumentList $file,$output,$root,$feature,$strategy -ErrorAction Stop -ScriptBlock {
+      param($__omdFeatureFile, $__omdFeatureOutput, $OMD_SHELL_ROOT, $__omdFeatureName, $__omdFeatureStrategy)
+`)
+	writePowerShellProfiledSource(&sb, "      ", "$__omdFeatureName", "$__omdFeatureFile", "$__omdFeatureStrategy",
+		`. $__omdFeatureFile | Microsoft.PowerShell.Core\ForEach-Object { $__omdFeatureOutput.Add($_) }`)
+	sb.WriteString(`      Microsoft.PowerShell.Core\Export-ModuleMember -Function * -Alias *
     }
     Microsoft.PowerShell.Core\Import-Module -ModuleInfo $module -Global -DisableNameChecking -ErrorAction Stop
 
@@ -65,6 +76,36 @@ if (Microsoft.PowerShell.Management\Test-Path -LiteralPath $__omdEagerFile -Path
 	}
 	sb.WriteString("} $PSScriptRoot\n")
 	return sb.String()
+}
+
+// The return marker excludes callbacks after a profile finishes. Variable
+// lookup needs no cmdlets and short-circuits before method calls in restricted
+// language modes or reads of undefined variables under strict mode.
+const powerShellProfilerActive = `$ExecutionContext.SessionState.LanguageMode -eq 'FullLanguage' -and
+    $ExecutionContext.SessionState.PSVariable.GetValue('global:__omdStartupProfiler') -is [hashtable] -and
+    $null -ne $global:__omdStartupProfiler['Features'] -and
+    $false -eq $ExecutionContext.SessionState.PSVariable.GetValue('global:__omdStartupProfileReturned')`
+
+func writePowerShellProfilerHandshake(sb *strings.Builder, indent string) {
+	fmt.Fprintf(sb, "%sif (%s) {\n%s  $global:__omdStartupProfiler.AttributionAvailable = $true\n%s}\n\n",
+		indent, strings.ReplaceAll(powerShellProfilerActive, "\n", "\n"+indent), indent, indent)
+}
+
+func writePowerShellProfiledSource(sb *strings.Builder, indent, name, path, strategy, source string) {
+	// Keep the source statement in its original scope and error handling
+	// context. The stopwatch and report entry exist only during profiling.
+	block := fmt.Sprintf(`if (%s) {
+  $__omdStartupFeature = @{ name = %s; path = %s; strategy = %s }
+  $__omdStartupFeatureWatch = [System.Diagnostics.Stopwatch]::StartNew()
+  %s
+  $__omdStartupFeature.durationMs = $__omdStartupFeatureWatch.Elapsed.TotalMilliseconds
+  $global:__omdStartupProfiler.Features.Add($__omdStartupFeature)
+  $ExecutionContext.SessionState.PSVariable.Remove('__omdStartupFeature')
+  $ExecutionContext.SessionState.PSVariable.Remove('__omdStartupFeatureWatch')
+} else {
+  %s
+}`, powerShellProfilerActive, name, path, strategy, source, source)
+	sb.WriteString(indent + strings.ReplaceAll(block, "\n", "\n"+indent) + "\n")
 }
 
 func powerShellQuote(value string) string {
@@ -90,7 +131,7 @@ func writePowerShellIdleAction(sb *strings.Builder, features []string) {
       foreach ($feature in $idle.Features) {
         $file = Microsoft.PowerShell.Management\Join-Path $idle.Root $feature.Path
         if (Microsoft.PowerShell.Management\Test-Path -LiteralPath $file -PathType Leaf) {
-          try { & $idle.Load $file $feature.Name $idle.Root }
+          try { & $idle.Load $file $feature.Name $idle.Root 'defer' }
           catch { Microsoft.PowerShell.Utility\Write-Warning "oh-my-dot: feature '$($feature.Name)' failed: $_" }
         }
       }
@@ -134,7 +175,7 @@ func writePowerShellLookupAction(sb *strings.Builder, features map[string][]stri
       Microsoft.PowerShell.Utility\Write-Warning "oh-my-dot: feature '$($feature.Name)' not found"
       return
     }
-    try { & $loadFeature $file $feature.Name $root }
+    try { & $loadFeature $file $feature.Name $root 'on-command' }
     catch {
       $eventArgs.CommandScriptBlock = { $global:LASTEXITCODE = 1 }
       Microsoft.PowerShell.Utility\Write-Warning "oh-my-dot: feature '$($feature.Name)' failed: $_"

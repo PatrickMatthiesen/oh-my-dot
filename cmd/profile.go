@@ -122,6 +122,9 @@ func writeProfileText(out io.Writer, result profileResult) error {
 					fmt.Fprintln(&text, "      Inspect the Oh My Posh theme and cache configuration. Check whether auto_upgrade runs during startup.")
 				} else {
 					fmt.Fprintln(&text, "      Inspect imports and external commands in this feature.")
+					if feature.Strategy == "eager" {
+						fmt.Fprintln(&text, "      Consider defer if this feature can wait until the shell is idle.")
+					}
 					fmt.Fprintln(&text, "      If you do not use this feature, consider disabling it.")
 				}
 			}
