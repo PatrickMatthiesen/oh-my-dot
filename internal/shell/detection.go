@@ -101,7 +101,8 @@ func IsShellExecutableAvailable(shellName string) bool {
 	case "fish":
 		candidates = []string{"fish", "fish.exe"}
 	case "powershell":
-		candidates = powershellExecutableCandidates()
+		_, _, err := resolvePowerShellExecutable()
+		return err == nil
 	case "posix":
 		candidates = []string{"sh", "sh.exe"}
 	default:
@@ -138,6 +139,15 @@ func powershellExecutableCandidates() []string {
 	return []string{"pwsh"}
 }
 
+func resolvePowerShellExecutable() (name, path string, err error) {
+	for _, candidate := range powershellExecutableCandidates() {
+		if resolvedPath, err := lookPath(candidate); err == nil {
+			return candidate, resolvedPath, nil
+		}
+	}
+	return "", "", fmt.Errorf("no PowerShell executable found on PATH")
+}
+
 // ResolveProfilePath resolves the profile path for a shell, expanding ~ to home directory
 func ResolveProfilePath(shellConfig ShellConfig) (string, error) {
 	path := shellConfig.ProfilePath
@@ -164,32 +174,29 @@ func ResolveProfilePath(shellConfig ShellConfig) (string, error) {
 }
 
 func detectPowerShellProfilePath() (string, error) {
-	for _, executable := range powershellExecutableCandidates() {
-		resolvedPath, err := lookPath(executable)
-		if err != nil {
-			continue
-		}
-		output, err := runCommand(resolvedPath, "-NoProfile", "-NonInteractive", "-Command", "$PROFILE.CurrentUserCurrentHost")
-		if err != nil {
-			return "", fmt.Errorf("query profile with %s: %w", executable, err)
-		}
-		profilePath := strings.TrimSpace(string(output))
-		if profilePath == "" {
-			return "", fmt.Errorf("%s returned an empty profile path", executable)
-		}
-		if strings.ContainsAny(profilePath, "\r\n\x00") {
-			return "", fmt.Errorf("%s returned an invalid profile path", executable)
-		}
-		absolute := filepath.IsAbs(profilePath)
-		if currentGOOS == "windows" {
-			absolute = strings.HasPrefix(profilePath, `\\`) || len(profilePath) > 2 && profilePath[1] == ':' && (profilePath[2] == '\\' || profilePath[2] == '/')
-		}
-		if !absolute {
-			return "", fmt.Errorf("%s returned a relative profile path", executable)
-		}
-		return profilePath, nil
+	executable, resolvedPath, err := resolvePowerShellExecutable()
+	if err != nil {
+		return "", err
 	}
-	return "", fmt.Errorf("no PowerShell executable found on PATH")
+	output, err := runCommand(resolvedPath, "-NoProfile", "-NonInteractive", "-Command", "$PROFILE.CurrentUserCurrentHost")
+	if err != nil {
+		return "", fmt.Errorf("query profile with %s: %w", executable, err)
+	}
+	profilePath := strings.TrimSpace(string(output))
+	if profilePath == "" {
+		return "", fmt.Errorf("%s returned an empty profile path", executable)
+	}
+	if strings.ContainsAny(profilePath, "\r\n\x00") {
+		return "", fmt.Errorf("%s returned an invalid profile path", executable)
+	}
+	absolute := filepath.IsAbs(profilePath)
+	if currentGOOS == "windows" {
+		absolute = strings.HasPrefix(profilePath, `\\`) || len(profilePath) > 2 && profilePath[1] == ':' && (profilePath[2] == '\\' || profilePath[2] == '/')
+	}
+	if !absolute {
+		return "", fmt.Errorf("%s returned a relative profile path", executable)
+	}
+	return profilePath, nil
 }
 
 // GetShellDirectory returns the path to the shell directory within omd-shells
