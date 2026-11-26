@@ -330,6 +330,50 @@ Oh-my-dot fully supports PowerShell (both Windows PowerShell 5.1 and PowerShell 
 . "$HOME\dotfiles\omd-shells\powershell\init.ps1"
 ```
 
+### Profile shell startup
+
+```sh
+oh-my-dot profile
+oh-my-dot profile --shell powershell
+oh-my-dot profile --shell powershell --json
+```
+
+`profile` runs the profilers for all installed, supported shells by default.
+Use `--shell` to select one. The current release supports PowerShell. The
+profiler prefers PowerShell 7 and falls back to Windows PowerShell 5.1 on
+Windows. When both are installed, it measures the PowerShell 7 profiles
+even when you run it in a Windows PowerShell 5.1 session. You can run it
+without initializing an oh-my-dot repository.
+
+The profiler replays the existing console profile files in a fresh,
+noninteractive PowerShell process. The total excludes process launch and the
+first prompt. Startup in an editor or an interactive terminal can differ.
+The child has redirected streams, so features that require console input
+may skip work they would do interactively.
+Your profiles execute as code and can perform their normal side effects,
+such as writing files or contacting services. The profiler itself does not
+write to the managed files.
+
+Each file timing includes the code it runs. Managed feature timings are
+inclusive and appear under the file that loaded them. Do not add them to the
+file timings. On-command features appear only if the replay loads them.
+Deferred features usually wait until the session is idle, outside the
+measured profile execution.
+If managed timings are unavailable and you know your generated runtime is
+from an older version, run `oh-my-dot apply` to regenerate it and retry.
+
+Use `--json` for scripts. Standard output contains one document with
+`schemaVersion` and a `results` array. Each result identifies the shell and
+its status: `ok`, `partial`, `failed`, `unavailable`, or `unsupported`.
+Results include a `report` when timings are available and an `error` when
+the profiler cannot complete. The profiler has a 30-second deadline. A
+partial result retains completed profile timings, including those from
+later files after a profile fails. Its total sums only the listed profile
+timings. If a profile throws
+after loading a managed feature, the report can include the feature and the
+elapsed time of that profile. Any status other than `ok` returns a nonzero
+exit code.
+
 ## Directory Structure
 
 ```
@@ -386,6 +430,7 @@ remote: github.com/username/dotfiles
 ### Utility Commands
 
 - `oh-my-dot doctor [--fix]` - Health check and diagnostics
+- `oh-my-dot profile [--shell powershell] [--json]` - Measure shell profile startup
 - `oh-my-dot completion <shell>` - Generate shell completion
 - `oh-my-dot version` - Show version information
 
