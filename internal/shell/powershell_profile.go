@@ -287,6 +287,10 @@ foreach ($__omdStartupPath in $__omdStartupProfilePaths) {
         continue
       }
       $__omdStartupFromRunner = -not $__omdStartupSource.ScriptName -and $__omdStartupSource.Line -ceq $__omdStartupInvocation
+      if ($__omdStartupException -is [System.Management.Automation.ScriptRequiresException] -and $__omdStartupFromRunner) {
+        $__omdStartupFailure = 'profile requirements were not met: ' + $__omdStartupException.Message
+        break
+      }
       if ($__omdStartupException -is [System.Management.Automation.ParseException] -and
           ($__omdStartupFromRunner -or $__omdStartupSource.ScriptName -ceq $__omdStartupPath) -and
           $null -ne $__omdStartupException.Errors -and

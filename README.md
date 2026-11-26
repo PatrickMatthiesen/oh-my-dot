@@ -368,7 +368,8 @@ its status: `ok`, `partial`, `failed`, `unavailable`, or `unsupported`.
 Results include a `report` when timings are available and an `error` when
 the profiler cannot complete. The profiler has a 30-second deadline. A
 partial result retains completed profile timings, including those from
-later files after a profile fails. If a profile throws
+later files after a profile fails. Its total sums only the listed profile
+timings. If a profile throws
 after loading a managed feature, the report can include the feature and the
 elapsed time of that profile. Any status other than `ok` returns a nonzero
 exit code.

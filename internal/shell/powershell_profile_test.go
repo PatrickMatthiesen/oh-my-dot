@@ -292,16 +292,28 @@ func testPowerShellProfileFailures(t *testing.T, executable string) {
 			t.Fatalf("expected the first and fourth profile timings, got %+v", report)
 		}
 	})
-	t.Run("nested parse and in-profile security errors are warnings", func(t *testing.T) {
+	t.Run("top-level requirements rejection preserves later timings", func(t *testing.T) {
+		paths := powerShellProfileFixtures(t)
+		writePowerShellFixture(t, paths[0], "#requires -Version 99.0\nthrow 'rejected profile ran'")
+		writePowerShellFixture(t, paths[1], "$omdRequirementsFixture = $true")
+		report, err := profilePowerShell(context.Background(), executable, &paths)
+		if err == nil || !strings.Contains(err.Error(), paths[0]+": profile requirements were not met: ") ||
+			len(report.Profiles) != 1 || report.Profiles[0].Path != paths[1] || report.TotalMS != report.Profiles[0].DurationMS {
+			t.Fatalf("expected a requirements failure and only the later timing, got %+v, %v", report, err)
+		}
+	})
+	t.Run("nested load and in-profile security errors are warnings", func(t *testing.T) {
 		paths := powerShellProfileFixtures(t)
 		nestedPath := filepath.Join(filepath.Dir(paths[0]), "nested.ps1")
 		writePowerShellFixture(t, nestedPath, "if (")
-		writePowerShellFixture(t, paths[0], ". "+powerShellLiteral(nestedPath)+`
+		requiresPath := filepath.Join(filepath.Dir(paths[0]), "requires.ps1")
+		writePowerShellFixture(t, requiresPath, "#requires -Version 99.0")
+		writePowerShellFixture(t, paths[0], ". "+powerShellLiteral(nestedPath)+"\n. "+powerShellLiteral(requiresPath)+`
 Write-Error -Exception ([System.Management.Automation.PSSecurityException]::new('fixture security error')) -ErrorId UnauthorizedAccess -ErrorAction Continue
 $omdNestedFixture = $true`)
 		writePowerShellFixture(t, paths[1], "if (-not $omdNestedFixture) { throw 'profile did not continue' }")
 		report, err := profilePowerShell(context.Background(), executable, &paths)
-		wantWarning := "PowerShell recorded 2 error(s) while running " + paths[0] + "."
+		wantWarning := "PowerShell recorded 3 error(s) while running " + paths[0] + "."
 		if err != nil || len(report.Profiles) != 2 || !slices.Contains(report.Warnings, wantWarning) {
 			t.Fatalf("expected two timings and a warning, got %+v, %v", report, err)
 		}
