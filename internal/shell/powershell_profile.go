@@ -18,34 +18,44 @@ import (
 	"github.com/PatrickMatthiesen/oh-my-dot/internal/manifest"
 )
 
-const powerShellProfileTimeout = 30 * time.Second
+const shellProfileTimeout = 30 * time.Second
 
-// PowerShellProfileReport describes one run of the PowerShell console profiles.
-type PowerShellProfileReport struct {
-	Shell                string          `json:"shell"`                // Shell identifier.
-	Executable           string          `json:"executable"`           // Resolved PowerShell executable.
-	Edition              string          `json:"edition"`              // PowerShell edition, such as Core or Desktop.
-	Version              string          `json:"version"`              // PowerShell version.
-	Host                 string          `json:"host"`                 // PowerShell host name.
-	TotalMS              float64         `json:"totalMs"`              // Sum of profile file durations in milliseconds.
-	Profiles             []ProfileTiming `json:"profiles"`             // Existing console profiles, slowest first.
-	AttributionAvailable bool            `json:"attributionAvailable"` // Whether an instrumented loader ran.
-	Warnings             []string        `json:"warnings"`             // Notes about the measurement.
+// ShellProfileReport describes a shell profiling run.
+type ShellProfileReport struct {
+	Shell                string                 `json:"shell"`                     // Shell identifier.
+	Executable           string                 `json:"executable"`                // Resolved PowerShell executable.
+	Edition              string                 `json:"edition"`                   // Shell edition, when available.
+	Version              string                 `json:"version"`                   // Shell version, when available.
+	Host                 string                 `json:"host"`                      // Shell host name, when available.
+	TotalMS              float64                `json:"totalMs"`                   // Sum of measured durations in milliseconds.
+	Profiles             []ProfileTiming        `json:"profiles"`                  // Existing console profiles, slowest first.
+	AttributionAvailable bool                   `json:"attributionAvailable"`      // Whether an instrumented loader ran.
+	Warnings             []string               `json:"warnings"`                  // Notes about the measurement.
+	ManagedFeatures      []ManagedFeatureTiming `json:"managedFeatures,omitempty"` // Standalone feature measurements, slowest first.
 }
 
-// ProfileTiming measures one dot-sourced PowerShell profile file.
+// PowerShellProfileReport is the report type used by the PowerShell profilers.
+type PowerShellProfileReport = ShellProfileReport
+
+// ProfileTiming measures one sourced profile file.
 type ProfileTiming struct {
 	Path       string          `json:"path"`       // Absolute profile path.
 	DurationMS float64         `json:"durationMs"` // Elapsed milliseconds, including features.
 	Features   []FeatureTiming `json:"features"`   // Feature loads attributed to this profile, slowest first.
 }
 
-// FeatureTiming measures one dot-sourced oh-my-dot feature.
+// FeatureTiming measures one sourced oh-my-dot feature.
 type FeatureTiming struct {
 	Name       string  `json:"name"`       // Feature name from the loader.
 	Path       string  `json:"path"`       // Path used by the loader.
 	Strategy   string  `json:"strategy"`   // Configured loading strategy.
 	DurationMS float64 `json:"durationMs"` // Elapsed milliseconds.
+}
+
+// ManagedFeatureTiming measures a feature in its own shell process.
+type ManagedFeatureTiming struct {
+	FeatureTiming
+	Error string `json:"error,omitempty"` // Failure encountered while attempting the measurement.
 }
 
 // ProfilePowerShell runs the existing console profiles once in a fresh
@@ -62,18 +72,8 @@ func ProfilePowerShell(ctx context.Context) (PowerShellProfileReport, error) {
 
 // profilePowerShell accepts fixture paths so tests never source machine profiles.
 func profilePowerShell(ctx context.Context, executable string, fixturePaths *[4]string) (PowerShellProfileReport, error) {
-	ctx, cancel := context.WithTimeout(ctx, powerShellProfileTimeout)
+	ctx, cancel := context.WithTimeout(ctx, shellProfileTimeout)
 	defer cancel()
-
-	dir, err := os.MkdirTemp("", "omd-powershell-profile-")
-	if err != nil {
-		return PowerShellProfileReport{}, fmt.Errorf("create temporary PowerShell report directory: %w", err)
-	}
-	defer os.RemoveAll(dir)
-	resultPath := filepath.Join(dir, "result.txt")
-	if err := manifest.CreatePrivateFile(resultPath, nil); err != nil {
-		return PowerShellProfileReport{}, fmt.Errorf("create temporary PowerShell report: %w", err)
-	}
 
 	profilePaths := "@($PROFILE.AllUsersAllHosts, $PROFILE.AllUsersCurrentHost, $PROFILE.CurrentUserAllHosts, $PROFILE.CurrentUserCurrentHost)"
 	if fixturePaths != nil {
@@ -83,27 +83,10 @@ func profilePowerShell(ctx context.Context, executable string, fixturePaths *[4]
 		}
 		profilePaths = "@(" + strings.Join(literals, ", ") + ")"
 	}
-	script := "$__omdStartupResultPath = " + powerShellLiteral(resultPath) + "\n" +
-		"$__omdStartupProfilePaths = " + profilePaths + "\n" + powerShellProfileScript
-	// Both PowerShell editions expect UTF-16LE for -EncodedCommand.
-	var encoded []byte
-	for _, unit := range utf16.Encode([]rune(script)) {
-		encoded = binary.LittleEndian.AppendUint16(encoded, unit)
-	}
-
-	cmd := exec.Command(executable, "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", base64.StdEncoding.EncodeToString(encoded))
-	// The nil streams use the null device directly. A child started by a
-	// profile can inherit those handles without leaving a Go pipe open.
-	runErr := runPowerShellProfileCommand(ctx, cmd)
-	if errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded) {
-		runErr = fmt.Errorf("PowerShell startup profiling interrupted: %w", runErr)
-	} else if runErr != nil {
-		runErr = fmt.Errorf("run PowerShell startup profiler with %s: %w", executable, runErr)
-	}
-
-	data, err := os.ReadFile(resultPath)
+	script := "$__omdStartupProfilePaths = " + profilePaths + "\n" + powerShellProfileHeaderScript + powerShellProfileScript
+	data, runErr, err := runPowerShellProfileScript(ctx, executable, script, nil)
 	if err != nil {
-		return PowerShellProfileReport{}, errors.Join(runErr, fmt.Errorf("read PowerShell startup report: %w", err))
+		return PowerShellProfileReport{}, err
 	}
 	report, err := decodePowerShellProfileReport(string(data), executable)
 	if runErr != nil && err == errIncompletePowerShellReport {
@@ -123,39 +106,56 @@ func profilePowerShell(ctx context.Context, executable string, fixturePaths *[4]
 	return report, err
 }
 
+// Keep the command error separate so callers can decode completed records
+// after the child fails or is interrupted.
+func runPowerShellProfileScript(ctx context.Context, executable, script string, env []string) (data []byte, runErr, err error) {
+	dir, err := os.MkdirTemp("", "omd-powershell-profile-")
+	if err != nil {
+		return nil, nil, fmt.Errorf("create temporary PowerShell report directory: %w", err)
+	}
+	defer os.RemoveAll(dir)
+	resultPath := filepath.Join(dir, "result.txt")
+	if err := manifest.CreatePrivateFile(resultPath, nil); err != nil {
+		return nil, nil, fmt.Errorf("create temporary PowerShell report: %w", err)
+	}
+	script = "$__omdStartupResultPath = " + powerShellLiteral(resultPath) + "\n" + script
+	// Both PowerShell editions expect UTF-16LE for -EncodedCommand.
+	var encoded []byte
+	for _, unit := range utf16.Encode([]rune(script)) {
+		encoded = binary.LittleEndian.AppendUint16(encoded, unit)
+	}
+
+	cmd := exec.Command(executable, "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", base64.StdEncoding.EncodeToString(encoded))
+	cmd.Env = env
+	// The nil streams use the null device directly. A child started by a
+	// profile can inherit those handles without leaving a Go pipe open.
+	runErr = runShellProfileCommand(ctx, cmd)
+	if errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded) {
+		runErr = fmt.Errorf("PowerShell startup profiling interrupted: %w", runErr)
+	} else if runErr != nil {
+		runErr = fmt.Errorf("run PowerShell startup profiler with %s: %w", executable, runErr)
+	}
+
+	data, err = os.ReadFile(resultPath)
+	if err != nil {
+		return nil, nil, errors.Join(runErr, fmt.Errorf("read PowerShell startup report: %w", err))
+	}
+	return data, runErr, nil
+}
+
 var errIncompletePowerShellReport = errors.New("PowerShell did not write a startup report to completion (check execution policy and whether a profile exits PowerShell)")
 
 func decodePowerShellProfileReport(data, executable string) (PowerShellProfileReport, error) {
-	report := PowerShellProfileReport{
-		Shell: "powershell", Executable: executable, Profiles: []ProfileTiming{}, Warnings: []string{},
-	}
-	header, data, complete := strings.Cut(data, "\n")
-	if !complete {
-		return report, errIncompletePowerShellReport
-	}
-	fields := strings.Split(header, "\t")
-	if len(fields) != 4 || fields[0] != "H" {
-		return report, fmt.Errorf("invalid PowerShell startup report header")
-	}
-	var err error
-	report.Edition, err = decodePowerShellProfileField(fields[1])
-	if err != nil || report.Edition == "" {
-		return report, fmt.Errorf("invalid PowerShell edition in startup report")
-	}
-	report.Version, err = decodePowerShellProfileField(fields[2])
-	if err != nil || report.Version == "" {
-		return report, fmt.Errorf("invalid PowerShell version in startup report")
-	}
-	report.Host, err = decodePowerShellProfileField(fields[3])
-	if err != nil || report.Host == "" {
-		return report, fmt.Errorf("invalid PowerShell host in startup report")
+	report, data, err := decodePowerShellProfileHeader(data, executable)
+	if err != nil {
+		return report, err
 	}
 	// Each newline ends a checkpoint. An interrupted write can leave an
 	// unfinished record after the last usable sample.
 	var failures []error
 	for records := 0; ; records++ {
-		var line string
-		line, data, complete = strings.Cut(data, "\n")
+		line, remaining, complete := strings.Cut(data, "\n")
+		data = remaining
 		if !complete {
 			if len(failures) == 0 {
 				return report, errIncompletePowerShellReport
@@ -197,6 +197,34 @@ func decodePowerShellProfileReport(data, executable string) (PowerShellProfileRe
 	}
 }
 
+func decodePowerShellProfileHeader(data, executable string) (PowerShellProfileReport, string, error) {
+	report := PowerShellProfileReport{
+		Shell: "powershell", Executable: executable, Profiles: []ProfileTiming{}, Warnings: []string{},
+	}
+	header, data, complete := strings.Cut(data, "\n")
+	if !complete {
+		return report, "", errIncompletePowerShellReport
+	}
+	fields := strings.Split(header, "\t")
+	if len(fields) != 4 || fields[0] != "H" {
+		return report, "", fmt.Errorf("invalid PowerShell startup report header")
+	}
+	var err error
+	report.Edition, err = decodePowerShellProfileField(fields[1])
+	if err != nil || report.Edition == "" {
+		return report, "", fmt.Errorf("invalid PowerShell edition in startup report")
+	}
+	report.Version, err = decodePowerShellProfileField(fields[2])
+	if err != nil || report.Version == "" {
+		return report, "", fmt.Errorf("invalid PowerShell version in startup report")
+	}
+	report.Host, err = decodePowerShellProfileField(fields[3])
+	if err != nil || report.Host == "" {
+		return report, "", fmt.Errorf("invalid PowerShell host in startup report")
+	}
+	return report, data, nil
+}
+
 func decodePowerShellProfileField(field string) (string, error) {
 	decoded, err := base64.StdEncoding.DecodeString(field)
 	return string(decoded), err
@@ -235,7 +263,7 @@ func powerShellLiteral(value string) string {
 // The child writes tab-separated records with base64 text fields and elapsed
 // TimeSpan ticks. .NET I/O and encoding avoid importing modules or changing
 // preferences before the measured profiles run.
-const powerShellProfileScript = `
+const powerShellProfileHeaderScript = `
 $__omdStartupEncode = {
   param([string]$Text)
   [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($Text))
@@ -247,6 +275,9 @@ $__omdStartupHeader = @(
   & $__omdStartupEncode $Host.Name
 )
 [System.IO.File]::AppendAllText($__omdStartupResultPath, ($__omdStartupHeader -join [char]9) + [char]10)
+`
+
+const powerShellProfileScript = `
 $global:__omdStartupProfiler = @{
   AttributionAvailable = $false
   Features = $null

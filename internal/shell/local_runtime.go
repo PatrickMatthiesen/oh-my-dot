@@ -509,9 +509,8 @@ func IsLocalOnlyFeaturePath(repoPath, path string) (bool, error) {
 // effective init when local options or local-only features change its ownership.
 // It only reads metadata and never generates or repairs files.
 func GetEffectiveFeatureFilePath(repoPath, shellName, featureName string) (string, error) {
-	sharedPath, err := GetFeatureFilePath(repoPath, shellName, featureName)
-	if err != nil {
-		return "", err
+	if _, ok := GetShellConfig(shellName); !ok {
+		return "", fmt.Errorf("unsupported shell: %s", shellName)
 	}
 	base, err := manifest.ParseManifest(GetManifestPath(repoPath, shellName))
 	if err != nil {
@@ -522,29 +521,36 @@ func GetEffectiveFeatureFilePath(repoPath, shellName, featureName string) (strin
 		return "", err
 	}
 	for _, effective := range manifest.MergeManifests(base, local).Features {
-		if effective.Name != featureName {
-			continue
+		if effective.Name == featureName {
+			return effectiveFeatureFilePath(repoPath, shellName, base, effective)
 		}
-		shared, findErr := base.GetFeature(featureName)
-		if !effective.Override.IsFromLocal && findErr == nil && sameFeatureOptions(shared.Options, effective.Options) {
-			return sharedPath, nil
-		}
-		privatePath, err := GetLocalFeatureFilePath(repoPath, shellName, featureName)
-		if err != nil {
-			return "", err
-		}
-		if effective.Override.IsFromLocal && len(effective.Options) == 0 {
-			if _, err := os.Lstat(privatePath); os.IsNotExist(err) {
-				if _, legacyErr := readRuntimeFile(sharedPath); legacyErr == nil {
-					return sharedPath, nil
-				} else if !os.IsNotExist(legacyErr) {
-					return "", legacyErr
-				}
-			}
-		}
-		return privatePath, nil
 	}
 	return "", fmt.Errorf("feature %q is not configured in %s", featureName, shellName)
+}
+
+func effectiveFeatureFilePath(repoPath, shellName string, base *manifest.FeatureManifest, effective manifest.FeatureWithOverride) (string, error) {
+	sharedPath, err := GetFeatureFilePath(repoPath, shellName, effective.Name)
+	if err != nil {
+		return "", err
+	}
+	shared, findErr := base.GetFeature(effective.Name)
+	if !effective.Override.IsFromLocal && findErr == nil && sameFeatureOptions(shared.Options, effective.Options) {
+		return sharedPath, nil
+	}
+	privatePath, err := GetLocalFeatureFilePath(repoPath, shellName, effective.Name)
+	if err != nil {
+		return "", err
+	}
+	if effective.Override.IsFromLocal && len(effective.Options) == 0 {
+		if _, err := os.Lstat(privatePath); os.IsNotExist(err) {
+			if _, legacyErr := readRuntimeFile(sharedPath); legacyErr == nil {
+				return sharedPath, nil
+			} else if !os.IsNotExist(legacyErr) {
+				return "", legacyErr
+			}
+		}
+	}
+	return privatePath, nil
 }
 
 func sameFeatureOptions(first, second map[string]any) bool {

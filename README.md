@@ -334,45 +334,48 @@ Oh-my-dot fully supports PowerShell (both Windows PowerShell 5.1 and PowerShell 
 
 ```sh
 oh-my-dot profile
-oh-my-dot profile --shell powershell
-oh-my-dot profile --shell powershell --json
+oh-my-dot profile --shell bash
+oh-my-dot profile --json
+oh-my-dot profile --shell zsh --full
 ```
 
-`profile` runs the profilers for all installed, supported shells by default.
-Use `--shell` to select one. The current release supports PowerShell. The
-profiler prefers PowerShell 7 and falls back to Windows PowerShell 5.1 on
-Windows. When both are installed, it measures the PowerShell 7 profiles
-even when you run it in a Windows PowerShell 5.1 session. You can run it
-without initializing an oh-my-dot repository.
+`profile` measures enabled oh-my-dot features in your configured dotfiles
+repository. It uses device-local overrides and runs each feature in its own
+noninteractive shell with user startup files disabled. Zsh still runs its
+system `zshenv` during process launch. Managed profiling includes deferred
+and on-command features. The total sums standalone feature timings and
+excludes process launch. Features that depend on another feature or your
+profile can behave differently during startup. On Bash, Zsh, Fish, and
+POSIX sh, very fast loads can round to zero at the file system's timestamp
+resolution.
 
-The profiler replays the existing console profile files in a fresh,
-noninteractive PowerShell process. The total excludes process launch and the
-first prompt. Startup in an editor or an interactive terminal can differ.
-The child has redirected streams, so features that require console input
-may skip work they would do interactively.
-Your profiles execute as code and can perform their normal side effects,
-such as writing files or contacting services. The profiler itself does not
-write to the managed files.
+The command profiles installed Bash, Zsh, Fish, PowerShell, and POSIX sh.
+Use `--shell` to select one. Use `sh` or `posix` for POSIX sh. The profiler
+prefers PowerShell 7 and falls back to Windows PowerShell 5.1 on Windows.
 
-Each file timing includes the code it runs. Managed feature timings are
-inclusive and appear under the file that loaded them. Do not add them to the
-file timings. On-command features appear only if the replay loads them.
-Deferred features usually wait until the session is idle, outside the
-measured profile execution.
-If managed timings are unavailable and you know your generated runtime is
-from an older version, run `oh-my-dot apply` to regenerate it and retry.
+Use `--full` to measure shell startup without an oh-my-dot repository. Bash,
+Zsh, and Fish use interactive non-login startup. POSIX sh uses interactive
+login startup to include `.profile`. These shells report one total for
+process launch and startup, without a terminal or a first prompt.
+
+PowerShell replays its console profile files in startup order and reports
+each file's timing, excluding process launch and the first prompt. Feature
+timings from an instrumented loader appear under the file that loaded them.
+Those timings are included in the file's time. If your generated PowerShell
+loader predates profiling, run `oh-my-dot apply` to regenerate it.
+
+Profile and feature scripts can have their usual side effects, such as
+writing files or contacting services. The profiler does not write to the
+managed files.
 
 Use `--json` for scripts. Standard output contains one document with
-`schemaVersion` and a `results` array. Each result identifies the shell and
-its status: `ok`, `partial`, `failed`, `unavailable`, or `unsupported`.
+`schemaVersion` and a `results` array. Each result identifies the shell, the
+mode (`managed` or `full`), and its status (`ok`, `partial`, `failed`,
+`unavailable`, or `unsupported`).
 Results include a `report` when timings are available and an `error` when
-the profiler cannot complete. The profiler has a 30-second deadline. A
-partial result retains completed profile timings, including those from
-later files after a profile fails. Its total sums only the listed profile
-timings. If a profile throws
-after loading a managed feature, the report can include the feature and the
-elapsed time of that profile. Any status other than `ok` returns a nonzero
-exit code.
+the profiler cannot complete. Each shell has a 30-second deadline and
+retains collected results if a script fails or the deadline expires. Any
+status other than `ok` returns a nonzero exit code.
 
 ## Directory Structure
 

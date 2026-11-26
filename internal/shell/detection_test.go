@@ -455,6 +455,23 @@ func TestIsShellExecutableAvailableSkipsWSLBashLauncherOnWindows(t *testing.T) {
 	if IsShellExecutableAvailable("bash") {
 		t.Fatal("expected WSL bash launcher to be ignored on windows")
 	}
+	launcherDir := filepath.Join(t.TempDir(), "Windows", "System32")
+	gitDir := filepath.Join(t.TempDir(), "Git", "bin")
+	t.Setenv("PATH", strings.Join([]string{launcherDir, gitDir}, string(os.PathListSeparator)))
+	want := filepath.Join(gitDir, "bash.exe")
+	lookPath = func(file string) (string, error) {
+		switch file {
+		case "bash", "bash.exe", filepath.Join(launcherDir, "bash.exe"):
+			return filepath.Join(launcherDir, "bash.exe"), nil
+		case want:
+			return want, nil
+		default:
+			return "", errors.New("not found")
+		}
+	}
+	if got, err := resolveUnixProfileExecutable("bash"); err != nil || got != want {
+		t.Fatalf("resolve Bash past the WSL launcher = %q, %v, want %q", got, err, want)
+	}
 }
 
 func TestProfileDiscoveryDoesNotGuessOrSwitchAfterQueryFailure(t *testing.T) {

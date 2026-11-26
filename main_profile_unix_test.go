@@ -39,7 +39,7 @@ func TestProfileProcessHandlesSignals(t *testing.T) {
 
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
-			command := exec.CommandContext(ctx, binary, "profile", "--json")
+			command := exec.CommandContext(ctx, binary, "profile", "--shell", "powershell", "--full", "--json")
 			command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 			var stdout, stderr bytes.Buffer
 			command.Stdout, command.Stderr = &stdout, &stderr

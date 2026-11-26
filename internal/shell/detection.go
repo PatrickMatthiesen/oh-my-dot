@@ -91,6 +91,15 @@ func normalizeShellName(name string) string {
 
 // IsShellExecutableAvailable reports whether the current environment can resolve a shell executable.
 func IsShellExecutableAvailable(shellName string) bool {
+	if shellName == "powershell" {
+		_, _, err := resolvePowerShellExecutable()
+		return err == nil
+	}
+	_, err := resolveUnixProfileExecutable(shellName)
+	return err == nil
+}
+
+func resolveUnixProfileExecutable(shellName string) (string, error) {
 	var candidates []string
 
 	switch shellName {
@@ -100,25 +109,30 @@ func IsShellExecutableAvailable(shellName string) bool {
 		candidates = []string{"zsh", "zsh.exe"}
 	case "fish":
 		candidates = []string{"fish", "fish.exe"}
-	case "powershell":
-		_, _, err := resolvePowerShellExecutable()
-		return err == nil
 	case "posix":
 		candidates = []string{"sh", "sh.exe"}
 	default:
-		return false
+		return "", fmt.Errorf("unsupported shell: %s", shellName)
 	}
 
 	for _, candidate := range candidates {
 		if resolvedPath, err := lookPath(candidate); err == nil {
 			if shellName == "bash" && isWslBashLauncher(resolvedPath) {
-				continue
+				for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+					if !filepath.IsAbs(dir) {
+						continue
+					}
+					if path, err := lookPath(filepath.Join(dir, "bash.exe")); err == nil && !isWslBashLauncher(path) {
+						return path, nil
+					}
+				}
+				break
 			}
-			return true
+			return resolvedPath, nil
 		}
 	}
 
-	return false
+	return "", fmt.Errorf("no %s executable found on PATH", candidates[0])
 }
 
 func isWslBashLauncher(path string) bool {
