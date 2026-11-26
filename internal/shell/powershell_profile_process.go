@@ -2,8 +2,22 @@ package shell
 
 import (
 	"context"
+	"os"
 	"os/exec"
+	"runtime"
+	"slices"
+	"strings"
 )
+
+func managedShellProfileEnv() []string {
+	return slices.DeleteFunc(os.Environ(), func(entry string) bool {
+		name, _, _ := strings.Cut(entry, "=")
+		if runtime.GOOS == "windows" {
+			name = strings.ToUpper(name)
+		}
+		return strings.HasPrefix(name, "OMD_FEATURE_") && strings.HasSuffix(name, "_LOADED")
+	})
+}
 
 // runShellProfileCommand expects an unstarted command with nil streams or
 // direct file handles so descendants can inherit stdio without delaying Wait.

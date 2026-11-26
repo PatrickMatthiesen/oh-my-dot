@@ -84,7 +84,7 @@ func profilePowerShell(ctx context.Context, executable string, fixturePaths *[4]
 		profilePaths = "@(" + strings.Join(literals, ", ") + ")"
 	}
 	script := "$__omdStartupProfilePaths = " + profilePaths + "\n" + powerShellProfileHeaderScript + powerShellProfileScript
-	data, runErr, err := runPowerShellProfileScript(ctx, executable, script)
+	data, runErr, err := runPowerShellProfileScript(ctx, executable, script, nil)
 	if err != nil {
 		return PowerShellProfileReport{}, err
 	}
@@ -108,7 +108,7 @@ func profilePowerShell(ctx context.Context, executable string, fixturePaths *[4]
 
 // Keep the command error separate so callers can decode completed records
 // after the child fails or is interrupted.
-func runPowerShellProfileScript(ctx context.Context, executable, script string) (data []byte, runErr, err error) {
+func runPowerShellProfileScript(ctx context.Context, executable, script string, env []string) (data []byte, runErr, err error) {
 	dir, err := os.MkdirTemp("", "omd-powershell-profile-")
 	if err != nil {
 		return nil, nil, fmt.Errorf("create temporary PowerShell report directory: %w", err)
@@ -126,6 +126,7 @@ func runPowerShellProfileScript(ctx context.Context, executable, script string) 
 	}
 
 	cmd := exec.Command(executable, "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", base64.StdEncoding.EncodeToString(encoded))
+	cmd.Env = env
 	// The nil streams use the null device directly. A child started by a
 	// profile can inherit those handles without leaving a Go pipe open.
 	runErr = runShellProfileCommand(ctx, cmd)

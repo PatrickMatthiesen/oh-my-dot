@@ -124,7 +124,7 @@ func measureUnixManagedFeature(ctx context.Context, executable string, shellArgs
 
 	cmd := exec.Command(executable, append(shellArgs, script)...)
 	// Suppress the inherited startup entry points used by bash and POSIX sh.
-	cmd.Env = append(os.Environ(), "BASH_ENV=", "ENV=")
+	cmd.Env = append(managedShellProfileEnv(), "BASH_ENV=", "ENV=")
 	// Keep the streams nil so feature output cannot interfere with the timing
 	// and descendants cannot hold Go pipes open.
 	runErr := runShellProfileCommand(ctx, cmd)

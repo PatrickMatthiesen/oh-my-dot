@@ -35,7 +35,9 @@ func TestProfilePowerShellFeatures(t *testing.T) {
 		}
 		writeManagedProfileManifests(t, repo, base, local)
 		root := GetShellDirectory(repo, "powershell")
+		t.Setenv("OMD_FEATURE_EAGER_LOADED", "1")
 		writePowerShellFixture(t, filepath.Join(root, "features", "eager.ps1"), `
+if ($env:OMD_FEATURE_EAGER_LOADED -eq '1') { return }
 if ((Resolve-Path -LiteralPath $OMD_SHELL_ROOT).ProviderPath -ne (Split-Path -Parent $PSScriptRoot)) { throw 'wrong shell root' }
 $global:omdManagedFixture = 'eager'
 Start-Sleep -Milliseconds 250

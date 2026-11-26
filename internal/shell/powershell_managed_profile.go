@@ -100,7 +100,7 @@ func measurePowerShellFeature(ctx context.Context, executable, shellRoot string,
 		"$OMD_SHELL_ROOT = " + powerShellLiteral(shellRoot) + "\n" +
 		"$global:__omdManagedPath = " + powerShellLiteral(timing.Path) + "\n" +
 		powerShellManagedProfileScript
-	data, runErr, err := runPowerShellProfileScript(ctx, executable, script)
+	data, runErr, err := runPowerShellProfileScript(ctx, executable, script, managedShellProfileEnv())
 	if err != nil {
 		return PowerShellProfileReport{}, err
 	}

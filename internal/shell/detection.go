@@ -118,7 +118,15 @@ func resolveUnixProfileExecutable(shellName string) (string, error) {
 	for _, candidate := range candidates {
 		if resolvedPath, err := lookPath(candidate); err == nil {
 			if shellName == "bash" && isWslBashLauncher(resolvedPath) {
-				continue
+				for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+					if !filepath.IsAbs(dir) {
+						continue
+					}
+					if path, err := lookPath(filepath.Join(dir, "bash.exe")); err == nil && !isWslBashLauncher(path) {
+						return path, nil
+					}
+				}
+				break
 			}
 			return resolvedPath, nil
 		}

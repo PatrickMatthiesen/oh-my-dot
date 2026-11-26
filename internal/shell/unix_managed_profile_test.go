@@ -51,6 +51,7 @@ func TestProfileUnixShellFeatures(t *testing.T) {
 			t.Setenv("BASH_ENV", filepath.ToSlash(startup))
 			t.Setenv("ENV", filepath.ToSlash(startup))
 			t.Setenv("OMD_PROFILE_UNEXPECTED_STARTUP", "")
+			t.Setenv("OMD_FEATURE_EAGER_LOADED", "1")
 
 			configuredShell, _ := GetShellConfig(shellName)
 			extension := configuredShell.Extension
@@ -59,6 +60,7 @@ func TestProfileUnixShellFeatures(t *testing.T) {
 			writeUnixProfileFixture(t, helperPath, "omd_profile_fixture_helper() { return 0; }\n")
 			eager := fmt.Sprintf(`
 case $- in *i*) exit 30 ;; esac
+test "$OMD_FEATURE_EAGER_LOADED" != 1 || return 0
 test -z "$OMD_PROFILE_UNEXPECTED_STARTUP" || exit 31
 test "$OMD_SHELL_ROOT" = %s || exit 32
 omd_profile_fixture_helper || exit 33
@@ -72,6 +74,7 @@ sleep 0.20
 			if shellName == "fish" {
 				eager = fmt.Sprintf(`
 status is-interactive; and exit 30
+test "$OMD_FEATURE_EAGER_LOADED" = 1; and return 0
 test -z "$OMD_PROFILE_UNEXPECTED_STARTUP"; or exit 31
 test "$OMD_SHELL_ROOT" = %s; or exit 32
 functions -q omd_profile_fixture_helper; and exit 33
