@@ -5,13 +5,13 @@ import (
 	"os/exec"
 )
 
-// runPowerShellProfileCommand expects an unstarted command with nil streams or
+// runShellProfileCommand expects an unstarted command with nil streams or
 // direct file handles so descendants can inherit stdio without delaying Wait.
-func runPowerShellProfileCommand(ctx context.Context, cmd *exec.Cmd) error {
+func runShellProfileCommand(ctx context.Context, cmd *exec.Cmd) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	terminate, release, err := startPowerShellProfileCommand(cmd)
+	terminate, release, err := startShellProfileCommand(cmd)
 	if err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()

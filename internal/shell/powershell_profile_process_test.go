@@ -15,7 +15,7 @@ import (
 func TestPowerShellProfileCommand(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if err := runPowerShellProfileCommand(ctx, exec.Command(os.Args[0], "-test.run=^$")); err != nil {
+	if err := runShellProfileCommand(ctx, exec.Command(os.Args[0], "-test.run=^$")); err != nil {
 		t.Fatalf("run ordinary command: %v", err)
 	}
 }
@@ -42,7 +42,7 @@ func TestPowerShellProfileCommandCancelsDescendants(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		err := runPowerShellProfileCommand(ctx, cmd)
+		err := runShellProfileCommand(ctx, cmd)
 		childStdout.Close()
 		done <- err
 	}()

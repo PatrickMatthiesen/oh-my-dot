@@ -9,10 +9,10 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func startPowerShellProfileCommand(cmd *exec.Cmd) (terminate, release func(), err error) {
+func startShellProfileCommand(cmd *exec.Cmd) (terminate, release func(), err error) {
 	job, err := windows.CreateJobObject(nil, nil)
 	if err != nil {
-		return nil, nil, fmt.Errorf("create PowerShell job: %w", err)
+		return nil, nil, fmt.Errorf("create shell job: %w", err)
 	}
 	releaseJob := func() { _ = windows.CloseHandle(job) }
 
@@ -21,9 +21,9 @@ func startPowerShellProfileCommand(cmd *exec.Cmd) (terminate, release func(), er
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_SUSPENDED}
 	if err := cmd.Start(); err != nil {
 		releaseJob()
-		return nil, nil, fmt.Errorf("start suspended PowerShell process: %w", err)
+		return nil, nil, fmt.Errorf("start suspended shell process: %w", err)
 	}
-	if err := assignAndResumePowerShellProfileProcess(job, uint32(cmd.Process.Pid)); err != nil {
+	if err := assignAndResumeShellProfileProcess(job, uint32(cmd.Process.Pid)); err != nil {
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
 		releaseJob()
@@ -36,14 +36,14 @@ func startPowerShellProfileCommand(cmd *exec.Cmd) (terminate, release func(), er
 	}, releaseJob, nil
 }
 
-func assignAndResumePowerShellProfileProcess(job windows.Handle, pid uint32) error {
+func assignAndResumeShellProfileProcess(job windows.Handle, pid uint32) error {
 	process, err := windows.OpenProcess(windows.PROCESS_SET_QUOTA|windows.PROCESS_TERMINATE, false, pid)
 	if err != nil {
-		return fmt.Errorf("open suspended PowerShell process: %w", err)
+		return fmt.Errorf("open suspended shell process: %w", err)
 	}
 	defer windows.CloseHandle(process)
 	if err := windows.AssignProcessToJobObject(job, process); err != nil {
-		return fmt.Errorf("assign PowerShell process to job: %w", err)
+		return fmt.Errorf("assign shell process to job: %w", err)
 	}
 
 	// os/exec closes the primary thread handle. A suspended process has
@@ -60,13 +60,13 @@ func assignAndResumePowerShellProfileProcess(job windows.Handle, pid uint32) err
 		}
 		thread, err := windows.OpenThread(windows.THREAD_SUSPEND_RESUME, false, entry.ThreadID)
 		if err != nil {
-			return fmt.Errorf("open suspended PowerShell thread: %w", err)
+			return fmt.Errorf("open suspended shell thread: %w", err)
 		}
 		defer windows.CloseHandle(thread)
 		if _, err := windows.ResumeThread(thread); err != nil {
-			return fmt.Errorf("resume PowerShell thread: %w", err)
+			return fmt.Errorf("resume shell thread: %w", err)
 		}
 		return nil
 	}
-	return fmt.Errorf("find initial PowerShell thread: %w", err)
+	return fmt.Errorf("find initial shell thread: %w", err)
 }
