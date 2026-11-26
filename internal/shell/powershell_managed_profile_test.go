@@ -35,10 +35,13 @@ func TestProfilePowerShellFeatures(t *testing.T) {
 		}
 		writeManagedProfileManifests(t, repo, base, local)
 		root := GetShellDirectory(repo, "powershell")
+		// Windows can spell one directory with either short or long path names.
+		// Check a file placed at the expected root instead of comparing strings.
+		writePowerShellFixture(t, filepath.Join(root, "managed-root-fixture.txt"), "expected root")
 		t.Setenv("OMD_FEATURE_EAGER_LOADED", "1")
 		writePowerShellFixture(t, filepath.Join(root, "features", "eager.ps1"), `
 if ($env:OMD_FEATURE_EAGER_LOADED -eq '1') { return }
-if ((Resolve-Path -LiteralPath $OMD_SHELL_ROOT).ProviderPath -ne (Split-Path -Parent $PSScriptRoot)) { throw 'wrong shell root' }
+if ([IO.File]::ReadAllText((Join-Path $OMD_SHELL_ROOT 'managed-root-fixture.txt')).Trim() -ne 'expected root') { throw 'wrong shell root' }
 $global:omdManagedFixture = 'eager'
 Start-Sleep -Milliseconds 250
 `)
@@ -47,7 +50,7 @@ Start-Sleep -Milliseconds 250
 		}
 		for _, name := range []string{"override", "private"} {
 			writePowerShellFixture(t, filepath.Join(root, ".local", "features", name+".ps1"), `
-if ((Resolve-Path -LiteralPath $OMD_SHELL_ROOT).ProviderPath -ne (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))) { throw 'wrong shell root' }
+if ([IO.File]::ReadAllText((Join-Path $OMD_SHELL_ROOT 'managed-root-fixture.txt')).Trim() -ne 'expected root') { throw 'wrong shell root' }
 if ($null -ne $global:omdManagedFixture) { throw 'feature process was reused' }
 $global:omdManagedFixture = 'private'
 `)
