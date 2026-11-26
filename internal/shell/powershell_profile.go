@@ -292,12 +292,18 @@ foreach ($__omdStartupPath in $__omdStartupProfilePaths) {
         break
       }
       if ($__omdStartupException -is [System.Management.Automation.ParseException] -and
-          ($__omdStartupFromRunner -or $__omdStartupSource.ScriptName -ceq $__omdStartupPath) -and
           $null -ne $__omdStartupException.Errors -and
-          $__omdStartupException.Errors.Count -ne 0 -and
-          $__omdStartupException.Errors[0].Extent.File -ceq $__omdStartupPath) {
-        $__omdStartupFailure = 'could not parse profile: ' + $__omdStartupException.Message
-        break
+          $__omdStartupException.Errors.Count -ne 0) {
+        # The parser can report the long spelling of a Windows 8.3 path.
+        $__omdStartupParsePaths = @($__omdStartupPath)
+        if ([System.IO.Path]::DirectorySeparatorChar -eq '\' -and $__omdStartupPath.Contains('~')) {
+          $__omdStartupParsePaths += [System.IO.Path]::GetFullPath($__omdStartupPath)
+        }
+        if (($__omdStartupFromRunner -or $__omdStartupSource.ScriptName -cin $__omdStartupParsePaths) -and
+            $__omdStartupException.Errors[0].Extent.File -cin $__omdStartupParsePaths) {
+          $__omdStartupFailure = 'could not parse profile: ' + $__omdStartupException.Message
+          break
+        }
       }
       # Write-Error can report its caller's invocation from inside a profile.
       if ($__omdStartupException -is [System.Management.Automation.PSSecurityException] -and

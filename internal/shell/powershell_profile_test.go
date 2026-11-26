@@ -407,17 +407,20 @@ func TestPowerShellProfileRestrictedExecutionPolicy(t *testing.T) {
 		t.Skip("Windows PowerShell is unavailable")
 	}
 	t.Setenv("PSExecutionPolicyPreference", "Restricted")
-	cmd := exec.Command(executable, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "Get-ExecutionPolicy")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("read effective execution policy: %v\n%s", err, output)
-	}
-	if policy := strings.TrimSpace(string(output)); policy != "Restricted" {
-		t.Skipf("effective execution policy is %q instead of process-scoped Restricted", policy)
-	}
 	paths := powerShellProfileFixtures(t)
 	writePowerShellFixture(t, paths[0], "throw 'restricted fixture ran'")
 	report, err := profilePowerShell(context.Background(), executable, &paths)
+	// Query the policy only if the fixture ran. Restricted can block the
+	// Security module that provides Get-ExecutionPolicy.
+	if err != nil && strings.Contains(err.Error(), paths[0]+": restricted fixture ran") {
+		cmd := exec.Command(executable, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "Get-ExecutionPolicy -ErrorAction Stop")
+		if output, probeErr := cmd.Output(); probeErr == nil {
+			switch policy := strings.TrimSpace(string(output)); policy {
+			case "Bypass", "RemoteSigned", "Unrestricted":
+				t.Skipf("effective execution policy %q overrides process-scoped Restricted", policy)
+			}
+		}
+	}
 	if err == nil || !strings.Contains(err.Error(), paths[0]+": authorization blocked the profile: ") ||
 		errors.Is(err, errIncompletePowerShellReport) || len(report.Profiles) != 0 {
 		t.Fatalf("expected the blocked profile diagnostic and no timings, got %+v, %v", report, err)
